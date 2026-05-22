@@ -2,6 +2,18 @@
 
 All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
+## [Unreleased]
+
+### Added
+
+- Pre-commit + pre-push hooks in `.githooks/` — run `npm test` automatically on commit / push. Pre-push runs the suite a second time on `main` / `master` for a determinism (flake-detection) check. Zero new dependencies (no Husky / `lint-staged` / `simple-git-hooks`); vanilla bash that runs on macOS and Linux. Auto-installed via `npm install` `postinstall` script (sets `git config core.hooksPath .githooks`; `|| true` so it no-ops in non-git environments like CI containers / Docker).
+- Bypass tags: `git commit --no-verify` / `git push --no-verify` OR `[skip-tests]` in the commit message — for typo / doc-only / comment-only changes that don't touch product code.
+- **`package-lock.json` now committed** — npm-recommended for reproducible builds across CI / clones / contributors. Does NOT contradict R4 (zero runtime deps): R4 governs `dependencies: {}` (still empty), lockfile is metadata. `npm install` on fresh clone now deterministic.
+
+### Notes on pre-commit tier choice
+
+Pre-commit runs the **full** `npm test` chain (~60 mocked test scripts, ~14-20s wallclock). All tests are local mocked (no live API calls, no costs). This fits industry-standard pre-commit tier (≤30s). No split into `test:fast` is needed — the full suite is fast enough thanks to the zero-dep + mocked design.
+
 ## [1.1.1] — 2026-05-20
 
 **Replay mode now skips extractor + sentiment LLM calls too.** 1.1.0 made `--replay` skip live `/v1/models` discovery and the main `provider.call`, but `extractWithTwoModels` + `classifySentimentWithTwoModels` still fired against live OpenAI + Gemini classify endpoints inside the per-cell loop. Under `--network none` (Docker, air-gapped CI) those calls retried DNS errors as transient and hung for the full 30-retry budget. Closes the «lingering caveat» documented in 1.1.0 Notes.

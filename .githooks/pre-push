@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# aeo-platform pre-push hook — runs FULL tier before push.
+# Bypass: `git push --no-verify` (only for fast hotfix to non-shared branch).
+
+remote="$1"
+url="$2"
+
+# Read stdin to detect what's being pushed
+while read local_ref local_sha remote_ref remote_sha; do
+  # Skip if pushing tag only (no code changes)
+  if [[ "$local_ref" == refs/tags/* ]]; then
+    echo "[pre-push] pushing tag $local_ref — skipping test run"
+    exit 0
+  fi
+done
+
+echo "[pre-push] running npm test (full tier)..."
+EXIT=0
+npm test || EXIT=$?
+
+if [ $EXIT -ne 0 ]; then
+  echo ""
+  echo "[pre-push] BLOCKED — tests failed. Fix before push OR use --no-verify for non-shared branch."
+  exit 1
+fi
+
+# Determinism check — re-run if main branch
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+  echo "[pre-push] running deterministic check (2nd run for main/master)..."
+  EXIT2=0
+  npm test || EXIT2=$?
+  if [ $EXIT2 -ne 0 ]; then
+    echo "[pre-push] BLOCKED — flake detected (pass on run 1, fail on run 2). Investigate before push to main."
+    exit 1
+  fi
+fi
+
+echo "[pre-push] all tests passed (deterministic)"
+exit 0

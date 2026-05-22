@@ -76,7 +76,8 @@
     "test:cell-actions": "node test/report-cell-actions.test.js",
     "test:replay-malformed": "node --test test/replay-malformed-cache.test.js",
     "test:replay-skips-discovery": "node --test test/replay-skips-discovery.test.js",
-    "test:e2e": "node --test test/e2e/*.test.js"
+    "test:e2e": "node --test test/e2e/*.test.js",
+    "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "files": [
     "bin/",

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# aeo-platform pre-commit hook — runs FAST tier tests before commit.
+# Installed via core.hooksPath = .githooks (set by npm postinstall).
+# Bypass: `git commit --no-verify` (only for typo/comment-only commits).
+
+# Skip if commit message contains [skip-tests]
+COMMIT_MSG_FILE=".git/COMMIT_EDITMSG"
+if [ -f "$COMMIT_MSG_FILE" ] && grep -q '\[skip-tests\]' "$COMMIT_MSG_FILE" 2>/dev/null; then
+  echo "[pre-commit] [skip-tests] tag — skipping test run"
+  exit 0
+fi
+
+# Fast tier: only run unit tests (not full E2E suite)
+# E2E goes through pre-push or CI
+echo "[pre-commit] running npm test (fast tier)..."
+EXIT=0
+npm test || EXIT=$?
+
+if [ $EXIT -ne 0 ]; then
+  echo ""
+  echo "[pre-commit] BLOCKED — tests failed. Fix before commit OR use [skip-tests] in message for non-code changes (docs/typos)."
+  exit 1
+fi
+
+echo "[pre-commit] all tests passed"
+exit 0
