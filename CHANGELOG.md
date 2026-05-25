@@ -4,17 +4,20 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+## [1.1.3] — 2026-05-25
+
+**Docs-only AEO enrichment release.** Adds answer-capsule paragraphs under every README H2, extends FAQPage schema with 2 new Q/A, promotes the Diagnosis line from blockquote to `### H3` for URL-anchorability, and adds `exampleOfWork` on the SoftwareApplication schema linking both sample plans. Ships pre-commit + pre-push git hooks (`.githooks/`, zero new dependencies). Commits `package-lock.json` for reproducible installs. No CLI / library behaviour changes — `aeo-responses/2026-05-18/_summary.json` data already shipped in 1.1.2 is unchanged.
+
 ### Added
 
-- Pre-commit + pre-push hooks in `.githooks/` — run `npm test` automatically on commit / push. Pre-push runs the suite a second time on `main` / `master` for a determinism (flake-detection) check. Zero new dependencies (no Husky / `lint-staged` / `simple-git-hooks`); vanilla bash that runs on macOS and Linux. Auto-installed via `npm install` `postinstall` script (sets `git config core.hooksPath .githooks`; `|| true` so it no-ops in non-git environments like CI containers / Docker).
+- **Answer capsules under every README H2** (Multi-engine coverage / AI-bot crawlability audit / Authority signals / UVI methodology). 40–60 word bolded paragraphs that LLM extractors can grab without parsing the surrounding prose.
+- **`### Diagnosis` H3** (was `> Diagnosis` blockquote). Now URL-anchorable as `#diagnosis`; LLMs treat H3s as canonical answer-units. Source `_summary.json` path now in an HTML comment so any future reader can trace the numbers.
+- **FAQPage schema extended with 2 new Q/A:** *"What is the UVI (Unified Visibility Index) score?"* + *"What does an aeo-platform output file look like?"* — the two questions a developer needs answered before they install.
+- **`exampleOfWork` property on the SoftwareApplication schema** linking to both worked-example sample plans (typelessform.com at UVI 42% and the bare-site brand at 0%). Schema.org `exampleOfWork` is consumed by Google's structured-data graph and helps AI engines surface a CLI tool's actual output, not just its description.
+- **Pre-commit + pre-push hooks in `.githooks/`** — run `npm test` automatically on commit / push. Pre-push runs the suite a second time on `main` / `master` for a determinism (flake-detection) check. Zero new dependencies (no Husky / `lint-staged` / `simple-git-hooks`); vanilla bash that runs on macOS and Linux. Auto-installed via `npm install` `postinstall` script (sets `git config core.hooksPath .githooks`; `|| true` so it no-ops in non-git environments like CI containers / Docker).
 - Bypass tags: `git commit --no-verify` / `git push --no-verify` OR `[skip-tests]` in the commit message — for typo / doc-only / comment-only changes that don't touch product code.
-- **`package-lock.json` now committed** — npm-recommended for reproducible builds across CI / clones / contributors. Does NOT contradict R4 (zero runtime deps): R4 governs `dependencies: {}` (still empty), lockfile is metadata. `npm install` on fresh clone now deterministic.
-
-### Docs
-
-- **README excerpt of the 30-mission plan** (`README.md:143-155`) — replaced the single-link footer of the «paste-into-AI» workflow with a table excerpt (diagnosis + mission #3 + ellipsis + mission #30) drawn from the real typelessform.com run. The plan is the killer output of the whole pipeline; the prior README mentioned it only as a one-line link. Diagnosis line surfaces UVI 42% / 5-of-12 cells / per-engine asymmetry so the reader sees what the audit produces *before* the missions.
-- **New sample plan: `examples/sample-plan-typelessform.md`** — established-brand-at-UVI-42% case, complementing existing `examples/sample-plan-output.md` (bare-site brand at 0%). Both wired into the dual-link under the excerpt.
-- **`README.md:760` schema.org `softwareVersion` synced to 1.1.2** — was 1.0.8 (stale from before 1.1.0/1.1.1 releases). Schema.org block is consumed by AI crawlers; stale version misrepresents the package.
+- **`package-lock.json` now committed** — npm-recommended for reproducible builds across CI / clones / contributors. Does NOT contradict zero runtime deps: `dependencies: {}` still empty, lockfile is metadata. `npm install` on fresh clone now deterministic.
+- **`README.md` schema.org `softwareVersion` synced to 1.1.3** + `datePublished` bumped to 2026-05-25. Schema block is consumed by AI crawlers; stale version misrepresents the package.
 
 ### Notes on pre-commit tier choice
 

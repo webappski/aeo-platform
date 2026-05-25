@@ -144,7 +144,11 @@ Paste that JSON into **your own ChatGPT / Claude / Gemini / Perplexity** (any fr
 
 **Real run for typelessform.com — the file the whole pipeline exists to produce:**
 
-> **Diagnosis** — UVI **42%** (5/12 cells), leading 8 named competitors by mentions but missing on 7; strongest on ChatGPT (67% / 67%), weakest on Perplexity (33% / 0%).
+<!-- source: aeo-platform run 2026-05-18, ~/Projects/typelessity-landing/aeo-responses/2026-05-18/_summary.json (Presence 42%, mentions 5/12) -->
+
+### Diagnosis
+
+UVI **42%** (5/12 cells), leading 8 named competitors by mentions but missing on 7; strongest on ChatGPT (67% / 67%), weakest on Perplexity (33% / 0%).
 
 | # | Action | Expected outcome | Time |
 |---|--------|------------------|------|
@@ -157,6 +161,8 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 **Why no hosted AEO dashboard ships this:** a paste-into-AI plan cannibalises the dashboard moat. Once the user takes the JSON to their own AI chat, the vendor's UI is no longer the destination. Open-source has the opposite incentive — show zero when it's zero, hand you the data, win when you take it wherever you want.
 
 ## Multi-engine coverage
+
+**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-search-api`), Gemini (`gemini-2.5-flash`), Claude (`claude-sonnet-4-7`), Perplexity (`sonar-reasoning`). OpenAI + Gemini keys are mandatory (they also power the two-model hallucination filter); Claude + Perplexity are optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
 
 | Engine | Default model | API path | Web-search grounding | Required key |
 |---|---|---|---|---|
@@ -189,6 +195,8 @@ Results merge into today's `_summary.json` alongside API runs. `diff` and `repor
 
 ## AI-bot crawlability audit (zero LLM cost)
 
+**The crawlability audit scores your domain against the 12-bot AI-crawler matrix (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, and 8 others) using ~3 HTTPS GETs against your `/robots.txt`, `/sitemap.xml`, and `/llms.txt`. No LLM calls, no auth, no cost. The composite **AI-Bot Crawl Readiness** score (0–100) weighs robots posture 30%, bots-not-blocked 25%, sitemap 25%, llms.txt 20%.**
+
 `aeo-platform report` runs a pure-HTTP audit of your own domain against the AI-crawler matrix. No LLM calls. Roughly 3 HTTPS GETs.
 
 | Bot | Owner | Purpose |
@@ -212,6 +220,8 @@ Note: this measures *technical access* — not actual answer-pool inclusion. Ans
 
 ## Authority signals
 
+**Authority signals check the off-page surfaces AI engines weight heavily when picking who to cite: Wikipedia article presence + length, Reddit mention count, GitHub repo stars/forks (auto-surfaced for dev-tool brands with disambiguation guard), and Wikidata Q-ID + `sameAs` reciprocity. All four use free public APIs — no auth required (optional `GITHUB_TOKEN` lifts GitHub rate from 60/h to 5000/h).**
+
 `aeo-platform report` checks the off-page surfaces AI engines weight heavily when deciding who to cite. Free public APIs only — no auth.
 
 | Source | What's checked | Method |
@@ -224,6 +234,8 @@ Note: this measures *technical access* — not actual answer-pool inclusion. Ans
 Why this matters: in Webappski's 2026 weekly audits, brands with a Wikidata entity, named-author `sameAs` chains, and presence on Reddit/G2/Wikipedia consistently outperform on AI Overview citation rates compared to brands relying on domain authority alone. Entity signals and citation-source presence are the highest-ROI surfaces to fix.
 
 ## UVI methodology — Unified Visibility Index
+
+**UVI (Unified Visibility Index) is a 0–100 composite of four AI-answer signals: Presence 35% (mentioned cells / total cells), Sentiment 25% (high-confidence positive cells / mentioned cells), Rank 20% (normalised average rank position), Citation 20% (cells where your domain was cited as a source). Weights are visible in `lib/report/visibility-index.js`; sub-components with insufficient data are excluded and remaining weights re-normalise — never phantom values. Sample size is published alongside the score.**
 
 `aeo-platform` rolls four AI-answer signals into a single 0-100 composite. Every weight is in the source (`lib/report/visibility-index.js`); the ⓘ popover next to the hero number shows the per-axis math on every run.
 
@@ -757,8 +769,8 @@ MIT — do whatever you want with it.
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Answer Engine Optimization, Generative Engine Optimization, Brand Visibility Monitoring",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "1.1.2",
-      "datePublished": "2026-05-18",
+      "softwareVersion": "1.1.3",
+      "datePublished": "2026-05-25",
       "license": "https://opensource.org/licenses/MIT",
       "downloadUrl": "https://www.npmjs.com/package/aeo-platform",
       "codeRepository": "https://github.com/webappski/aeo-platform",
@@ -783,7 +795,21 @@ MIT — do whatever you want with it.
         "https://github.com/webappski/aeo-platform",
         "https://webappski.com"
       ],
-      "publisher": { "@id": "https://webappski.com/#org" }
+      "publisher": { "@id": "https://webappski.com/#org" },
+      "exampleOfWork": [
+        {
+          "@type": "CreativeWork",
+          "name": "Sample 30-mission AEO plan — typelessform.com (UVI 42%)",
+          "url": "https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-typelessform.md",
+          "description": "Real aeo-platform run output for typelessform.com (2026-05-18): 30 missions grounded in 12 engine cells, 8 named competitors, and live entity-graph reciprocity data."
+        },
+        {
+          "@type": "CreativeWork",
+          "name": "Sample 30-mission AEO plan — bare-site brand (UVI 0%)",
+          "url": "https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-output.md",
+          "description": "Sample 30-mission AEO plan for a brand absent from all four answer engines — shows the cold-start trajectory the report generates."
+        }
+      ]
     },
     {
       "@type": "Organization",
@@ -838,6 +864,16 @@ MIT — do whatever you want with it.
           "@type": "Question",
           "name": "Is aeo-platform CI-friendly?",
           "acceptedAnswer": { "@type": "Answer", "text": "Yes. --json flag for structured stdout, ANSI auto-disabled on non-TTY, NO_COLOR env honoured, exit codes 0/1/2/3 map cleanly to alerting tiers. GitHub Actions and cron examples in the README." }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the UVI (Unified Visibility Index) score?",
+          "acceptedAnswer": { "@type": "Answer", "text": "UVI is aeo-platform's 0–100 composite of four AI-answer signals: Presence 35% (mentioned cells / total cells), Sentiment 25% (high-confidence positive cells / mentioned cells), Rank 20% (normalised average rank position when mentioned), Citation 20% (cells where your domain was cited as a source). Weights live in lib/report/visibility-index.js and the ⓘ popover next to the hero number shows per-axis math on every run. Sub-components with insufficient data are excluded and remaining weights re-normalise — no phantom values." }
+        },
+        {
+          "@type": "Question",
+          "name": "What does an aeo-platform output file look like?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A run writes aeo-responses/YYYY-MM-DD/_summary.json with the canonical machine-readable shape (UVI score, per-engine mention/citation cells, topCompetitors, topCanonicalSources, entityGraph reciprocity, pageSignals, crawlability, authority blocks). The same data renders as a 6-surface editorial HTML report (Headline · Overview · Engine matrix · Citations · Actions · Diagnostics) and the bridge card exports a JSON brand-context block you paste into any AI for a 30-mission AEO plan. Worked example: examples/sample-plan-typelessform.md (UVI 42% from the 2026-05-13 run)." }
         }
       ]
     }

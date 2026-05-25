@@ -1,6 +1,6 @@
 {
   "name": "aeo-platform",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Open-source AEO platform for ChatGPT, Claude, Gemini, Perplexity — measure brand visibility, audit AI-bot crawlability + authority signals, diagnose citation gaps, recommend per-engine actions, and export a JSON brand-context you paste into any AI for a personalized 30-mission AEO plan. Free alternative to Profound, Otterly, Peec, Bluefish. Zero dependencies, MIT, local-first.",
   "type": "module",
   "bin": {
