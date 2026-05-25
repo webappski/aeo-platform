@@ -142,9 +142,19 @@ Paste that JSON into **your own ChatGPT / Claude / Gemini / Perplexity** (any fr
 3. Paste into your ChatGPT, Claude, Gemini, or Perplexity chat.
 4. Receive a 30-mission plan: 30 actions × ≈1–3 hours each, grouped into 4 weekly chunks, every action references a specific competitor / URL / engine / gap from the data.
 
-**Why no hosted AEO dashboard ships this:** a paste-into-AI plan cannibalises the dashboard moat. Once the user takes the JSON to their own AI chat, the vendor's UI is no longer the destination. Open-source has the opposite incentive — show zero when it's zero, hand you the data, win when you take it wherever you want.
+**Real run for typelessform.com — the file the whole pipeline exists to produce:**
 
-A sample plan from a real bare-site brand: [`examples/sample-plan-output.md`](https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-output.md).
+> **Diagnosis** — UVI **42%** (5/12 cells), leading 8 named competitors by mentions but missing on 7; strongest on ChatGPT (67% / 67%), weakest on Perplexity (33% / 0%).
+
+| # | Action | Expected outcome | Time |
+|---|--------|------------------|------|
+| 3 | Add 40–60 word answer capsule under each H2 lacking one (coverage 1/9) | Multiplies extractability across all 12 engine cells in one pass | 90 min |
+| … | *28 more missions, each tied to a specific finding in the audit* | | |
+| 30 | Re-run `aeo-platform` to measure delta; AMA in strongest sub from new `topSubreddits` | Quantifies progress; doubles down on warmest Reddit surface | 120 min |
+
+Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-typelessform.md) (established brand at UVI 42%) · [`sample-plan-output.md`](https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-output.md) (bare-site brand at 0%).
+
+**Why no hosted AEO dashboard ships this:** a paste-into-AI plan cannibalises the dashboard moat. Once the user takes the JSON to their own AI chat, the vendor's UI is no longer the destination. Open-source has the opposite incentive — show zero when it's zero, hand you the data, win when you take it wherever you want.
 
 ## Multi-engine coverage
 
@@ -747,7 +757,7 @@ MIT — do whatever you want with it.
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Answer Engine Optimization, Generative Engine Optimization, Brand Visibility Monitoring",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "1.0.8",
+      "softwareVersion": "1.1.2",
       "datePublished": "2026-05-18",
       "license": "https://opensource.org/licenses/MIT",
       "downloadUrl": "https://www.npmjs.com/package/aeo-platform",

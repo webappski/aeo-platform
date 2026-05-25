@@ -10,6 +10,12 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 - Bypass tags: `git commit --no-verify` / `git push --no-verify` OR `[skip-tests]` in the commit message — for typo / doc-only / comment-only changes that don't touch product code.
 - **`package-lock.json` now committed** — npm-recommended for reproducible builds across CI / clones / contributors. Does NOT contradict R4 (zero runtime deps): R4 governs `dependencies: {}` (still empty), lockfile is metadata. `npm install` on fresh clone now deterministic.
 
+### Docs
+
+- **README excerpt of the 30-mission plan** (`README.md:143-155`) — replaced the single-link footer of the «paste-into-AI» workflow with a table excerpt (diagnosis + mission #3 + ellipsis + mission #30) drawn from the real typelessform.com run. The plan is the killer output of the whole pipeline; the prior README mentioned it only as a one-line link. Diagnosis line surfaces UVI 42% / 5-of-12 cells / per-engine asymmetry so the reader sees what the audit produces *before* the missions.
+- **New sample plan: `examples/sample-plan-typelessform.md`** — established-brand-at-UVI-42% case, complementing existing `examples/sample-plan-output.md` (bare-site brand at 0%). Both wired into the dual-link under the excerpt.
+- **`README.md:760` schema.org `softwareVersion` synced to 1.1.2** — was 1.0.8 (stale from before 1.1.0/1.1.1 releases). Schema.org block is consumed by AI crawlers; stale version misrepresents the package.
+
 ### Notes on pre-commit tier choice
 
 Pre-commit runs the **full** `npm test` chain (~60 mocked test scripts, ~14-20s wallclock). All tests are local mocked (no live API calls, no costs). This fits industry-standard pre-commit tier (≤30s). No split into `test:fast` is needed — the full suite is fast enough thanks to the zero-dep + mocked design.
