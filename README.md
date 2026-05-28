@@ -269,6 +269,10 @@ Sub-components with insufficient data (e.g. zero rank positions in a first run) 
 
 **Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is a few cents per week.
 
+## Comparison vs open-source AEO trackers
+
+A handful of open-source AEO trackers exist; methodologies overlap. The closest peer is **geo-aeo-tracker (danishashko)** — same goal of tracking brand mentions across AI answer engines via API calls. The structural difference is the **paste-into-AI 30-mission plan generator**: after measuring you across 4 engines, `aeo-platform` exports a JSON brand-context block you paste into any frontier AI chat to receive a 30-action plan keyed to your specific gaps. As of May 2026, no other open-source AEO tracker ships this wedge.
+
 ## Commands
 
 | Command | Purpose |
