@@ -4,6 +4,15 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+### Added
+
+- **`## Comparison vs open-source AEO trackers` section in README.** Names geo-aeo-tracker (danishashko) as the closest open-source peer and highlights the paste-into-AI 30-mission plan generator as the structural differentiator.
+
+### Fixed
+
+- **Lang-aware footer URLs** (`lib/report/sections.js`, `lib/report/markdown.js`). `sectionFooter` now accepts a `lang` parameter and whitelists it against the 4 webappski.com locales (`en/de/ru/pl`), preventing wrong-locale 404s or unsafe config value interpolation in footer links.
+- **`--manual` recovery callout** (`lib/init/validator-recovery.js`). Added a prominent "→ Stuck? Option N below is the reliable fallback — no LLM needed, always works." line at the top of the recovery panel, surfacing the `--manual` escape hatch before the operator reads through the full option list.
+
 ## [1.1.3] — 2026-05-25
 
 **Docs-only AEO enrichment release.** Adds answer-capsule paragraphs under every README H2, extends FAQPage schema with 2 new Q/A, promotes the Diagnosis line from blockquote to `### H3` for URL-anchorability, and adds `exampleOfWork` on the SoftwareApplication schema linking both sample plans. Ships pre-commit + pre-push git hooks (`.githooks/`, zero new dependencies). Commits `package-lock.json` for reproducible installs. No CLI / library behaviour changes — `aeo-responses/2026-05-18/_summary.json` data already shipped in 1.1.2 is unchanged.
