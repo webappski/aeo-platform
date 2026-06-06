@@ -4,6 +4,8 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+## [1.1.4] — 2026-06-06
+
 ### Added
 
 - **`## Comparison vs open-source AEO trackers` section in README.** Names geo-aeo-tracker (danishashko) as the closest open-source peer and highlights the paste-into-AI 30-mission plan generator as the structural differentiator.
