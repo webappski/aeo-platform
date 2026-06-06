@@ -10,6 +10,10 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 - **`## Comparison vs open-source AEO trackers` section in README.** Names geo-aeo-tracker (danishashko) as the closest open-source peer and highlights the paste-into-AI 30-mission plan generator as the structural differentiator.
 
+### Removed
+
+- **`[skip-tests]` commit-message bypass in `.githooks/pre-commit`** and `--no-verify` advice in hook block messages. Founder decision 2026-06-06: tests always run — no skip path for any change type, including docs.
+
 ### Fixed
 
 - **Lang-aware footer URLs** (`lib/report/sections.js`, `lib/report/markdown.js`). `sectionFooter` now accepts a `lang` parameter and whitelists it against the 4 webappski.com locales (`en/de/ru/pl`), preventing wrong-locale 404s or unsafe config value interpolation in footer links.
