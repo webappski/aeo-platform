@@ -5,14 +5,18 @@
 remote="$1"
 url="$2"
 
-# Read stdin to detect what's being pushed
-while read local_ref local_sha remote_ref remote_sha; do
-  # Skip if pushing tag only (no code changes)
-  if [[ "$local_ref" == refs/tags/* ]]; then
-    echo "[pre-push] pushing tag $local_ref — skipping test run"
-    exit 0
+# Read stdin to detect what's being pushed. Skip ONLY when the push contains
+# nothing but tags — a mixed branch+tag push (--follow-tags) MUST still run tests.
+has_branch_ref=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$local_ref" != refs/tags/* ]]; then
+    has_branch_ref=1
   fi
 done
+if [ "$has_branch_ref" -eq 0 ]; then
+  echo "[pre-push] tag-only push — skipping test run"
+  exit 0
+fi
 
 echo "[pre-push] running npm test (full tier)..."
 EXIT=0
