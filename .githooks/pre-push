@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # aeo-platform pre-push hook — runs FULL tier before push.
-# Bypass: `git push --no-verify` (only for fast hotfix to non-shared branch).
+# NO bypass — founder decision 2026-06-06: «Мы никогда не должны скипать тесты».
 
 remote="$1"
 url="$2"
@@ -20,7 +20,7 @@ npm test || EXIT=$?
 
 if [ $EXIT -ne 0 ]; then
   echo ""
-  echo "[pre-push] BLOCKED — tests failed. Fix before push OR use --no-verify for non-shared branch."
+  echo "[pre-push] BLOCKED — tests failed. Fix before push (no skip — tests always run)."
   exit 1
 fi
 
