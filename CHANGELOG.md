@@ -4,6 +4,10 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+### Changed
+
+- **`PASTE_PROMPT` rewritten for non-expert readers** (`lib/report/mc-bridge.js`). The paste-into-AI plan prompt now targets a solo founder / "vibe-coder" with zero SEO background: it mandates plain language with every technical term glossed in parentheses on first use, and switches the output from a terse 6-column table to a two-tier format — a short 30-row overview table for tracking **plus** a detailed card per mission (What & why / numbered How steps / Done-when / Time). External-platform missions (Reddit, Hacker News, Product Hunt, Wikidata) must now carry an "Only if:" eligibility line. No CLI / library behaviour change — only the generated plan prompt's wording and required output shape.
+
 ## [1.1.4] — 2026-06-06
 
 ### Added
