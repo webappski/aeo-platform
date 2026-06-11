@@ -9,41 +9,37 @@
 
 > **`aeo-platform` is the open-source CLI for answer-engine optimization (AEO / GEO).** It measures your brand across **ChatGPT, Claude, Gemini, and Perplexity**, audits AI-bot crawlability + authority signals, and exports a JSON brand-context you paste into any AI for a personalised **30-mission AEO plan**. MIT-licensed. Runs locally. Zero runtime dependencies. Free alternative to Otterly, Profound, Peec, and Bluefish.
 
-**macOS / Linux (bash / zsh)**
+**macOS / Linux (bash / zsh)** — `npx …@latest` always runs the newest release, nothing to keep updated:
 
 ```bash
-npm install -g aeo-platform
+export OPENAI_API_KEY="sk-proj-..."     # recommended pair
+export GEMINI_API_KEY="AIzaSy..."        # (any ONE research key is enough to start)
 
-export OPENAI_API_KEY="sk-proj-..."     # required
-export GEMINI_API_KEY="AIzaSy..."        # required
-
-aeo-platform init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto \
-  && aeo-platform run \
-  && aeo-platform report
+npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto \
+  && npx aeo-platform@latest run \
+  && npx aeo-platform@latest report
 ```
+
+Prefer a global install for a weekly rhythm? `npm install -g aeo-platform` and use bare `aeo-platform …` — the CLI prints its version on every command and tells you when a newer release is out (one cached check a day against the npm registry; opt out with `AEO_NO_UPDATE_CHECK=1`).
 
 **Windows (PowerShell)**
 
 ```powershell
-npm install -g aeo-platform
+$env:OPENAI_API_KEY = "sk-proj-..."     # recommended pair (current session only)
+$env:GEMINI_API_KEY = "AIzaSy..."        # (any ONE research key is enough to start)
 
-$env:OPENAI_API_KEY = "sk-proj-..."     # required (current session only)
-$env:GEMINI_API_KEY = "AIzaSy..."        # required (current session only)
-
-aeo-platform init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto
-if ($LASTEXITCODE -eq 0) { aeo-platform run }
-if ($LASTEXITCODE -eq 0) { aeo-platform report }
+npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto
+if ($LASTEXITCODE -eq 0) { npx aeo-platform@latest run }
+if ($LASTEXITCODE -eq 0) { npx aeo-platform@latest report }
 ```
 
 **Windows (CMD)**
 
 ```cmd
-npm install -g aeo-platform
-
 set OPENAI_API_KEY=sk-proj-...
 set GEMINI_API_KEY=AIzaSy...
 
-aeo-platform init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto && aeo-platform run && aeo-platform report
+npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto && npx aeo-platform@latest run && npx aeo-platform@latest report
 ```
 
 > Note: `&&` chain works in CMD and PowerShell 7+, but **not in PowerShell 5.1** (the default Windows 10/11 shell — check via `$PSVersionTable.PSVersion`). For persistent env vars across sessions on Windows, see the [Full quickstart](#full-quickstart-for-first-time-terminal-users) below. Git Bash and WSL users — the bash block above works as-is.
@@ -68,7 +64,7 @@ The HTML report opens in your browser. Weekly cadence after that: `aeo-platform 
 Six concrete reasons `aeo-platform` exists, in order of how often they decide the install:
 
 - **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-search-api`), Claude (`claude-sonnet-4-7`), Gemini (`gemini-2.5-flash`), Perplexity (`sonar-reasoning`). No scraping. No proprietary score.
-- **Local-first.** Raw responses stay on your disk in `aeo-responses/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk.
+- **Local-first.** Raw responses stay on your disk in `aeo-responses/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+, single-file HTML report under 200 KB.
 - **MIT.** Fork it, embed it, ship it inside a paid product — your choice.
@@ -411,7 +407,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: npm install -g aeo-platform
+      - run: npm install -g aeo-platform@1   # pin the major in CI — upgrade deliberately
       - run: aeo-platform run --json > latest.json
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -469,7 +465,7 @@ Four, via official APIs: **ChatGPT** (`gpt-5-search-api`), **Claude** (`claude-s
 
 ### Is my data private?
 
-Yes. Nothing leaves your machine except to the AI providers you explicitly configure (the same providers you'd query from a browser). No telemetry. No analytics. No traffic to `webappski.com`. Raw responses stay on disk in `aeo-responses/YYYY-MM-DD/`. API keys are read from `process.env` and never written to disk.
+Yes. Nothing leaves your machine except to the AI providers you explicitly configure (the same providers you'd query from a browser) — plus at most one version check a day against `registry.npmjs.org` (the host npm itself talks to; nothing is sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`). No telemetry. No analytics. No traffic to `webappski.com`. Raw responses stay on disk in `aeo-responses/YYYY-MM-DD/`. API keys are read from `process.env` and never written to disk.
 
 ### Do I need API keys for all four engines?
 
@@ -847,7 +843,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "Is my data private?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Nothing leaves your machine except to the AI providers you configure. No telemetry. No analytics. No traffic to webappski.com. Raw responses stay on disk. API keys are read from process.env and never written." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Nothing leaves your machine except to the AI providers you configure, plus at most one version check a day against registry.npmjs.org (nothing is sent; opt out with AEO_NO_UPDATE_CHECK=1). No telemetry. No analytics. No traffic to webappski.com. Raw responses stay on disk. API keys are read from process.env and never written." }
         },
         {
           "@type": "Question",

@@ -4,6 +4,10 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+### Added
+
+- **Version awareness** (founder decision 2026-06-11 — the stale-global trap: a client installs once with `npm i -g`, releases move on, and the tool silently keeps running the old build). Four parts: (1) every interactive command prints `aeo-platform vX.Y.Z`; (2) `_summary.json` carries `generatedBy: aeo-platform@X.Y.Z` and the report header shows it — "which build produced this?" is now answerable from the artifact; (3) when the project's `node_modules` carries a NEWER aeo-platform than the running binary, the CLI warns and points at `npx` / `npm exec`; (4) an npm-style update banner ("Update available X → Y") backed by a cached daily registry check — silent on any failure, skipped in CI/non-TTY/`--json`, opt-out `AEO_NO_UPDATE_CHECK=1`, privacy contract documented in README. Quickstart flipped to `npx aeo-platform@latest`-first; the CI example pins the major.
+
 ### Fixed
 
 - **`init --auto --yes` no longer rejects its own selection.** The substitution block validated all 5 candidates, then the main validation re-ran the SAME queries with an empty cache — a second independent LLM call could flip a borderline verdict (observed in production: a query passed round 1, got `valid:false 0.86` in round 2, init aborted with 2 valid queries in hand). The substitution-round verdicts now seed the main validation's `validationCache`, so verdicts are consistent by construction (one validation, one source of truth) and one classify call is saved per init. `--strict-validation` keeps the fresh two-model cross-check.

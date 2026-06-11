@@ -8,7 +8,7 @@
  */
 
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -60,6 +60,17 @@ import { atomicWriteJson } from '../lib/util/atomic-write.js';
     process.exit(1);
   }
 }
+
+// Running build version — stamped into the CLI header, _summary.json
+// (`generatedBy`) and the report header, so "which version produced this?"
+// is always answerable from the artifact itself (version-awareness, 1.2.x).
+const TRACKER_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 import { detectGeography } from '../lib/init/fetch-site.js';
 import { classifyProviderError } from '../lib/providers/classify-error.js';
 import { formatResearchFailurePanel } from '../lib/init/research-failure-panel.js';
@@ -2620,6 +2631,8 @@ async function cmdRun(options = {}) {
     // single-key mode marker (1.1.8) — the report renderer needs it to phrase
     // «unverified» honestly (no second model ≠ model disagreement).
     extractorMode: extractionProviders.secondary ? 'dual' : 'single',
+    // version stamp — answers "which build produced this run?" from the artifact
+    generatedBy: `aeo-platform@${TRACKER_VERSION}`,
     results: results.map(({ raw, ...r }) => r),
     topCompetitors: classifiedCompetitors.map(([name, count]) => ({ name, count })),
     // Unverified-only tier: names where only one of the two extractor models agreed.
@@ -3328,7 +3341,7 @@ async function cmdReport(args = {}) {
   // Read package metadata once — version feeds MC bridge + footer colophon,
   // repository URL feeds the «open source» footer link. Hoisted out of the
   // noMcBlock branch so the footer always shows them.
-  let trackerVersion = '0.0.0';
+  let trackerVersion = TRACKER_VERSION;
   let trackerRepoUrl = '';
   try {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -3625,6 +3638,7 @@ async function cmdRunManual(argv) {
     errors,
     regressionThreshold,
     extractorMode: extractionProvidersManual.secondary ? 'dual' : 'single',
+    generatedBy: `aeo-platform@${TRACKER_VERSION}`,
     results: allResults,
     topCompetitors: sortedCompetitors.map(([name, count]) => ({ name, count })),
     topCanonicalSources,
@@ -4078,6 +4092,34 @@ const { values, positionals } = parseArgs({
   strict: false,
 });
 const command = positionals[0];
+
+// Version awareness (1.2.x): every interactive command announces which build
+// is running, whether the project carries a NEWER local copy than the binary
+// PATH resolved (the stale-global trap), and — for humans at a TTY — whether
+// a newer release exists (cached daily registry check, AEO_NO_UPDATE_CHECK=1
+// to opt out). Must never break a command: everything is wrapped.
+// Human-output commands only: `export` (CSV/JSON to stdout) and `crawl-stats`
+// are machine surfaces — a version line there corrupts the data stream
+// (caught by e2e P0-16: the CSV header became "aeo-platform v…").
+const VERSIONED_COMMANDS = new Set(['init', 'run', 'run-manual', 'report', 'diff']);
+if (VERSIONED_COMMANDS.has(command) && !values.json) {
+  console.log(`${c.dim}aeo-platform v${TRACKER_VERSION}${c.reset}`);
+  try {
+    const { detectNewerLocalCopy } = await import('../lib/util/local-version.js');
+    const localNewer = detectNewerLocalCopy({ runningVersion: TRACKER_VERSION, runningUrl: import.meta.url });
+    if (localNewer) {
+      console.log(`${c.yellow}${SYM.warn} This project has aeo-platform v${localNewer.localVersion} in node_modules, but you are running v${TRACKER_VERSION} (likely the global install).${c.reset}`);
+      console.log(`${c.yellow}  Run it as 'npx aeo-platform' or 'npm exec aeo-platform' to use the project version.${c.reset}`);
+    }
+    const { maybeCheckForUpdate, shouldSkipUpdateCheck } = await import('../lib/util/update-check.js');
+    if (!shouldSkipUpdateCheck()) {
+      const u = await maybeCheckForUpdate({ currentVersion: TRACKER_VERSION });
+      if (u.updateAvailable) {
+        console.log(`${c.yellow}Update available ${TRACKER_VERSION} → ${u.latest} · npm i -g aeo-platform  (or: npx aeo-platform@latest)${c.reset}`);
+      }
+    }
+  } catch { /* version awareness is advisory — never block the command */ }
+}
 
 // Top-level dispatcher wrapped in try/catch. Any error that escapes the
 // command-specific error handling (config corruption, filesystem issues,
