@@ -4,7 +4,21 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`init --auto --yes` no longer rejects its own selection.** The substitution block validated all 5 candidates, then the main validation re-ran the SAME queries with an empty cache — a second independent LLM call could flip a borderline verdict (observed in production: a query passed round 1, got `valid:false 0.86` in round 2, init aborted with 2 valid queries in hand). The substitution-round verdicts now seed the main validation's `validationCache`, so verdicts are consistent by construction (one validation, one source of truth) and one classify call is saved per init. `--strict-validation` keeps the fresh two-model cross-check.
+- **Single-attempt site fetch no longer kills non-interactive init.** `fetchSite` climbs a resilience ladder: transient failures (timeout / network / 5xx) retry once; a 403/401/429 on the declared bot UA retries with a browser UA; both blocked → one final paused declared-UA retry (covers transient edge-cache 403s — observed in production where the identical rerun succeeded a minute later). When the declared bot UA is blocked but a browser UA passes, init reports it as **AEO finding #1** (AI crawlers are likely blocked the same way) instead of dying on it.
+
+### Added
+
+- **One-round candidate top-up with rejection feedback** (`lib/init/research/topup.js`). When fewer than 3 of the 5 brainstormed candidates pass validation, init runs ONE extra brainstorm round with the previous round's rejection reasons fed back as negative guidance (they were previously computed, printed, and thrown away), validates only the genuinely new texts, and merges passing ones into the pool. Bounded: one round, then the recovery panel fires as before.
+- **llm-rejected queries are now auto-recoverable with VERIFIED substitutes.** The old blanket "llm blocker → panel" rule threw away validated alternatives while aborting the whole init. A substitute is verified when its own verdict is `valid:true` + `retrieval-triggered` (`isVerifiedSubstitute`); legacy pool entries without a `valid` field fail closed. Static (acronym) blockers remain terminal.
+- **Category compression** (`lib/init/clean-category.js`). `inferCategory()`'s title+meta marketing sentence is compressed to a 2-5 word noun phrase via one tiny classify-tier call — a cleaner brainstorm anchor that also survives the recovery panel's ≤4-word category-filler guard. Falls back to the raw string on any failure.
+- **`--auto` degrades gracefully when the site is unreachable**: with `--category` given, init proceeds from brand + domain + category (with a precision warning) instead of aborting; without `--category`, the abort now prints ONE copy-paste next command instead of a wall of options.
+
 ### Changed
+
+- **Validator calibration: adjacent-market commercial queries are VALID** (founder decision 2026-06-11). A broader-category query inside the brand's own target vertical (e.g. "best appointment scheduling services for salons" for a salon-configurable conversational booking widget) measures exactly the citation arena the brand competes in. The industry-fit prompt now rejects only wrong-INDUSTRY interpretations, never queries that are merely broader than the brand's product class.
 
 - **`PASTE_PROMPT` rewritten for non-expert readers** (`lib/report/mc-bridge.js`). The paste-into-AI plan prompt now targets a solo founder / "vibe-coder" with zero SEO background: it mandates plain language with every technical term glossed in parentheses on first use, and switches the output from a terse 6-column table to a two-tier format — a short 30-row overview table for tracking **plus** a detailed card per mission (What & why / numbered How steps / Done-when / Time). External-platform missions (Reddit, Hacker News, Product Hunt, Wikidata) must now carry an "Only if:" eligibility line. No CLI / library behaviour change — only the generated plan prompt's wording and required output shape.
 

@@ -579,7 +579,7 @@ async function runValidationWithRecovery({
 
   const {
     tryAutoRecover, formatRecoveryPanel, formatAutoPromoteWarning,
-    promptBlockedQueryReplacement,
+    promptBlockedQueryReplacement, isVerifiedSubstitute, dedupeBlockersByQuery,
   } = await import('../lib/init/validator-recovery.js');
 
   const printPanel = (allBlockers) => {
@@ -597,27 +597,36 @@ async function runValidationWithRecovery({
     for (const ln of lines) console.log(ln);
   };
 
-  // Unsafe blockers: any static/llm issue → panel (cannot auto-recover).
-  if (hasStatic || hasLlm) {
+  // Static blockers (acronym ambiguity) stay terminal — a substitution cannot
+  // prove it avoids the same ambiguity class.
+  if (hasStatic) {
     printPanel([...(v.staticIssues || []), ...(v.llmIssues || []), ...info]);
     return { v, queries, recoveryFailed: true };
   }
 
-  // All blockers are informational. Attempt recovery.
+  // 1.1.8: llm blockers (valid:false verdicts) are recoverable too — but only
+  // with VERIFIED substitutes (pool entry's own verdict: valid:true AND
+  // retrieval-triggered). The old blanket "llm → panel" rule threw away
+  // validated alternatives while aborting the whole init. Informational-only
+  // blocker sets keep the legacy pool (entries carry search_behavior but may
+  // predate the `valid` field).
+  const blockers = dedupeBlockersByQuery([...(v.llmIssues || []), ...info]);
+  const effectivePool = hasLlm ? candidatePool.filter(isVerifiedSubstitute) : candidatePool;
+
   const queriesWithIntent = queries.map((t, i) => ({ text: t, intent: queryIntents[i] || '' }));
   const recover = tryAutoRecover({
-    blockers: info, queries: queriesWithIntent, candidatePool,
+    blockers, queries: queriesWithIntent, candidatePool: effectivePool,
   });
 
   if (recover.unresolvedBlockers.length > 0) {
-    printPanel(info);
+    printPanel(blockers);
     return { v, queries, recoveryFailed: true };
   }
 
   // --yes + single blocker → auto-promote silently. --yes + multi → panel.
   if (nonInteractive) {
-    if (info.length > 1) {
-      printPanel(info);
+    if (blockers.length > 1) {
+      printPanel(blockers);
       return { v, queries, recoveryFailed: true };
     }
     for (const sub of recover.substitutions) {
@@ -627,19 +636,19 @@ async function runValidationWithRecovery({
     // TTY: prompt for each blocker. User may override the auto-recovered pick.
     const newQueries = [...queries];
     const usedTexts = new Set(newQueries);
-    for (const blocker of info) {
-      const available = candidatePool.filter(c => !usedTexts.has(c.text));
+    for (const blocker of blockers) {
+      const available = effectivePool.filter(c => !usedTexts.has(c.text));
       const choice = await promptBlockedQueryReplacement({
         blocker, available, ask, useColor,
       });
       if (choice.action === 'abort') {
-        printPanel(info);
+        printPanel(blockers);
         return { v, queries, recoveryFailed: true };
       }
       if (choice.action === 'manual') {
         const typed = (await ask('  Type your replacement: ')).trim();
         if (!typed) {
-          printPanel(info);
+          printPanel(blockers);
           return { v, queries, recoveryFailed: true };
         }
         const idx = newQueries.indexOf(blocker.query);
@@ -1182,6 +1191,11 @@ async function cmdInit(opts = {}) {
   let categoryDescription = '';
   let suggestionLang = '';
   let config_candidatePool = [];
+  // 1.1.8: verdicts from the substitution-block validation, threaded into the
+  // main validation as its cache. ONE validation, one source of truth — the
+  // old `validationCache: []` re-roll let a non-deterministic classifier flip
+  // a borderline verdict between two calls ("validated then re-rejected").
+  let config_validationSeedCache = [];
   // Parallel to `queries`, carries the intent bucket per selected query.
   // Used by validator-recovery to enforce intent-diversity when auto-swapping
   // blocked queries. Populated only in the --auto research pipeline path;
@@ -1227,11 +1241,43 @@ async function cmdInit(opts = {}) {
       if (!/^n/i.test(go)) {
         try {
           process.stdout.write(`${c.dim}  Fetching ${fullUrl}...${c.reset} `);
-          const { html, finalUrl } = await fetchSite(fullUrl);
-          console.log(`(${html.length.toLocaleString()} bytes, via ${finalUrl})`);
+          // 1.1.8 (F4): fetchSite now climbs a resilience ladder (retry →
+          // browser-UA → paused retry) instead of dying on the first attempt.
+          // Last rung lives here: --auto + --category can proceed WITHOUT the
+          // site excerpt; only a truly unanchorable run aborts — with ONE
+          // copy-paste next command instead of a wall of options.
+          let html = '';
+          let degradedNoSite = false;
+          {
+            let fetchResult = null;
+            try {
+              fetchResult = await fetchSite(fullUrl);
+            } catch (fetchErr) {
+              console.log(`${c.yellow}fetch failed: ${errMsg(fetchErr)}${c.reset}`);
+              if (nonInteractive && opts.category) {
+                degradedNoSite = true;
+                console.log(`${c.yellow}  ${SYM.warn} Proceeding WITHOUT site content (brand + domain + --category only). Query precision is reduced — consider re-running init when the site is reachable.${c.reset}`);
+              } else if (nonInteractive) {
+                console.error(`${c.red}Site unreachable and no --category given — nothing to anchor query generation.${c.reset}`);
+                console.error(`${c.red}Rerun with your niche as the anchor:${c.reset}`);
+                console.error(`${c.dim}  aeo-platform init --yes --auto --brand=${brand} --domain=${domain} --category="<your niche in one phrase>"${c.reset}`);
+                process.exit(1);
+              } else {
+                throw fetchErr; // TTY → existing manual-input fallback
+              }
+            }
+            if (fetchResult) {
+              html = fetchResult.html;
+              console.log(`(${html.length.toLocaleString()} bytes, via ${fetchResult.finalUrl})`);
+              if (fetchResult.botBlocked) {
+                console.log(`${c.yellow}  ${SYM.warn} AEO finding #1: ${fullUrl} rejected our declared bot User-Agent but served a browser UA.${c.reset}`);
+                console.log(`${c.yellow}    AI crawlers (GPTBot, ClaudeBot, PerplexityBot) are likely blocked the same way — fix the bot rules first; they gate ALL AI visibility.${c.reset}`);
+              }
+            }
+          }
 
           const site = parseSiteContent(html);
-          const issues = detectSiteIssues(site, html);
+          const issues = degradedNoSite ? [] : detectSiteIssues(site, html);
           if (issues.includes('BOT_PROTECTED')) console.log(`  ${c.yellow}${SYM.warn} Bot protection detected (Cloudflare). Content may be unreliable.${c.reset}`);
           if (issues.includes('SPA_OR_EMPTY')) console.log(`  ${c.yellow}${SYM.warn} Site looks JS-rendered (SPA). Auto-suggest may produce generic results.${c.reset}`);
           if (issues.includes('TINY_HTML')) console.log(`  ${c.yellow}${SYM.warn} Very little HTML returned (${html.length} bytes).${c.reset}`);
@@ -1240,9 +1286,9 @@ async function cmdInit(opts = {}) {
             if (!/^y/i.test(cont)) throw new Error('user aborted after site issues');
           }
 
-          // P0.4: brand-on-site check
+          // P0.4: brand-on-site check (skipped when running without site content)
           const allSiteText = `${site.title} ${site.metaDesc} ${(site.h1 || []).join(' ')} ${(site.h2 || []).join(' ')} ${site.text || ''}`.toLowerCase();
-          if (!allSiteText.includes(brand.toLowerCase())) {
+          if (!degradedNoSite && !allSiteText.includes(brand.toLowerCase())) {
             console.log(`${c.yellow}${SYM.warn} Brand "${brand}" not found anywhere on ${fullUrl}.${c.reset}`);
             console.log(`  Possible: typo in brand, wrong domain, or brand not on homepage.`);
             if (!nonInteractive) {
@@ -1254,7 +1300,20 @@ async function cmdInit(opts = {}) {
           // P1: category description — the single most important disambiguator.
           // Webappski case showed that a brand like "AEO services" can match the wrong industry
           // (customs) without an explicit category. Priority: --category flag > interactive prompt > auto-infer.
-          const autoCategory = inferCategory(site, brand);
+          let autoCategory = inferCategory(site, brand);
+          // 1.1.8 (F5): inferCategory returns a title+meta marketing sentence —
+          // compress it to a 2-5 word noun phrase via one tiny LLM call. A clean
+          // phrase anchors the brainstorm better AND survives the recovery
+          // panel's ≤4-word category-filler guard. Falls back to the raw string.
+          if (!opts.category && autoCategory && autoCategory.split(/\s+/).length > 4 && researchProviders[0]) {
+            const { cleanCategory } = await import('../lib/init/clean-category.js');
+            const rp = researchProviders[0];
+            const compact = await cleanCategory({
+              rawCategory: autoCategory, site, brand,
+              provider: { ...rp, model: rp.classifyModel || rp.model },
+            });
+            if (compact) autoCategory = compact;
+          }
           const audienceTags = detectAudience(site);
           const geoTags = detectGeography(domain, site);
           if (opts.category) {
@@ -1362,14 +1421,18 @@ async function cmdInit(opts = {}) {
                       // accepting un-validated queries.
                       throw new Error('Validation returned no verdicts');
                     }
-                    // Attach search_behavior on each candidate.
+                    // Attach the full verdict on each candidate. `valid` is
+                    // required by isVerifiedSubstitute (llm-blocker recovery).
                     for (const c of allFive) {
                       const verdict = verdicts.find(v => v.query === c.text);
                       if (verdict) {
                         c.search_behavior = verdict.search_behavior;
                         c.confidence = verdict.confidence;
+                        c.valid = verdict.valid;
                       }
                     }
+                    // 1.1.8: these verdicts seed the main validation's cache.
+                    config_validationSeedCache = verdicts;
                     // 1.0.8 silent-substitution PASS — must use the SAME rules
                     // as main validation (run-validation.js:186 + :194). Earlier
                     // versions checked only search_behavior, which allowed
@@ -1393,6 +1456,51 @@ async function cmdInit(opts = {}) {
                     };
                     const passing = allFive.filter(PASS);
                     commercialPassingCount = passing.length;
+
+                    // 1.1.8 top-up: fewer than 3 passing → ONE extra brainstorm
+                    // round steered by the rejection reasons (which used to be
+                    // computed, printed, and thrown away). Bounded: one round,
+                    // then the recovery panel fires as before if still short.
+                    if (passing.length < 3) {
+                      try {
+                        const { topUpCommercialCandidates } = await import('../lib/init/research/topup.js');
+                        const isPass = (vd) => vd.valid === true && vd.search_behavior === SEARCH_BEHAVIORS.RETRIEVAL;
+                        const avoidFeedback = verdicts.filter(vd => !isPass(vd)).map(vd => ({
+                          query: vd.query,
+                          reason: vd.reason
+                            || (vd.search_behavior && vd.search_behavior !== SEARCH_BEHAVIORS.RETRIEVAL
+                              ? `non-commercial (search_behavior: ${vd.search_behavior})`
+                              : 'failed validation'),
+                        }));
+                        console.log(`${c.dim}  Only ${passing.length} of ${allFive.length} candidates passed — running one top-up round with rejection feedback...${c.reset}`);
+                        const topUp = await topUpCommercialCandidates({
+                          brand, domain, site, categoryDescription, audienceTags, geoTags,
+                          avoidFeedback,
+                          existingTexts: allFive.map(cand => cand.text),
+                          provider: primaryForValidation,
+                          validateBatch: async (qs) => {
+                            const vTop = await runTwoStageValidation({
+                              queries: qs, brand, domain, category: categoryDescription,
+                              geography: geoTags || [], primary: primaryForValidation,
+                              secondary: null, validationCache: [], commercialOnly: false,
+                            });
+                            return vTop.updatedCache || [];
+                          },
+                        });
+                        config_validationSeedCache = [...config_validationSeedCache, ...topUp.verdicts];
+                        if (topUp.added.length > 0) {
+                          console.log(`${c.dim}  Top-up added ${topUp.added.length} validated candidate(s).${c.reset}`);
+                          passing.push(...topUp.added);
+                          allFive.push(...topUp.added);
+                          commercialPassingCount = passing.length;
+                        } else if (topUp.attempted.length > 0) {
+                          console.log(`${c.yellow}  Top-up round produced no passing candidates (${topUp.attempted.length} tried).${c.reset}`);
+                        }
+                      } catch (topUpErr) {
+                        console.error(`${c.yellow}  Top-up skipped: ${errMsg(topUpErr)}${c.reset}`);
+                      }
+                    }
+
                     if (commercialPassingCount >= 3) {
                       // Happy path — re-sort passing by score, take top-3.
                       passing.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -1454,6 +1562,9 @@ async function cmdInit(opts = {}) {
                       search_behavior: a.search_behavior,
                       confidence: a.confidence,
                     } : {}),
+                    // 1.1.8: carry the verdict's valid flag — required by
+                    // isVerifiedSubstitute for llm-blocker recovery.
+                    ...(typeof a.valid === 'boolean' ? { valid: a.valid } : {}),
                     ...(a.topUp ? { topUp: true } : {}),
                   }));
                 }
@@ -1567,7 +1678,13 @@ async function cmdInit(opts = {}) {
     geography: _geoForValidation,
     primary: validationProviders.primary,
     secondary: validationProviders.validator,
-    validationCache: [], // fresh config — no prior cache
+    // 1.1.8 (F1): seeded with the substitution-block verdicts — ONE validation,
+    // one source of truth. The old `[]` re-roll let a non-deterministic
+    // classifier flip a borderline verdict between two calls, so the pipeline
+    // selected a trio and then rejected its own selection. Strict mode skips
+    // the seed: its contract is a fresh two-model cross-check, which a cache
+    // hit would short-circuit.
+    validationCache: opts.strictValidation ? [] : config_validationSeedCache,
     nonInteractive,
     force: opts.force,
     strictValidation: opts.strictValidation,
