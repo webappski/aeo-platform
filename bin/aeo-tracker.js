@@ -42,7 +42,7 @@ import { isOwnDomain } from '../lib/report/own-domain.js';
 // command handlers to keep cold-start fast for `--help`, `--version`, `init`
 // and `run` paths (saved ~9 eager imports / ~250–300 ms on a cold disk).
 import { deriveTrainingModel, daysSinceLastFullRun } from '../lib/providers/non-search-model.js';
-import { PROVIDER_LABELS, detectStandardKeys, heuristicKeyMatch, keySetupLines } from '../lib/init/keys.js';
+import { PROVIDER_LABELS, detectStandardKeys, heuristicKeyMatch, keySetupLines, classifyKeyMode, RESEARCH_CAPABLE } from '../lib/init/keys.js';
 import { checkNodeVersion } from '../lib/util/node-version.js';
 import { atomicWriteJson } from '../lib/util/atomic-write.js';
 
@@ -444,8 +444,9 @@ async function buildResearchProviders(providerKeyMap, providerConfig = DEFAULT_C
 
 /**
  * Resolve the two-model competitor-extraction providers (OpenAI + Gemini at
- * their classify tier). Hard-fails if either key is missing — single-model
- * extraction isn't supported to keep the cross-check signal honest.
+ * their classify tier), in RESEARCH_CAPABLE preference order. Two available →
+ * parallel cross-check; one → single-model extraction (callers mark results
+ * unverified — single-key mode, 1.1.8); zero → throw with one next step.
  */
 async function buildExtractionProviders(providerConfig) {
   const mkProvider = async (name) => {
@@ -468,13 +469,15 @@ async function buildExtractionProviders(providerConfig) {
       label: PROVIDER_LABELS[name],
     };
   };
-  // Parallel — two dynamic imports + env lookups independent of each other.
-  const [primary, secondary] = await Promise.all([mkProvider('openai'), mkProvider('gemini')]);
-  if (!primary || !secondary) {
-    const missing = [!primary && 'OpenAI', !secondary && 'Gemini'].filter(Boolean).join(' + ');
-    throw new Error(`Two-model competitor extractor requires both OpenAI and Gemini API keys — missing: ${missing}. See README for setup.`);
+  // Single-key mode (1.1.8, founder decision): build whatever research-capable
+  // providers exist, in preference order. Two → parallel cross-check as before;
+  // one → single-model extraction (callers mark results unverified); zero →
+  // the only remaining hard failure, with one next step.
+  const built = (await Promise.all(RESEARCH_CAPABLE.map(mkProvider))).filter(Boolean);
+  if (built.length === 0) {
+    throw new Error('Competitor extraction needs at least ONE research-capable API key (OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY). Set one and re-run — see README for setup.');
   }
-  return { primary, secondary };
+  return { primary: built[0], secondary: built[1] || null };
 }
 
 /**
@@ -1142,7 +1145,13 @@ async function cmdInit(opts = {}) {
         const tag = attempt === 1 ? '(required)' : `(required, attempt ${attempt}/${MAX_ATTEMPTS})`;
         const name = (await ask(`  ${PROVIDER_LABELS[p]} env var name ${tag}: `, '')).trim();
         if (!name) {
-          console.log(`    ${c.yellow}${SYM.warn} ${PROVIDER_LABELS[p]} cannot be skipped — it's required for the two-model competitor extractor.${c.reset}`);
+          // Single-key mode (1.1.8): with at least one research-capable key
+          // already present, the second one is an upgrade, not a wall.
+          if (classifyKeyMode(providerKey).mode !== 'none') {
+            console.log(`    ${c.yellow}${SYM.warn} Skipping ${PROVIDER_LABELS[p]} — continuing in single-key mode (no cross-model verification).${c.reset}`);
+            break;
+          }
+          console.log(`    ${c.yellow}${SYM.warn} ${PROVIDER_LABELS[p]} cannot be skipped yet — at least ONE research-capable key (OpenAI, Gemini, or Anthropic) is required.${c.reset}`);
           continue;
         }
         const v = verifyEnvVar(name);
@@ -1169,21 +1178,28 @@ async function cmdInit(opts = {}) {
     }
   }
 
-  // Hard-fail if any REQUIRED provider is still missing after all stages.
-  // In interactive mode this triggers only if user exhausted attempts or left
-  // blank every time. In non-interactive mode it triggers if stages 1+2 didn't
-  // find the key (Step 3 is skipped).
-  const stillMissingRequired = REQUIRED_PROVIDERS.filter(p => !providerKey[p]);
-  if (stillMissingRequired.length > 0) {
-    console.log(`\n${c.red}Missing required keys: ${stillMissingRequired.map(p => PROVIDER_LABELS[p]).join(', ')}${c.reset}`);
-    console.log(`aeo-tracker requires BOTH OpenAI and Gemini keys — they power the two-model competitor extractor in addition to being engine columns in the report.`);
-    console.log(`\nGet them (2 minutes):`);
+  // Single-key mode (1.1.8, founder decision 2026-06-11): the old wall — hard
+  // exit unless BOTH OpenAI and Gemini are present — turned away every client
+  // with one key before their first taste. Now: zero research-capable keys is
+  // the only hard failure; exactly one degrades honestly with a banner.
+  const keyMode = classifyKeyMode(providerKey);
+  if (keyMode.mode === 'none') {
+    console.log(`\n${c.red}No research-capable API key found — aeo-platform needs at least ONE of: OpenAI, Gemini, or Anthropic.${c.reset}`);
+    console.log(`Two keys (OpenAI + Gemini) are recommended: they enable cross-model verification of competitor mentions.`);
+    console.log(`\nGet a key (2 minutes):`);
     console.log(`  OpenAI: https://platform.openai.com/api-keys`);
     console.log(`  Gemini: https://aistudio.google.com/apikey`);
+    console.log(`  Anthropic: https://console.anthropic.com/settings/keys`);
     console.log('');
     for (const line of keySetupLines()) console.log(line);
     console.log('');
     process.exit(1);
+  }
+  if (keyMode.mode === 'single') {
+    const missingPair = REQUIRED_PROVIDERS.filter(p => !providerKey[p]).map(p => PROVIDER_LABELS[p]).join(' or ') || 'OpenAI or Gemini';
+    console.log(`\n${c.yellow}${SYM.warn} Single-key mode (${PROVIDER_LABELS[keyMode.present[0]]} only): query validation and competitor extraction run on ONE model.${c.reset}`);
+    console.log(`${c.yellow}  Competitor mentions will be marked "unverified" — no second model to cross-check them.${c.reset}`);
+    console.log(`${c.yellow}  Add a ${missingPair} key any time to upgrade verification.${c.reset}`);
   }
 
   console.log(`\n${c.green}Configured providers: ${Object.keys(providerKey).map(p => PROVIDER_LABELS[p]).join(', ')}${c.reset}`);
@@ -2089,7 +2105,9 @@ async function cmdRun(options = {}) {
     console.error(`\n${c.red}${SYM.err} ${errMsg(err)}${c.reset}`);
     process.exit(1);
   }
-  console.log(`${c.dim}  Extractor: ${extractionProviders.primary.model} + ${extractionProviders.secondary.model} (parallel cross-check)${c.reset}\n`);
+  console.log(`${c.dim}  Extractor: ${extractionProviders.secondary
+    ? `${extractionProviders.primary.model} + ${extractionProviders.secondary.model} (parallel cross-check)`
+    : `${extractionProviders.primary.model} (single-model — competitor mentions will be unverified)`}${c.reset}\n`);
 
   // Load today's existing _summary.json — skip checks that already succeeded.
   // --force bypasses this entirely: every cell runs fresh, the new summary
@@ -2500,15 +2518,17 @@ async function cmdRun(options = {}) {
     .map(([name, count]) => ({ name, count }));
 
   const classificationCostInfo = extractionCostTotal.costUsd > 0 ? {
-    provider: `${extractionProviders.primary.name}+${extractionProviders.secondary.name}`,
-    model:    `${extractionProviders.primary.model}+${extractionProviders.secondary.model}`,
+    provider: [extractionProviders.primary.name, extractionProviders.secondary?.name].filter(Boolean).join('+'),
+    model:    [extractionProviders.primary.model, extractionProviders.secondary?.model].filter(Boolean).join('+'),
     label:    'competitor-extraction',
-    requests: results.length * 2,
+    requests: results.length * (extractionProviders.secondary ? 2 : 1),
     inputTokens:  extractionCostTotal.inputTokens,
     outputTokens: extractionCostTotal.outputTokens,
     costUsd:      extractionCostTotal.costUsd,
   } : null;
-  console.log(`${c.dim}  Extraction: ${Object.keys(verifiedCounts).length} brands verified (both models), ${unverifiedOnlyEntries.length} unverified (one model only) — $${extractionCostTotal.costUsd.toFixed(4)}${c.reset}`);
+  console.log(`${c.dim}  Extraction: ${extractionProviders.secondary
+    ? `${Object.keys(verifiedCounts).length} brands verified (both models), ${unverifiedOnlyEntries.length} unverified (one model only)`
+    : `${unverifiedOnlyEntries.length} competitor name(s) found — single-key mode, all unverified (no second model to cross-check)`} — $${extractionCostTotal.costUsd.toFixed(4)}${c.reset}`);
 
   if (classifiedCompetitors.length > 0) {
     console.log(`\n${c.bold}  Top competitors mentioned instead:${c.reset}`);
@@ -2521,7 +2541,7 @@ async function cmdRun(options = {}) {
   // spotting model disagreements — if a known brand keeps landing here, one of the
   // extractor models has a systematic blind spot worth investigating.
   if (unverifiedOnlyEntries.length > 0) {
-    console.log(`\n${c.dim}  Unverified (only one of two models found):${c.reset}`);
+    console.log(`\n${c.dim}  Unverified (${extractionProviders.secondary ? 'only one of two models found' : 'single-key mode — no cross-check available'}):${c.reset}`);
     for (const { name, count } of unverifiedOnlyEntries.slice(0, 10)) {
       console.log(`    ${c.dim}- ${name}  (${count} cell${count !== 1 ? 's' : ''})${c.reset}`);
     }
@@ -2597,6 +2617,9 @@ async function cmdRun(options = {}) {
     regressionThreshold,
     sessionCostUsd,
     costByModel,
+    // single-key mode marker (1.1.8) — the report renderer needs it to phrase
+    // «unverified» honestly (no second model ≠ model disagreement).
+    extractorMode: extractionProviders.secondary ? 'dual' : 'single',
     results: results.map(({ raw, ...r }) => r),
     topCompetitors: classifiedCompetitors.map(([name, count]) => ({ name, count })),
     // Unverified-only tier: names where only one of the two extractor models agreed.
@@ -3474,7 +3497,9 @@ async function cmdRunManual(argv) {
     console.error(`\n${c.red}${SYM.err} ${errMsg(err)}${c.reset}`);
     process.exit(1);
   }
-  console.log(`${c.dim}  Extractor: ${extractionProvidersManual.primary.model} + ${extractionProvidersManual.secondary.model} (parallel)${c.reset}\n`);
+  console.log(`${c.dim}  Extractor: ${extractionProvidersManual.secondary
+    ? `${extractionProvidersManual.primary.model} + ${extractionProvidersManual.secondary.model} (parallel)`
+    : `${extractionProvidersManual.primary.model} (single-model — competitor mentions will be unverified)`}${c.reset}\n`);
 
   const newResults = [];
   for (let qi = 0; qi < queries.length; qi++) {
@@ -3599,6 +3624,7 @@ async function cmdRunManual(argv) {
     total,
     errors,
     regressionThreshold,
+    extractorMode: extractionProvidersManual.secondary ? 'dual' : 'single',
     results: allResults,
     topCompetitors: sortedCompetitors.map(([name, count]) => ({ name, count })),
     topCanonicalSources,
@@ -3962,11 +3988,11 @@ ${c.bold}Exit codes (after run):${c.reset}
   3                        All providers errored
 
 ${c.bold}Environment variables:${c.reset}
-  ${c.bold}Required${c.reset} (both — for the two-model competitor extractor):
+  ${c.bold}Research keys${c.reset} (minimum ONE; two recommended — enables the cross-model check):
     OPENAI_API_KEY           OpenAI API key (ChatGPT column + extractor)
     GEMINI_API_KEY           Google AI API key (Gemini column + extractor)
-  ${c.bold}Optional${c.reset} (each adds one engine column to the report):
-    ANTHROPIC_API_KEY        Anthropic API key (Claude column)
+    ANTHROPIC_API_KEY        Anthropic API key (Claude column + extractor)
+  ${c.bold}Optional${c.reset} (adds one engine column to the report):
     PERPLEXITY_API_KEY       Perplexity API key (Perplexity column)
   ${c.bold}Debug${c.reset}:
     AEO_DEBUG=1              Print raw stack traces alongside actionable panels

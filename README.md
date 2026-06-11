@@ -75,7 +75,7 @@ Six concrete reasons `aeo-platform` exists, in order of how often they decide th
 
 ## Optional engines + first-time terminal users
 
-The 2-key minimum above (OpenAI + Gemini) covers ChatGPT and Gemini columns. Two more keys are optional and each adds an engine column to the report:
+The recommended pair above (OpenAI + Gemini) covers the ChatGPT and Gemini columns with cross-model verification. Minimum to start: any ONE research-capable key (OpenAI, Gemini, or Anthropic) — single-key mode runs the same pipeline on one model and marks competitor mentions as unverified. Two more keys are optional and each adds an engine column to the report:
 
 ```bash
 # macOS / Linux
@@ -162,7 +162,7 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 
 ## Multi-engine coverage
 
-**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-search-api`), Gemini (`gemini-2.5-flash`), Claude (`claude-sonnet-4-7`), Perplexity (`sonar-reasoning`). OpenAI + Gemini keys are mandatory (they also power the two-model hallucination filter); Claude + Perplexity are optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
+**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-search-api`), Gemini (`gemini-2.5-flash`), Claude (`claude-sonnet-4-7`), Perplexity (`sonar-reasoning`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
 
 | Engine | Default model | API path | Web-search grounding | Required key |
 |---|---|---|---|---|
@@ -171,7 +171,7 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 | Claude (Anthropic) | `claude-sonnet-4-7` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
 | Perplexity | `sonar-reasoning` | direct REST | always | `PERPLEXITY_API_KEY` |
 
-OpenAI + Gemini keys are **required** (two-model competitor extractor: GPT-5-mini + Gemini-2.5-flash cross-check filters hallucinated brand mentions). Anthropic + Perplexity are optional — each adds a column.
+OpenAI + Gemini keys are **recommended** (two-model competitor extractor: GPT-5-mini + Gemini-2.5-flash cross-check filters hallucinated brand mentions). Minimum: any ONE of OpenAI / Gemini / Anthropic — single-key mode runs the extractor on one model and marks competitor mentions unverified. Perplexity is optional — adds a column.
 
 For engines whose API tier you can't access (Perplexity Pro browser, ChatGPT Pro UI personalisation, Claude.ai UI), use **manual paste mode**:
 
@@ -473,7 +473,7 @@ Yes. Nothing leaves your machine except to the AI providers you explicitly confi
 
 ### Do I need API keys for all four engines?
 
-No. Two are mandatory: `OPENAI_API_KEY` and `GEMINI_API_KEY` — they double as the ChatGPT + Gemini columns and power the two-model competitor extractor. `ANTHROPIC_API_KEY` and `PERPLEXITY_API_KEY` are optional; each adds its engine column.
+No. One is enough to start: any of `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` (single-key mode — competitor mentions are marked unverified, since there is no second model to cross-check them). Recommended: `OPENAI_API_KEY` + `GEMINI_API_KEY` — they double as the ChatGPT + Gemini columns and power the two-model competitor extractor. `PERPLEXITY_API_KEY` is optional; it adds its engine column.
 
 ### What is the 30-mission AEO plan?
 
@@ -852,7 +852,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "Do I need API keys for all four engines?",
-          "acceptedAnswer": { "@type": "Answer", "text": "No. Two are mandatory: OPENAI_API_KEY and GEMINI_API_KEY (they double as the ChatGPT + Gemini columns and power the two-model competitor extractor). ANTHROPIC_API_KEY and PERPLEXITY_API_KEY are optional — each adds its engine column." }
+          "acceptedAnswer": { "@type": "Answer", "text": "No. One is enough to start: any of OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY (single-key mode — competitor mentions are marked unverified). Recommended: OPENAI_API_KEY + GEMINI_API_KEY, which double as the ChatGPT + Gemini columns and power the two-model competitor extractor. PERPLEXITY_API_KEY is optional — it adds its engine column." }
         },
         {
           "@type": "Question",
