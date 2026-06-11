@@ -2095,9 +2095,9 @@ async function cmdRun(options = {}) {
     });
   }
 
-  // Resolve two-model competitor-extraction providers. Hard-fails if either key
-  // is missing (see buildExtractionProviders). Done up-front so the user sees the
-  // error BEFORE any paid API calls are made.
+  // Resolve competitor-extraction providers (see buildExtractionProviders:
+  // two → cross-check, one → single-model unverified, zero → throw). Done
+  // up-front so a no-key client sees the error BEFORE any paid API calls.
   let extractionProviders;
   try {
     extractionProviders = await buildExtractionProviders(providerConfig);
