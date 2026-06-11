@@ -58,6 +58,11 @@ test('P0-16 — export --format=csv prints a CSV header row + at least one data 
     const header = lines[0];
     assert.match(header, /(^|,)date(,|$)/, 'CSV header must include "date" column');
     assert.match(header, /(^|,)brand(,|$)/, 'CSV header must include "brand" column');
+    // Explicit machine-output contract (version-awareness, 1.2.x): the CLI
+    // version line must NEVER leak into export stdout — only human commands
+    // print it. Without this assert the guarantee was only transitive
+    // through the header-on-line-0 check above.
+    assert.doesNotMatch(r.stdout, /aeo-platform v\d/, 'version line must not pollute export stdout');
     // Data row must contain the canonical fixture brand.
     const dataRowsText = lines.slice(1).join('\n');
     assert.match(dataRowsText, /TestBrand/, 'CSV data should reference TestBrand fixture brand');
