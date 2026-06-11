@@ -8,7 +8,6 @@
  */
 
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -43,7 +42,24 @@ import { isOwnDomain } from '../lib/report/own-domain.js';
 // command handlers to keep cold-start fast for `--help`, `--version`, `init`
 // and `run` paths (saved ~9 eager imports / ~250–300 ms on a cold disk).
 import { deriveTrainingModel, daysSinceLastFullRun } from '../lib/providers/non-search-model.js';
-import { PROVIDER_LABELS, detectStandardKeys, heuristicKeyMatch } from '../lib/init/keys.js';
+import { PROVIDER_LABELS, detectStandardKeys, heuristicKeyMatch, keySetupLines } from '../lib/init/keys.js';
+import { checkNodeVersion } from '../lib/util/node-version.js';
+import { atomicWriteJson } from '../lib/util/atomic-write.js';
+
+// Node version gate — BEFORE any command runs. package.json `engines` is only
+// an npm warning; on Node < 20 the first runtime gap (e.g. global fetch on 16)
+// used to surface as a bare cryptic error. One sentence, one next step.
+// Note: ESM hoisting means ALL imports in this file (including those written
+// below) evaluate before this block — it gates command dispatch, not imports.
+// No module in lib/ uses Node-20+-only APIs at load time, so the gate is
+// reachable on old Node.
+{
+  const nv = checkNodeVersion(process.versions.node);
+  if (!nv.ok) {
+    console.error(nv.message);
+    process.exit(1);
+  }
+}
 import { detectGeography } from '../lib/init/fetch-site.js';
 import { classifyProviderError } from '../lib/providers/classify-error.js';
 import { formatResearchFailurePanel } from '../lib/init/research-failure-panel.js';
@@ -128,10 +144,26 @@ async function cleanupStaleReportArtifacts(latestDate) {
 // double-press) and the helper is one line to call.
 async function persistSnapshot(latest) {
   const summaryPath = join('aeo-responses', latest.date, '_summary.json');
-  const suffix = `${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`;
-  const tmpPath = `${summaryPath}.tmp-${suffix}`;
-  await writeFile(tmpPath, JSON.stringify(latest, null, 2));
-  await rename(tmpPath, summaryPath);
+  await atomicWriteJson(summaryPath, latest);
+}
+
+/**
+ * Read + parse .aeo-tracker.json with client-grade failures (AP-FAIL-BRANCHES):
+ * missing file and hand-edit JSON syntax errors each get ONE plain next step
+ * instead of a bare ENOENT / SyntaxError through the top-level panel.
+ */
+async function readConfigOrExit() {
+  try {
+    return JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      console.error(`${c.red}No ${CONFIG_FILE} found. Run: aeo-platform init${c.reset}`);
+    } else {
+      console.error(`${c.red}${CONFIG_FILE} has a JSON syntax error (usually a missing/extra comma after hand-editing).${c.reset}`);
+      console.error(`${c.red}Fix the file in an editor — or regenerate it: aeo-platform init${c.reset}`);
+    }
+    process.exit(1);
+  }
 }
 
 // ─── LLM-based action recommendations ───
@@ -740,7 +772,7 @@ async function cmdInit(opts = {}) {
       console.error(`${c.red}No ${CONFIG_FILE} found. Run: aeo-platform init${c.reset}`);
       process.exit(1);
     }
-    const existing = JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+    const existing = await readConfigOrExit();
     const { brand, domain: existingDomain, providers: existingProviders } = existing;
     if (!brand || !existingDomain) {
       console.error(`${c.red}Config is missing brand or domain — run aeo-platform init first${c.reset}`);
@@ -1091,7 +1123,7 @@ async function cmdInit(opts = {}) {
       return { ok: false, reason: `"${name}" isn't a valid env var name — names can only contain letters, digits, and underscores, and cannot start with a digit` };
     }
     const value = process.env[name];
-    if (value === undefined) return { ok: false, reason: `$${name} is not set in your shell — check the name (case-sensitive) or set the variable first via ~/.zshrc` };
+    if (value === undefined) return { ok: false, reason: `$${name} is not set in your shell — check the name (case-sensitive) or set the variable first${process.platform === 'win32' ? ' (PowerShell: setx, then open a new terminal)' : ' via ~/.zshrc'}` };
     if (value.length < 20) return { ok: false, reason: `$${name} is set, but the value is too short (${value.length} chars) — real API keys are 40+ chars, so this looks like a typo` };
     return { ok: true, length: value.length };
   };
@@ -1148,10 +1180,9 @@ async function cmdInit(opts = {}) {
     console.log(`\nGet them (2 minutes):`);
     console.log(`  OpenAI: https://platform.openai.com/api-keys`);
     console.log(`  Gemini: https://aistudio.google.com/apikey`);
-    console.log(`\nAdd to ~/.zshrc (or equivalent):`);
-    console.log(`  export OPENAI_API_KEY=sk-proj-...`);
-    console.log(`  export GEMINI_API_KEY=AIzaSy...`);
-    console.log(`Then: source ~/.zshrc && aeo-platform init\n`);
+    console.log('');
+    for (const line of keySetupLines()) console.log(line);
+    console.log('');
     process.exit(1);
   }
 
@@ -1788,7 +1819,7 @@ async function cmdRun(options = {}) {
     process.exit(1);
   }
 
-  const config = JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+  const config = await readConfigOrExit();
   // Apply --openai-model / --gemini-model / etc. overrides BEFORE destructuring
   // providerConfig — overrides mutate config.providers in place so downstream
   // provider discovery picks up the user's chosen model. Disk config is not
@@ -2080,7 +2111,11 @@ async function cmdRun(options = {}) {
           skipKeys.add(`${r.query}:${r.region || ''}:${r.provider}:${r.model}:${r.mode || 'web'}`);
         }
       }
-    } catch { /* corrupt file — run fresh */ }
+    } catch {
+      // Corrupt summary → start fresh, but SAY so — a silent reset reads as
+      // "my morning run vanished" (AP-FAIL-BRANCHES: no silent recoveries).
+      console.log(`${c.yellow}  Today's _summary.json was unreadable (likely an interrupted earlier run) — starting fresh.${c.reset}`);
+    }
   }
   if (skipKeys.size > 0) {
     console.log(`${c.dim}  ${skipKeys.size} check${skipKeys.size !== 1 ? 's' : ''} already succeeded today — retrying only errors${c.reset}\n`);
@@ -2574,7 +2609,9 @@ async function cmdRun(options = {}) {
     // can prompt the user when the corpus signal is stale (>14 days).
     ...(depth === 'full' ? { lastFullRun: date } : {}),
   };
-  await writeFile(join(responseDir, '_summary.json'), JSON.stringify(summary, null, 2));
+  // Atomic — a Ctrl+C mid-write must never leave a half-written summary that
+  // silently corrupts the next run/report/diff (AP-FAIL-BRANCHES).
+  await atomicWriteJson(join(responseDir, '_summary.json'), summary);
 
   // ─── Exit code decision ───
   // 0 = score stable or improved
@@ -3401,7 +3438,7 @@ async function cmdRunManual(argv) {
     process.exit(1);
   }
 
-  const config = JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+  const config = await readConfigOrExit();
   const { brand, domain, queries: rawQueriesManual } = config;
   const { texts: queries, tags: queryTagsManual } = normalizeQueries(rawQueriesManual);
   const providerCfg = (config.providers || DEFAULT_CONFIG.providers)[providerName] || PROVIDERS[providerName];
@@ -3515,7 +3552,13 @@ async function cmdRunManual(argv) {
   const summaryPath = join(responseDir, '_summary.json');
   let existing = null;
   if (existsSync(summaryPath)) {
-    existing = JSON.parse(await readFile(summaryPath, 'utf-8'));
+    try {
+      existing = JSON.parse(await readFile(summaryPath, 'utf-8'));
+    } catch {
+      // A half-written summary from an interrupted run used to crash run-manual
+      // with a bare SyntaxError. Merge from scratch instead — and say so.
+      console.log(`${c.yellow}  Today's _summary.json was unreadable (likely an interrupted earlier run) — rebuilding it from this paste.${c.reset}`);
+    }
   }
 
   // Remove prior results for this provider (overwrite behaviour)
@@ -3562,7 +3605,7 @@ async function cmdRunManual(argv) {
     topDomains,
     adsDetected: summariseAdsAcrossResults(allResults),
   };
-  await writeFile(summaryPath, JSON.stringify(summary, null, 2));
+  await atomicWriteJson(summaryPath, summary);
 
   console.log(`\n${c.bold}  Merged into: ${summaryPath}${c.reset}`);
   console.log(`  Score: ${c.bold}${score}%${c.reset} (${mentions}/${total} across ${new Set(allResults.map(r => r.provider)).size} providers)\n`);
