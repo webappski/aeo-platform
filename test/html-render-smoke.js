@@ -258,5 +258,37 @@ test('KPI card subtitle does NOT recommend the wrong robots.txt fix when coverag
     'success-state wording missing from KPI card when coverage.src === 0');
 });
 
+test('trend panel copy uses window delta (first vs last run), not last-step delta', () => {
+  // Real-data regression: 33→42→42→58→100→83 is up 50 across the window, but
+  // the last step is −17. The panel says «across N runs», so it must read the
+  // window — it used to print «Score slipping · Down 17 points across 6 runs».
+  const summary = {
+    ...baseSummary,
+    score: 83, scorePrev: 100,
+    trend: [33, 42, 42, 58, 100, 83],
+    trendDates: ['2026-04-23', '2026-05-13', '2026-05-18', '2026-05-25', '2026-06-10', '2026-06-11'],
+  };
+  const html = renderHtml(summary, [baseSnapshot]);
+  assert.ok(/Score is climbing/.test(html),
+    'trend title must reflect the window (up 50), not the last step (−17)');
+  assert.ok(/Up 50 points across 6 runs\./.test(html),
+    'trend subtitle must report first-vs-last window delta');
+  assert.ok(!/Down 17 points across 6 runs/.test(html),
+    'last-step delta must not be mislabeled as the multi-run trend');
+});
+
+test('trend panel reads slipping when the window is down even if the last step is up', () => {
+  const summary = {
+    ...baseSummary,
+    score: 55, scorePrev: 40,
+    trend: [80, 60, 50, 40, 55],
+    trendDates: ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22', '2026-05-29'],
+  };
+  const html = renderHtml(summary, [baseSnapshot]);
+  assert.ok(/Score slipping/.test(html), 'window-down trend must title as slipping');
+  assert.ok(/Down 25 points across 5 runs\./.test(html),
+    'subtitle must report the window delta (80→55), not the last step (+15)');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
