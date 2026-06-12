@@ -366,5 +366,67 @@ test('section omitted entirely when no UTMs detected', () => {
   assert.equal(out, '');
 });
 
+// ─── ENGINE-FACT FRESHNESS (AP-ENGINE-FACTS-REFRESH, 2026-06-12) ────────────
+//
+// The fallback engine cards teach the user how each engine sources answers.
+// These facts go stale (Bing API retired 2025-08; Gemini FastSearch, not full
+// Search ranking; Perplexity own index). Our trump-card product must never ship
+// a dead engine fact. Guard the whole class against playbook §5/§5.1/§5.2.
+//
+// Rendering the zero-citation fallback path surfaces ENGINE_FALLBACK_TIPS[p].why
+// verbatim (sections.js: why = lowSignalNote + fb.why → <p class="ea-why">), so
+// this asserts on the real module's real output — no mocks.
+
+console.log('\nENGINE-FACT FRESHNESS — fallback why-strings vs playbook §5');
+
+// One zero-external-citation snapshot per engine → forces the labelled fallback,
+// which renders that engine's `why` string into the card.
+function fallbackCardFor(provider) {
+  return sectionEngineActions([buildSnapshot({ provider, citations: [], mention: 'yes' })]);
+}
+
+test('ChatGPT card no longer claims the dead "grounds answers in Bing" fact', () => {
+  const out = fallbackCardFor('openai');
+  assert.ok(!/grounds answers in Bing/i.test(out),
+    'must not ship the retired Bing-grounding claim');
+  assert.ok(!/grounds answers in Bing search results/i.test(out),
+    'full dead sentence must be gone');
+  assert.ok(/OAI-SearchBot/.test(out),
+    'must name OpenAI’s own crawler (current ChatGPT-search lever per playbook §5)');
+  assert.ok(/Bing dependence ended/i.test(out),
+    'must record that the Bing dependence is over, not implied to be live');
+});
+
+test('no engine card anywhere asserts a live Bing dependency for ChatGPT', () => {
+  // Whole-suite class guard: render every engine’s fallback, concatenate, scan.
+  const all = ['openai', 'gemini', 'anthropic', 'perplexity'].map(fallbackCardFor).join('\n');
+  assert.ok(!/grounds answers in Bing/i.test(all),
+    'dead Bing-grounding pattern must not appear on any engine card');
+});
+
+test('Gemini card reflects FastSearch semantic retrieval, not full Search ranking', () => {
+  const out = fallbackCardFor('gemini');
+  assert.ok(/FastSearch/.test(out),
+    'must name FastSearch (Gemini grounds on semantic retrieval per playbook §5)');
+  assert.ok(!/grounds responses in Google Search results/i.test(out),
+    'must drop the imprecise "grounds in Google Search results" claim');
+});
+
+test('Perplexity card reflects its own index + freshness, not generic web search', () => {
+  const out = fallbackCardFor('perplexity');
+  assert.ok(/PerplexityBot/.test(out),
+    'must name PerplexityBot crawlability (the only door into its own index, §5)');
+  assert.ok(!/real-time multi-source web search/i.test(out),
+    'must drop the inaccurate "multi-source web search" framing (it runs its own index)');
+});
+
+test('Claude card hedges the Brave backend instead of stating it as fact', () => {
+  const out = fallbackCardFor('anthropic');
+  assert.ok(/best-evidenced/i.test(out) && /not officially confirmed/i.test(out),
+    'must present Brave as best-evidenced-but-unconfirmed (playbook §5), not as bald fact');
+  assert.ok(/training data/i.test(out),
+    'training-data framing must remain (training-data archetype lever)');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
