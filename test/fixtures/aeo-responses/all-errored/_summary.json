@@ -10,13 +10,13 @@
   "sessionCostUsd": 0,
   "results": [
     { "query": "Q1", "queryText": "best test brands 2026", "provider": "openai", "label": "ChatGPT", "model": "gpt-5-search-api", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
-    { "query": "Q1", "queryText": "best test brands 2026", "provider": "anthropic", "label": "Claude", "model": "claude-sonnet-4-7", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
+    { "query": "Q1", "queryText": "best test brands 2026", "provider": "anthropic", "label": "Claude", "model": "claude-sonnet-4-6", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
     { "query": "Q1", "queryText": "best test brands 2026", "provider": "gemini", "label": "Gemini", "model": "gemini-2.5-flash", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
     { "query": "Q2", "queryText": "top test brand alternatives", "provider": "openai", "label": "ChatGPT", "model": "gpt-5-search-api", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
-    { "query": "Q2", "queryText": "top test brand alternatives", "provider": "anthropic", "label": "Claude", "model": "claude-sonnet-4-7", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
+    { "query": "Q2", "queryText": "top test brand alternatives", "provider": "anthropic", "label": "Claude", "model": "claude-sonnet-4-6", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
     { "query": "Q2", "queryText": "top test brand alternatives", "provider": "gemini", "label": "Gemini", "model": "gemini-2.5-flash", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
     { "query": "Q3", "queryText": "test brand vs competitor", "provider": "openai", "label": "ChatGPT", "model": "gpt-5-search-api", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
-    { "query": "Q3", "queryText": "test brand vs competitor", "provider": "anthropic", "label": "Claude", "model": "claude-sonnet-4-7", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
+    { "query": "Q3", "queryText": "test brand vs competitor", "provider": "anthropic", "label": "Claude", "model": "claude-sonnet-4-6", "mode": "web", "mention": "error", "position": null, "citationCount": 0 },
     { "query": "Q3", "queryText": "test brand vs competitor", "provider": "gemini", "label": "Gemini", "model": "gemini-2.5-flash", "mode": "web", "mention": "error", "position": null, "citationCount": 0 }
   ],
   "topCompetitors": [],

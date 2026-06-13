@@ -40,17 +40,17 @@ const THINKING_OPTS = { thinking: { type: 'enabled', budget_tokens: 16000 } };
 
 console.log('\ncallAnthropic thinking gate');
 
-await test('claude-sonnet-4-7 + thinking → body has thinking + max_tokens bumped', async () => {
+await test('claude-sonnet-4-6 + thinking → body has thinking + max_tokens bumped', async () => {
   stubFetch(OK_RESPONSE);
-  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-7', { ...THINKING_OPTS, webSearch: false });
+  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-6', { ...THINKING_OPTS, webSearch: false });
   const body = JSON.parse(captured[0].init.body);
   assert.deepStrictEqual(body.thinking, THINKING_OPTS.thinking);
   assert.ok(body.max_tokens >= 16000 + 2048, `max_tokens (${body.max_tokens}) must >= 18048`);
 });
 
-await test('claude-opus-4-7 + thinking → body has thinking', async () => {
+await test('claude-opus-4-6 + thinking → body has thinking', async () => {
   stubFetch(OK_RESPONSE);
-  await callAnthropic('hi', 'sk-test', 'claude-opus-4-7', { ...THINKING_OPTS, webSearch: false });
+  await callAnthropic('hi', 'sk-test', 'claude-opus-4-6', { ...THINKING_OPTS, webSearch: false });
   const body = JSON.parse(captured[0].init.body);
   assert.deepStrictEqual(body.thinking, THINKING_OPTS.thinking);
 });
@@ -93,7 +93,7 @@ await test('claude-1 + thinking → field DROPPED', async () => {
 
 await test('no thinking option → no field in body (backward compat)', async () => {
   stubFetch(OK_RESPONSE);
-  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-7', { webSearch: false });
+  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-6', { webSearch: false });
   const body = JSON.parse(captured[0].init.body);
   assert.equal(body.thinking, undefined);
   assert.equal(body.max_tokens, 2048, 'max_tokens stays default when thinking absent');
@@ -101,7 +101,7 @@ await test('no thinking option → no field in body (backward compat)', async ()
 
 await test('thinking option without budget_tokens → field added but max_tokens NOT bumped', async () => {
   stubFetch(OK_RESPONSE);
-  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-7', {
+  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-6', {
     thinking: { type: 'enabled' },  // no budget_tokens
     webSearch: false,
   });
@@ -112,7 +112,7 @@ await test('thinking option without budget_tokens → field added but max_tokens
 
 await test('thinking option as non-object (string) → field NOT added (type check)', async () => {
   stubFetch(OK_RESPONSE);
-  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-7', {
+  await callAnthropic('hi', 'sk-test', 'claude-sonnet-4-6', {
     thinking: 'invalid',
     webSearch: false,
   });

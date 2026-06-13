@@ -1,6 +1,6 @@
 {
   "id": "msg_fixture_q1_anthropic",
-  "model": "claude-sonnet-4-7",
+  "model": "claude-sonnet-4-6",
   "content": [
     {
       "type": "text",

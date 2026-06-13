@@ -63,7 +63,7 @@ The HTML report opens in your browser. Weekly cadence after that: `aeo-platform 
 
 Six concrete reasons `aeo-platform` exists, in order of how often they decide the install:
 
-- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-search-api`), Claude (`claude-sonnet-4-7`), Gemini (`gemini-2.5-flash`), Perplexity (`sonar-reasoning`). No scraping. No proprietary score.
+- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-search-api`), Claude (`claude-sonnet-4-6`), Gemini (`gemini-2.5-flash`), Perplexity (`sonar-reasoning`). No scraping. No proprietary score.
 - **Local-first.** Raw responses stay on your disk in `aeo-responses/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+, single-file HTML report under 200 KB.
@@ -158,13 +158,13 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 
 ## Multi-engine coverage
 
-**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-search-api`), Gemini (`gemini-2.5-flash`), Claude (`claude-sonnet-4-7`), Perplexity (`sonar-reasoning`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
+**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-search-api`), Gemini (`gemini-2.5-flash`), Claude (`claude-sonnet-4-6`), Perplexity (`sonar-reasoning`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
 
 | Engine | Default model | API path | Web-search grounding | Required key |
 |---|---|---|---|---|
 | ChatGPT (OpenAI) | `gpt-5-search-api` | direct REST | yes (search-API) | `OPENAI_API_KEY` |
 | Gemini (Google) | `gemini-2.5-flash` | direct REST | optional (request flag) | `GEMINI_API_KEY` |
-| Claude (Anthropic) | `claude-sonnet-4-7` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
+| Claude (Anthropic) | `claude-sonnet-4-6` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
 | Perplexity | `sonar-reasoning` | direct REST | always | `PERPLEXITY_API_KEY` |
 
 OpenAI + Gemini keys are **recommended** (two-model competitor extractor: GPT-5-mini + Gemini-2.5-flash cross-check filters hallucinated brand mentions). Minimum: any ONE of OpenAI / Gemini / Anthropic — single-key mode runs the extractor on one model and marks competitor mentions unverified. Perplexity is optional — adds a column.
@@ -435,7 +435,7 @@ jobs:
   "providers": {
     "openai":     { "model": "gpt-5-search-api",  "env": "OPENAI_API_KEY" },
     "gemini":     { "model": "gemini-2.5-flash",  "env": "GEMINI_API_KEY" },
-    "anthropic":  { "model": "claude-sonnet-4-7", "env": "ANTHROPIC_API_KEY" },
+    "anthropic":  { "model": "claude-sonnet-4-6", "env": "ANTHROPIC_API_KEY" },
     "perplexity": { "model": "sonar-reasoning",   "env": "PERPLEXITY_API_KEY" }
   }
 }
@@ -461,7 +461,7 @@ Traditional SEO optimises for click-through from search-result pages. AEO/GEO op
 
 ### Which AI engines does `aeo-platform` cover?
 
-Four, via official APIs: **ChatGPT** (`gpt-5-search-api`), **Claude** (`claude-sonnet-4-7`), **Gemini** (`gemini-2.5-flash`), **Perplexity** (`sonar-reasoning`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
+Four, via official APIs: **ChatGPT** (`gpt-5-search-api`), **Claude** (`claude-sonnet-4-6`), **Gemini** (`gemini-2.5-flash`), **Perplexity** (`sonar-reasoning`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
 
 ### Is my data private?
 
@@ -838,7 +838,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "Which AI engines does aeo-platform cover?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5-search-api), Claude (claude-sonnet-4-7), Gemini (gemini-2.5-flash), Perplexity (sonar-reasoning). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5-search-api), Claude (claude-sonnet-4-6), Gemini (gemini-2.5-flash), Perplexity (sonar-reasoning). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
         },
         {
           "@type": "Question",

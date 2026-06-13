@@ -112,16 +112,16 @@ console.log('\ndiscoverModels Anthropic');
 await test('anthropic: latest sonnet by created_at', async () => {
   stub(() => ok({ data: [
     { id: 'claude-sonnet-4-5', created_at: '2025-08-01' },
-    { id: 'claude-sonnet-4-7', created_at: '2026-01-15' },
-    { id: 'claude-opus-4-7',   created_at: '2026-01-10' },
+    { id: 'claude-sonnet-4-6', created_at: '2026-01-15' },
+    { id: 'claude-opus-4-6',   created_at: '2026-01-10' },
   ]}));
   const { models } = await discoverModels('anthropic', 'sk-test');
-  assert.deepStrictEqual(models, ['claude-sonnet-4-7']);
+  assert.deepStrictEqual(models, ['claude-sonnet-4-6']);
 });
 
 await test('anthropic: filters out opus (only sonnet)', async () => {
   stub(() => ok({ data: [
-    { id: 'claude-opus-4-7', created_at: '2026-01-15' },
+    { id: 'claude-opus-4-6', created_at: '2026-01-15' },
     { id: 'claude-sonnet-4-5', created_at: '2025-08-01' },
   ]}));
   const { models } = await discoverModels('anthropic', 'sk-test');
@@ -131,10 +131,10 @@ await test('anthropic: filters out opus (only sonnet)', async () => {
 await test('anthropic: skips dated YYYYMMDD suffixes', async () => {
   stub(() => ok({ data: [
     { id: 'claude-sonnet-20260119', created_at: '2026-01-19' },
-    { id: 'claude-sonnet-4-7', created_at: '2026-01-15' },
+    { id: 'claude-sonnet-4-6', created_at: '2026-01-15' },
   ]}));
   const { models } = await discoverModels('anthropic', 'sk-test');
-  assert.deepStrictEqual(models, ['claude-sonnet-4-7']);
+  assert.deepStrictEqual(models, ['claude-sonnet-4-6']);
 });
 
 await test('anthropic: date-in-id fallback when created_at missing', async () => {

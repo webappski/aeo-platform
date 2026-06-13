@@ -19,8 +19,8 @@ test('gpt-5 matches gpt-5 alone',
 test('gpt-5-mini matches gpt-5-mini (longer wins over gpt-5)',
   () => assert.equal(matchModelFamily('openai', 'gpt-5-mini'), 'gpt-5-mini'));
 
-test('claude-sonnet-4-7 matches claude-sonnet',
-  () => assert.equal(matchModelFamily('anthropic', 'claude-sonnet-4-7'), 'claude-sonnet'));
+test('claude-sonnet-4-6 matches claude-sonnet',
+  () => assert.equal(matchModelFamily('anthropic', 'claude-sonnet-4-6'), 'claude-sonnet'));
 
 test('claude-haiku-4-5 matches claude-haiku',
   () => assert.equal(matchModelFamily('anthropic', 'claude-haiku-4-5'), 'claude-haiku'));
