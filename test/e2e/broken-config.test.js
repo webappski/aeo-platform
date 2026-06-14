@@ -43,3 +43,15 @@ test('B3 — run with NO config keeps the classic one-liner', async () => {
     assert.match(`${r.stdout}\n${r.stderr}`, /No \.aeo-tracker\.json found\. Run: aeo-platform init/);
   });
 });
+
+test('B4 — --version prints a clean version, never a raw SyntaxError (fail-branch #7)', async () => {
+  // --version is exactly the command a user runs to diagnose a broken install.
+  // It must reuse the try/catch-guarded TRACKER_VERSION (degrades to 'unknown')
+  // rather than re-parsing package.json with no guard.
+  const r = spawnCli(['--version']);
+  assert.equal(r.status, 0);
+  const out = `${r.stdout}\n${r.stderr}`;
+  assert.doesNotMatch(out, /SyntaxError:/, 'raw parser error must never reach the user');
+  // Non-empty: either a real semver or the graceful 'unknown' sentinel.
+  assert.match(r.stdout.trim(), /\S/, '--version must emit something');
+});

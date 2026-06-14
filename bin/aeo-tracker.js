@@ -7,7 +7,7 @@
  * https://webappski.com | MIT License
  */
 
-import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -26,6 +26,7 @@ import { extractUsage, calcCost, estimateWeeklyCost } from '../lib/providers/pri
 import { formatTpmHint, estimateRunDuration } from '../lib/util/cost-estimate.js';
 import { planSchedule, runScheduled } from '../lib/util/scheduler.js';
 import { estimatePerRequest, getLearnedOrTierLimit } from '../lib/providers/tpm-ledger.js';
+import { loadLedger, saveLedger } from '../lib/providers/ledger-store.js';
 import { createLiveRows } from '../lib/util/live-rows.js';
 // Stable dependencies used in hot paths (init + run + queries-only) — promoted
 // from dynamic imports for clarity and cold-start speed.
@@ -1000,9 +1001,10 @@ async function cmdInit(opts = {}) {
     if (validationQ?.updatedCache?.length > 0) {
       updated.validationCache = validationQ.updatedCache;
     }
-    const tmpPath = CONFIG_FILE + '.tmp';
-    await writeFile(tmpPath, JSON.stringify(updated, null, 2));
-    await rename(tmpPath, CONFIG_FILE);
+    // Unique-suffix atomic write (fail-branch #8): the fixed `.tmp` suffix
+    // could collide if two config writers ran against the same dir; atomicWriteJson
+    // uses pid+time+random, matching the _summary.json writers for consistency.
+    await atomicWriteJson(CONFIG_FILE, updated);
 
     console.log(`\n${c.green}${SYM.ok} Queries updated in ${CONFIG_FILE}${c.reset}`);
     if (mode === 'add') {
@@ -1780,10 +1782,9 @@ async function cmdInit(opts = {}) {
     config.validationCache = validation.updatedCache;
   }
 
-  // D2: atomic write
-  const tmpPath = CONFIG_FILE + '.tmp';
-  await writeFile(tmpPath, JSON.stringify(config, null, 2));
-  await rename(tmpPath, CONFIG_FILE);
+  // D2: atomic write — unique-suffix (fail-branch #8), matching the
+  // _summary.json writers (lib/util/atomic-write.js) instead of a fixed `.tmp`.
+  await atomicWriteJson(CONFIG_FILE, config);
 
   console.log(`\n${c.green}${SYM.ok} Created ${CONFIG_FILE}${c.reset}`);
   console.log(`  Brand: ${brand} | Domain: ${domain}`);
@@ -2052,6 +2053,14 @@ async function cmdRun(options = {}) {
   const responseDir = join('aeo-responses', date);
   await mkdir(responseDir, { recursive: true });
 
+  // AP-RATELIMIT-UX: seed the TPM ledger with limits learned in prior runs so
+  // we pace from a known ceiling instead of re-discovering it via a fresh 429.
+  // Best-effort — a missing/corrupt ledger file degrades to learn-from-scratch.
+  const seededLimits = await loadLedger();
+  if (seededLimits > 0 && !options.json) {
+    console.log(`${c.dim}Loaded ${seededLimits} learned rate-limit${seededLimits !== 1 ? 's' : ''} from prior runs${c.reset}`);
+  }
+
   console.log(`\n${c.bold}aeo-platform — run${c.reset}`);
   console.log(`${c.dim}Brand: ${brand} | Domain: ${domain} | Date: ${date}${c.reset}`);
   console.log(`${c.dim}Models: ${activeProviders.map(p => p.colLabel).join(', ')}${c.reset}`);
@@ -2168,6 +2177,17 @@ async function cmdRun(options = {}) {
   const tasksByCdKey = new Map();
   // Extraction cost accumulates across all cells (each cell fires two LLM calls).
   const extractionCostTotal = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  // AP-RATELIMIT-UX: tally rate-limit events per engine across the whole run so
+  // the end-of-run summary can show «engine X hit N cooldowns» — otherwise the
+  // pacing/cooldown is only visible as transient live-row text that scrolls away.
+  /** @type {Map<string, {cooldowns:number, ledgerWaits:number, retries:number}>} */
+  const rateLimitEvents = new Map();
+  const bumpRateLimit = (provider, field) => {
+    const key = provider || 'unknown';
+    const e = rateLimitEvents.get(key) || { cooldowns: 0, ledgerWaits: 0, retries: 0 };
+    e[field]++;
+    rateLimitEvents.set(key, e);
+  };
   const live = options.json ? null : createLiveRows({ stream: process.stderr });
 
   for (let qi = 0; qi < queries.length; qi++) {
@@ -2213,7 +2233,13 @@ async function cmdRun(options = {}) {
 
               // Per-task status reporter: cooldown / ledger-wait / firing / retrying /
               // tokens events from withProviderCall + withRetry → row updates.
-              const onStatus = live ? (ev) => {
+              // Counting (AP-RATELIMIT-UX) runs in BOTH live and --json modes; the
+              // live-row UI updates only when a live manager exists.
+              const onStatus = (ev) => {
+                if (ev.kind === 'cooldown')          bumpRateLimit(provider.name, 'cooldowns');
+                else if (ev.kind === 'ledger-wait')  bumpRateLimit(provider.name, 'ledgerWaits');
+                else if (ev.kind === 'retrying')     bumpRateLimit(provider.name, 'retries');
+                if (!live) return;
                 if (ev.kind === 'cooldown') {
                   // 1.0.7: clear labels + live countdown. Operator sees the
                   // seconds tick down (60s → 59s → 58s …) every render frame.
@@ -2246,7 +2272,7 @@ async function cmdRun(options = {}) {
                 } else if (ev.kind === 'tokens' && process.env.AEO_LOG_TOKENS === '1') {
                   live.log(`  [tokens] ${ev.cdKey}: input=${ev.input} output=${ev.output} total=${ev.input + ev.output}`);
                 }
-              } : undefined;
+              };
 
               // Replay mode (see replay-mode block at top of file)
               const replayed = replaySrcDate ? await _tryReplay(qi + 1, provider, replaySrcDate) : null;
@@ -2325,9 +2351,17 @@ async function cmdRun(options = {}) {
               });
 
               const usage = extractUsage(provider.name, raw);
-              let costInfo = calcCost(cellModel, usage) || { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: 0 };
+              const calcd = calcCost(cellModel, usage);
+              // Honesty (fail-branch #6): when the engine model is not in the
+              // pricing table, calcCost returns null. The old fallback set
+              // costUsd:0, which made an UNKNOWN cost render as «free» — a
+              // silent untruth. Carry costTracked:false so the session-cost
+              // summary can say «cost not tracked for: <model>» instead of $0.
+              let costInfo = calcd
+                ? { ...calcd, costTracked: true }
+                : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: 0, costTracked: false };
               // Replay mode (see replay-mode block at top of file)
-              if (replayed) costInfo = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+              if (replayed) costInfo = { inputTokens: 0, outputTokens: 0, costUsd: 0, costTracked: true };
               // End replay
 
               // Extraction cost for this cell — tracked separately so we can report it
@@ -2375,6 +2409,9 @@ async function cmdRun(options = {}) {
                 inputTokens: costInfo.inputTokens,
                 outputTokens: costInfo.outputTokens,
                 costUsd: costInfo.costUsd,
+                // Only persist when false — absence means tracked (keeps the
+                // year-over-year summary JSON lean; see storeSources rationale).
+                ...(costInfo.costTracked === false ? { costTracked: false } : {}),
               });
               const icon = mention === 'yes' ? `${c.green}YES` : mention === 'src' ? `${c.yellow}SRC` : `${c.red}NO`;
               const costStr = costInfo.costUsd > 0 ? ` $${costInfo.costUsd.toFixed(4)}` : '';
@@ -2596,7 +2633,13 @@ async function cmdRun(options = {}) {
 
   // Session cost breakdown
   const costMap = {};
+  // Fail-branch #6: models with no pricing-table entry (costTracked:false)
+  // contribute $0 to the session total — surfacing that total alone would
+  // imply the run was free. Collect those model ids so we can print an honest
+  // «cost not tracked for: …» line rather than a misleading $0.
+  const untrackedModels = new Set();
   for (const r of results) {
+    if (r.costTracked === false) untrackedModels.add(r.model);
     if (!r.costUsd) continue;
     const key = `${r.provider}/${r.model}`;
     if (!costMap[key]) costMap[key] = { provider: r.provider, model: r.model, label: r.label || r.provider, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
@@ -2609,11 +2652,39 @@ async function cmdRun(options = {}) {
   if (classificationCostInfo) costByModel.push(classificationCostInfo);
   const sessionCostUsd = Math.round(costByModel.reduce((s, v) => s + v.costUsd, 0) * 1_000_000) / 1_000_000;
 
-  if (sessionCostUsd > 0) {
+  if (sessionCostUsd > 0 || untrackedModels.size > 0) {
     console.log(`\n${c.bold}  Session cost: $${sessionCostUsd.toFixed(4)}${c.reset}`);
     for (const m of costByModel) {
       console.log(`    ${c.dim}${m.model}${c.reset}  ${m.inputTokens + m.outputTokens} tok  $${m.costUsd.toFixed(4)}`);
     }
+    if (untrackedModels.size > 0) {
+      console.log(`    ${c.yellow}cost not tracked for: ${[...untrackedModels].join(', ')}${c.reset} ${c.dim}(model not in pricing table — total above excludes it, not necessarily $0)${c.reset}`);
+    }
+  }
+
+  // AP-RATELIMIT-UX: rate-limit summary. The pacing/cooldown countdowns scroll
+  // past in the live rows; this end-of-run block makes the total visible — so a
+  // user who waited through long pacing sees WHY and what to change. Silent when
+  // the run hit no rate limits at all (the happy path stays quiet).
+  const rlEntries = [...rateLimitEvents.entries()]
+    .filter(([, e]) => e.cooldowns + e.ledgerWaits > 0);
+  if (rlEntries.length > 0 && !options.json) {
+    const totalCooldowns = rlEntries.reduce((s, [, e]) => s + e.cooldowns, 0);
+    console.log(`\n${c.bold}  Rate limits this run: ${totalCooldowns} cooldown${totalCooldowns !== 1 ? 's' : ''}${c.reset}`);
+    for (const [provider, e] of rlEntries) {
+      const parts = [];
+      if (e.cooldowns)   parts.push(`${e.cooldowns} post-429 cooldown${e.cooldowns !== 1 ? 's' : ''}`);
+      if (e.ledgerWaits) parts.push(`${e.ledgerWaits} TPM pacing wait${e.ledgerWaits !== 1 ? 's' : ''}`);
+      console.log(`    ${c.dim}${provider}: ${parts.join(', ')}${c.reset}`);
+    }
+    console.log(`    ${c.dim}Tip: a higher API tier or a non-search model (e.g. --openai-model gpt-5) raises your TPM ceiling.${c.reset}`);
+  }
+
+  // Persist the limits learned this run so the next run paces from them
+  // (best-effort — a save failure never fails the run).
+  const savedLimits = await saveLedger();
+  if (savedLimits > 0 && !options.json) {
+    console.log(`    ${c.dim}Saved ${savedLimits} learned rate-limit${savedLimits !== 1 ? 's' : ''} for next run.${c.reset}`);
   }
 
   // Save summary JSON
@@ -2932,6 +3003,7 @@ async function cmdReport(args = {}) {
   // don't pay their import cost. See top-of-file comment about cold-start.
   const [
     { generateOutreachTemplates },
+    { competitorOwnedHosts },
     { auditCrawlability },
     { checkAuthorityPresence },
     { checkPageSignals },
@@ -2941,6 +3013,7 @@ async function cmdReport(args = {}) {
     { checkResponseFreshness },
   ] = await Promise.all([
     import('../lib/report/outreach-templates.js'),
+    import('../lib/report/sections.js'),
     import('../lib/report/crawlability-audit.js'),
     import('../lib/report/authority-presence.js'),
     import('../lib/report/page-signals.js'),
@@ -3314,6 +3387,9 @@ async function cmdReport(args = {}) {
           const { templates, costInfo } = await generateOutreachTemplates({
             brand: latest.brand, domain: latest.domain, category,
             topDomains: latest.topDomains,
+            // fail-branch #10: never draft an email pitching a competitor's
+            // own site to add the user alongside a rival.
+            competitorHosts: competitorOwnedHosts(latest),
             providerName: providerKey,
             providerCall,
             apiKey: process.env[providerCfg.env],
@@ -4139,8 +4215,12 @@ try {
   if (values.help || (!command && !values.version)) {
     console.log(HELP);
   } else if (values.version) {
-    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8'));
-    console.log(pkg.version);
+    // Reuse the already-resolved, try/catch-guarded build version. The old
+    // path re-read + JSON.parse'd package.json with no guard, so a corrupted
+    // package.json crashed `--version` with a raw SyntaxError — the one
+    // command a user runs precisely to diagnose a broken install (fail-branch
+    // #7). TRACKER_VERSION degrades to 'unknown' instead.
+    console.log(TRACKER_VERSION);
   } else if (command === 'init') {
     await cmdInit({
       ...values,
