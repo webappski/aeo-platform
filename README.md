@@ -66,7 +66,7 @@ Six concrete reasons `aeo-platform` exists, in order of how often they decide th
 - **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-search-api`), Claude (`claude-sonnet-4-6`), Gemini (`gemini-2.5-flash`), Perplexity (`sonar-reasoning`). No scraping. No proprietary score.
 - **Local-first.** Raw responses stay on your disk in `aeo-responses/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
-- **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+, single-file HTML report under 200 KB.
+- **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+. The report is a single self-contained HTML file (~390 KB — about 170 KB of that is the embedded variable fonts that let it render identically offline, with zero CDN calls).
 - **MIT.** Fork it, embed it, ship it inside a paid product — your choice.
 
 ## Optional engines + first-time terminal users
@@ -108,7 +108,7 @@ Get keys at: [platform.openai.com/api-keys](https://platform.openai.com/api-keys
 Every `aeo-platform report` writes two files in `aeo-reports/<date>/`:
 
 - `report.md` — markdown with inline SVG charts. Renders on GitHub, Notion, VSCode preview, email. Perfect for CI logs and PR comments.
-- `report.html` — single-file editorial bento layout, ~170 KB, embedded variable fonts, works offline from `file://`, zero CDN, zero JS dependencies, zero tracking pixels.
+- `report.html` — single-file editorial bento layout, ~390 KB (≈170 KB of which is embedded variable fonts), works offline from `file://`, zero CDN, zero JS dependencies, zero tracking pixels.
 
 The HTML report has:
 

@@ -22,7 +22,11 @@ function spawnClean(args, cwd, extraEnv = {}) {
   });
 }
 
-const INIT_ARGS = ['init', '--yes', '--auto', '--brand=acme', '--domain=example.invalid'];
+// --no-key-check: these tests exercise the single-key GATE logic with fake keys
+// that can never authenticate. The live auth probe (fail-branch #1/#3) is tested
+// separately in init-key-probe.test.js — here we skip it so the gate's verdict
+// is what's under test, deterministically and offline.
+const INIT_ARGS = ['init', '--yes', '--auto', '--no-key-check', '--brand=acme', '--domain=example.invalid'];
 
 test('S1 — ONE OpenAI key passes the gate in single-key mode (no two-key wall)', async () => {
   await withTmpProject('aeo-single-key-', async (dir) => {

@@ -38,12 +38,14 @@ import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ad
 import { normalizeQueries } from '../lib/config/queries-normalize.js';
 import { parseGeoFlag, wrapQueryForRegion, listRegionCodes } from '../lib/report/geo-context.js';
 import { computeTopDomains } from '../lib/report/top-domains.js';
+import { aggregateCanonicalSources } from '../lib/report/canonical-url.js';
 import { isOwnDomain } from '../lib/report/own-domain.js';
 // `report`-only and `export`-only modules are dynamically imported inside their
 // command handlers to keep cold-start fast for `--help`, `--version`, `init`
 // and `run` paths (saved ~9 eager imports / ~250–300 ms on a cold disk).
 import { deriveTrainingModel, daysSinceLastFullRun } from '../lib/providers/non-search-model.js';
 import { PROVIDER_LABELS, detectStandardKeys, heuristicKeyMatch, keySetupLines, classifyKeyMode, RESEARCH_CAPABLE } from '../lib/init/keys.js';
+import { probeKeys, summarizeProbe, authFailLines } from '../lib/init/key-probe.js';
 import { checkNodeVersion } from '../lib/util/node-version.js';
 import { atomicWriteJson } from '../lib/util/atomic-write.js';
 
@@ -1096,8 +1098,36 @@ async function cmdInit(opts = {}) {
     const use = (nonInteractive ? 'y' : (await ask(`Use these? [Y/n] `, 'y'))).trim();
     if (!/^n/i.test(use)) {
       for (const [p, names] of heuristicCandidates) {
-        if (names.length === 1 || nonInteractive) {
+        if (names.length === 1) {
           providerKey[p] = names[0];
+        } else if (nonInteractive) {
+          // I-4 (fail-branch #3): with several look-alike candidates and no human
+          // to pick, do NOT telepath `names[0]`. When the live probe is on, probe
+          // each candidate and keep the FIRST that authenticates; drop the rest.
+          // Probe off (--no-key-check) → fall back to first (unchanged behaviour).
+          let chosen = names[0];
+          if (!opts.noKeyCheck) {
+            // probeKeys keys by provider; for same-provider multi-candidate we
+            // probe each env var individually (in parallel) and take the first
+            // that authenticates.
+            const perCandidate = await Promise.all(
+              names.map(async (n) => ({ n, v: (await probeKeys({ [p]: n }))[0] })),
+            );
+            const ok = perCandidate.find(x => x.v.status === 'ok');
+            const unreachableCandidate = perCandidate.find(x => x.v.status === 'unreachable');
+            if (ok) {
+              chosen = ok.n;
+            } else if (unreachableCandidate) {
+              // Couldn't reach the provider for any candidate — can't disambiguate
+              // online; keep first and let the format check stand (never wall).
+              chosen = unreachableCandidate.n;
+            } else {
+              // Every candidate actively failed auth — keep first; the main probe
+              // below surfaces the auth failure with a single actionable step.
+              chosen = names[0];
+            }
+          }
+          providerKey[p] = chosen;
         } else {
           console.log(`  Multiple candidates for ${PROVIDER_LABELS[p]}:`);
           names.forEach((n, i) => console.log(`    [${i + 1}] ${n}`));
@@ -1208,6 +1238,51 @@ async function cmdInit(opts = {}) {
     console.log('');
     process.exit(1);
   }
+
+  // ── Live key-authentication probe (fail-branch #1/#3, AP-FAILBRANCH-REMAINDER) ──
+  // At least one research-capable key is present. Before declaring success,
+  // confirm each present key actually AUTHENTICATES — a right-shaped but
+  // revoked / typo'd / wrong-project key passes the format check and only
+  // blows up later at `run`, after the client invested in config. For our
+  // trump-card product the install bar is "no install problems in principle".
+  //
+  // Invariants (architect-approved, audited):
+  //   I-1: goes through discoverModels() ONLY (never raw fetchers). authError →
+  //        actionable exit(1); models==null && !authError → SILENT degrade to
+  //        the format-only check already run above. Network NEVER fails init.
+  //   I-2: runs between providerKey resolution and the success banner, after the
+  //        zero-key hard-exit (nothing to probe with zero keys).
+  //   I-3: identical in --yes — same exit(1) + one step; no new prompts.
+  //   I-6: parallel (probeKeys → Promise.all over present keys).
+  if (!opts.noKeyCheck) {
+    console.log(`\n${c.dim}Verifying your API key(s) authenticate…${c.reset}`);
+    const verdicts = await probeKeys(providerKey);
+    const { authFailed, anyUnreachable, allOk } = summarizeProbe(verdicts);
+
+    if (authFailed.length > 0) {
+      // I-1/I-3: any key that the provider actively rejected (401/403) is a hard
+      // fail — proceeding would hand the client a config that cannot run.
+      console.log(`\n${c.red}${SYM.err} ${authFailed.length === 1 ? 'A key did' : 'Some keys did'} not authenticate:${c.reset}`);
+      for (const v of authFailed) {
+        for (const line of authFailLines(v, PROVIDER_LABELS)) {
+          console.log(`  ${c.red}${line}${c.reset}`);
+        }
+      }
+      console.log(`\n${c.dim}(Offline or behind a VPN? Re-run with --no-key-check to skip the live check — format checks still run.)${c.reset}`);
+      process.exit(1);
+    }
+
+    if (anyUnreachable) {
+      // I-1/I-8: network/5xx/shape — the key MIGHT be fine, we just couldn't
+      // reach the provider. Degrade honestly (no misleading "shape changed"
+      // warning — discoverModels was called with quiet:true) and continue on
+      // the format-only check.
+      console.log(`${c.yellow}  ${SYM.warn} Couldn't verify your key(s) online (no network / provider unreachable) — skipping the live check. Format checks passed, so continuing.${c.reset}`);
+    } else if (allOk) {
+      console.log(`  ${c.green}${SYM.ok} ${verdicts.length === 1 ? 'Key authenticates' : 'All keys authenticate'}.${c.reset}`);
+    }
+  }
+
   if (keyMode.mode === 'single') {
     const missingPair = REQUIRED_PROVIDERS.filter(p => !providerKey[p]).map(p => PROVIDER_LABELS[p]).join(' or ') || 'OpenAI or Gemini';
     console.log(`\n${c.yellow}${SYM.warn} Single-key mode (${PROVIDER_LABELS[keyMode.present[0]]} only): query validation and competitor extraction run on ONE model.${c.reset}`);
@@ -2598,17 +2673,12 @@ async function cmdRun(options = {}) {
     }
   }
 
-  // Canonical sources (URLs AI engines keep citing for our vertical)
-  const sourceMap = {};
-  for (const r of results) {
-    for (const url of (r.canonicalCitations || [])) {
-      sourceMap[url] = (sourceMap[url] || 0) + 1;
-    }
-  }
-  const topCanonicalSources = Object.entries(sourceMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([url, count]) => ({ url, count }));
+  // Canonical sources (URLs AI engines keep citing for our vertical).
+  // #12: same-page variants (trailing slash, #fragment, ?utm_*, http/https)
+  // are merged under one canonical key so a single page isn't split into
+  // several low-count rows — see lib/report/canonical-url.js.
+  const allCitedUrls = results.flatMap(r => r.canonicalCitations || []);
+  const topCanonicalSources = aggregateCanonicalSources(allCitedUrls, 20);
 
   // Domain-level share-of-voice aggregation. Groups all URLs by hostname so
   // the report can show "G2 captures 19% of citations" (OneGlanse-style table)
@@ -3691,13 +3761,10 @@ async function cmdRunManual(argv) {
   }
   const sortedCompetitors = Object.entries(allCompetitors).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-  const sourceMap = {};
-  for (const r of allResults) {
-    for (const url of (r.canonicalCitations || [])) sourceMap[url] = (sourceMap[url] || 0) + 1;
-  }
-  const topCanonicalSources = Object.entries(sourceMap)
-    .sort((a, b) => b[1] - a[1]).slice(0, 20)
-    .map(([url, count]) => ({ url, count }));
+  // #12: merge same-page citation variants under one canonical key.
+  const topCanonicalSources = aggregateCanonicalSources(
+    allResults.flatMap(r => r.canonicalCitations || []), 20,
+  );
 
   const topDomains = computeTopDomains(allResults, 10);
 
@@ -4001,6 +4068,7 @@ ${c.bold}aeo-platform${c.reset} — Track brand visibility in AI answer engines
 ${c.bold}Usage:${c.reset}
   aeo-platform init                    Create .aeo-tracker.json config
   aeo-platform init --queries-only     Re-suggest queries without changing brand/domain/providers
+  aeo-platform init --no-key-check     Skip the live authentication probe (offline/CI); format checks still run
   aeo-platform run          Run visibility audit (reads config, calls APIs)
   aeo-platform run --json   Same, but print structured JSON to stdout (for CI pipelines)
   aeo-platform run --replay [--replay-from=YYYY-MM-DD]
@@ -4121,6 +4189,9 @@ const { values, positionals } = parseArgs({
     light:   { type: 'boolean', default: false },
     keywords:{ type: 'string' },
     'queries-only': { type: 'boolean', default: false },
+    // fail-branch #1/#3: skip the live authentication probe at init (offline /
+    // CI). Format checks (regex + length) still run — see I-5 help wording.
+    'no-key-check': { type: 'boolean', default: false },
     output:  { type: 'string' },
     'no-open': { type: 'boolean', default: false },
     html:    { type: 'boolean', default: false },
@@ -4228,6 +4299,7 @@ try {
       queriesOnly: values['queries-only'],
       addQueries: values['add-queries'],
       replaceQueries: values['replace-queries'],
+      noKeyCheck: values['no-key-check'],
       prompter,
     });
   } else if (command === 'run') {
