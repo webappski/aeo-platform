@@ -76,6 +76,7 @@ const TRACKER_VERSION = (() => {
 })();
 import { detectGeography } from '../lib/init/fetch-site.js';
 import { classifyProviderError } from '../lib/providers/classify-error.js';
+import { evaluateModelDrift } from '../lib/providers/model-drift.js';
 import { formatResearchFailurePanel } from '../lib/init/research-failure-panel.js';
 import { formatAllEnginesFailedPanel } from '../lib/errors/all-engines-failed-panel.js';
 import { formatUnexpectedErrorPanel } from '../lib/errors/unexpected-error-panel.js';
@@ -2263,6 +2264,12 @@ async function cmdRun(options = {}) {
     e[field]++;
     rateLimitEvents.set(key, e);
   };
+  // Answer-surface model-drift tally: when a provider serves a different model
+  // lineage than we requested on an ANSWER cell (floating-alias hot-swap), the
+  // trend would silently shift month-to-month. Record one entry per
+  // (provider, requested→resolved) pair so the end-of-run summary can name it.
+  /** @type {Map<string, {provider:string, requested:string, resolved:string, count:number}>} */
+  const modelDriftEvents = new Map();
   const live = options.json ? null : createLiveRows({ stream: process.stderr });
 
   for (let qi = 0; qi < queries.length; qi++) {
@@ -2355,6 +2362,32 @@ async function cmdRun(options = {}) {
               const { text, citations, raw } = replayed
                 || await provider.call(query, provider.apiKey, cellModel, { ...callOpts, onStatus });
               const elapsedMs = Date.now() - t0;
+
+              // Answer-surface model-drift check. Only on LIVE answer cells:
+              //   - replay reads historical fixtures (no live model to drift),
+              //   - training cells measure a deliberately-different base model.
+              // When the provider served a different model lineage than we
+              // requested (floating-alias hot-swap), WARN loudly and stamp the
+              // record with requested vs resolved so the divergence is visible
+              // in the run JSON, not silent. Default policy is WARN+provenance
+              // (a benign roll-forward must not abort a legitimate run); a hard
+              // FAIL is opt-in via --strict-model-pin (handled after the loop).
+              // Decision is the pure evaluateModelDrift() (unit-tested); this
+              // block is a thin caller (house pattern — see silent-substitute).
+              let driftProvenance = null;
+              if (!replayed && mode !== 'training') {
+                const drift = evaluateModelDrift(provider.name, cellModel, raw);
+                if (drift.isDrift) {
+                  driftProvenance = drift.provenance;
+                  const e = modelDriftEvents.get(drift.tallyKey)
+                    || { provider: provider.name, requested: cellModel, resolved: drift.resolvedModel, count: 0 };
+                  e.count++;
+                  modelDriftEvents.set(drift.tallyKey, e);
+                  if (live) live.log(`  ${c.yellow}[WARN] ${drift.warnLine}${c.reset}`);
+                  else if (!options.json) console.warn(`  [WARN] ${drift.warnLine}`);
+                  else process.stderr.write(`  [WARN] ${drift.warnLine}\n`);
+                }
+              }
 
               // Save raw response — region + mode suffixes in filename so
               // multi-region / dual-pass runs don't collide.
@@ -2487,6 +2520,10 @@ async function cmdRun(options = {}) {
                 // Only persist when false — absence means tracked (keeps the
                 // year-over-year summary JSON lean; see storeSources rationale).
                 ...(costInfo.costTracked === false ? { costTracked: false } : {}),
+                // Model-drift provenance — persisted ONLY when the served model
+                // diverged from the requested one (lean-summary convention).
+                // Its presence in a record is the machine-readable drift flag.
+                ...(driftProvenance || {}),
               });
               const icon = mention === 'yes' ? `${c.green}YES` : mention === 'src' ? `${c.yellow}SRC` : `${c.red}NO`;
               const costStr = costInfo.costUsd > 0 ? ` $${costInfo.costUsd.toFixed(4)}` : '';
@@ -2750,6 +2787,43 @@ async function cmdRun(options = {}) {
     console.log(`    ${c.dim}Tip: a higher API tier or a non-search model (e.g. --openai-model gpt-5) raises your TPM ceiling.${c.reset}`);
   }
 
+  // Model-drift summary. A floating alias served a different model lineage than
+  // requested on one or more answer cells → the trend is no longer apples-to-
+  // apples month-to-month. Always surfaced (incl. --json via stderr) because it
+  // is a data-integrity signal, not cosmetic. Silent when no drift occurred.
+  const driftEntries = [...modelDriftEvents.values()];
+  if (driftEntries.length > 0) {
+    const driftedCells = driftEntries.reduce((s, e) => s + e.count, 0);
+    const header = `Model drift this run: ${driftedCells} answer cell${driftedCells !== 1 ? 's' : ''} served a different model than requested`;
+    if (options.json) {
+      process.stderr.write(`\n  [WARN] ${header}\n`);
+      for (const e of driftEntries) {
+        process.stderr.write(`    ${e.provider}: requested ${e.requested} → served ${e.resolved} (${e.count}×)\n`);
+      }
+    } else {
+      console.log(`\n${c.yellow}  ${header}${c.reset}`);
+      for (const e of driftEntries) {
+        console.log(`    ${c.dim}${e.provider}: requested ${c.reset}${e.requested}${c.dim} → served ${c.reset}${e.resolved}${c.dim} (${e.count}×)${c.reset}`);
+      }
+      console.log(`    ${c.dim}Pin the model in .aeo-tracker.json (e.g. providers.gemini.model = "${driftEntries[0].resolved}") so the monthly basket stays comparable. Re-run with --strict-model-pin to fail the run on drift.${c.reset}`);
+    }
+  }
+
+  // --strict-model-pin: opt-in hard FAIL when answer-surface drift occurred.
+  // Default is WARN+provenance (above) — a benign roll-forward must not break a
+  // legitimate scheduled run. This flag is for CI/timeline guards that want a
+  // non-zero exit the moment the basket model changes underneath them. Folded
+  // into the run's exitCode contract below (does NOT process.exit here — that
+  // would skip the summary write + ledger save).
+  const strictPinFailed = driftEntries.length > 0 && options.strictModelPin === true;
+  if (strictPinFailed) {
+    if (!options.json) {
+      console.error(`\n${c.red}  --strict-model-pin: answer-surface model drift detected — the run will exit non-zero.${c.reset}`);
+    } else {
+      process.stderr.write(`  [FAIL] --strict-model-pin: answer-surface model drift detected — exit non-zero.\n`);
+    }
+  }
+
   // Persist the limits learned this run so the next run paces from them
   // (best-effort — a save failure never fails the run).
   const savedLimits = await saveLedger();
@@ -2819,6 +2893,13 @@ async function cmdRun(options = {}) {
     exitCode = 1;
   } else {
     exitCode = 0;
+  }
+  // --strict-model-pin (opt-in): answer-surface model drift fails an otherwise
+  // clean run with exit 1. Never downgrades a more-severe 2 (invisible) or 3
+  // (all-errored) — those carry stronger signal. `strictPinFailed` is computed
+  // in the summary block above.
+  if (strictPinFailed && exitCode === 0) {
+    exitCode = 1;
   }
 
   // Exit code 3: every engine returned mention === 'error'. Show the
@@ -3116,7 +3197,32 @@ async function cmdReport(args = {}) {
     process.exit(1);
   }
 
-  const latest = snapshots[snapshots.length - 1];
+  // ─── --for-date <YYYY-MM-DD>: render a SPECIFIC historical run ───
+  // Default `report` renders the newest run. `--for-date` re-points the report
+  // at an older `aeo-responses/<date>/_summary.json` so a historical proof
+  // report (e.g. an April snapshot hosted as a dated proof page) can be
+  // regenerated from data that is still on disk. The whole report is built FROM
+  // that snapshot: its score becomes the headline "score", its date drives the
+  // out-dir / age / raw-quote lookup, and the trend is truncated to runs up to
+  // and INCLUDING that date — an April report must not plot May data that did
+  // not exist yet. Composes with --public and --output.
+  let latest = snapshots[snapshots.length - 1];
+  if (args.forDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.forDate)) {
+      console.error(`${c.red}--for-date must be YYYY-MM-DD (got "${args.forDate}").${c.reset}`);
+      console.error(`Available dates: ${snapshots.map(s => s.date).join(', ')}`);
+      process.exit(1);
+    }
+    const idx = snapshots.findIndex(s => s.date === args.forDate);
+    if (idx === -1) {
+      console.error(`${c.red}No run found for ${args.forDate} in aeo-responses/.${c.reset}`);
+      console.error(`Available dates: ${snapshots.map(s => s.date).join(', ')}`);
+      process.exit(1);
+    }
+    // Truncate to the chosen date inclusive, then treat it as the "latest".
+    snapshots.length = idx + 1;
+    latest = snapshots[idx];
+  }
 
   // ─── Refresh-cache (--refresh-cache <csv|all>) ───
   // Invalidate cached fields BEFORE the cache-or-fetch blocks below so
@@ -3522,7 +3628,7 @@ async function cmdReport(args = {}) {
     }
   }
 
-  const md = renderMarkdown(snapshots, rawResponses, { mcMetadata, noMcBlock: args.noMcBlock });
+  const md = renderMarkdown(snapshots, rawResponses, { mcMetadata, noMcBlock: args.noMcBlock, public: args.public });
 
   const outDir = join('aeo-reports', latest.date);
   await mkdir(outDir, { recursive: true });
@@ -3540,7 +3646,7 @@ async function cmdReport(args = {}) {
     const html = renderHtml(
       buildHtmlSummary(snapshots, rawResponses),
       snapshots,
-      { mcMetadata, daysSinceRun, noMcBlock: args.noMcBlock, pkgVersion: trackerVersion, repoUrl: trackerRepoUrl },
+      { mcMetadata, daysSinceRun, noMcBlock: args.noMcBlock, pkgVersion: trackerVersion, repoUrl: trackerRepoUrl, public: args.public },
     );
     await writeFile(htmlOutPath, html);
   }
@@ -3549,8 +3655,18 @@ async function cmdReport(args = {}) {
   // don't mislead a reader after a layout rewrite. Only fires when writing to
   // the default location (custom --output paths skip cleanup since the user
   // controls where artifacts land).
+  //
+  // --public is ALSO skipped: public mode is proof-archive mode. The hosted
+  // proof timeline is a SET of dated reports (April / May / … each a separate
+  // aeo-reports/<date>/report.html), and the default sweep — which deletes
+  // report.{md,html} from every date dir except the one being written — would
+  // erase the rest of that archive on each regen. (This is exactly what wiped
+  // the historical TF renders before this guard.) The reader controls the
+  // public archive; the tool must not garbage-collect it. With --for-date the
+  // date being written is itself an OLD dir, making the sweep even more
+  // destructive, so the guard protects that path too.
   let cleanupResult = { removedFiles: 0, removedDirs: 0 };
-  if (!args.output) {
+  if (!args.output && !args.public) {
     cleanupResult = await cleanupStaleReportArtifacts(latest.date);
   }
 
@@ -3558,7 +3674,8 @@ async function cmdReport(args = {}) {
   console.log(`\n${c.bold}aeo-platform — report${c.reset}`);
   console.log(`  ${snapshots.length} run${snapshots.length !== 1 ? 's' : ''} loaded (${snapshots[0].date} → ${latest.date})`);
   console.log(`  ${loadedQuotes} raw response${loadedQuotes !== 1 ? 's' : ''} available for verbatim quotes`);
-  console.log(`  Latest score: ${c.bold}${latest.score}%${c.reset}`);
+  const scoreLabel = args.forDate ? `${latest.date} score` : 'Latest score';
+  console.log(`  ${scoreLabel}: ${c.bold}${latest.score}%${c.reset}`);
   if (cleanupResult.removedFiles > 0 || cleanupResult.removedDirs > 0) {
     const f = cleanupResult.removedFiles;
     const d = cleanupResult.removedDirs;
@@ -4071,6 +4188,11 @@ ${c.bold}Usage:${c.reset}
   aeo-platform init --no-key-check     Skip the live authentication probe (offline/CI); format checks still run
   aeo-platform run          Run visibility audit (reads config, calls APIs)
   aeo-platform run --json   Same, but print structured JSON to stdout (for CI pipelines)
+  aeo-platform run --strict-model-pin
+                           Fail the run (exit 1) if a provider serves a different model lineage
+                           than requested on an answer cell (floating-alias hot-swap). Default is
+                           a loud WARN + requested/served provenance in the run JSON. Use to keep
+                           a frozen-basket monthly timeline apples-to-apples.
   aeo-platform run --replay [--replay-from=YYYY-MM-DD]
                            Replay mode — rebuild today's summary from cached raw responses
                            instead of calling APIs. Zero API cost. Useful for: iterating on
@@ -4092,6 +4214,15 @@ ${c.bold}Usage:${c.reset}
   aeo-platform report --no-html          Markdown only — skips HTML write and browser open.
                                         Use for CI / email diffs / lightweight automation.
   aeo-platform report --no-open          Write report.{md,html} but don't auto-open the browser.
+  aeo-platform report --public           Public-proof mode — omit the session-cost card ($/run +
+                                        per-engine $ + tokens) and source-path footnotes (lib/…)
+                                        so a HOSTED proof report is leak-free by construction.
+                                        The UVI formula stays; only internals are dropped.
+  aeo-platform report --for-date=YYYY-MM-DD   Render a SPECIFIC past run (an old proof report)
+                                        instead of the newest one. Reads aeo-responses/<date>/
+                                        and builds the whole report from it; the trend is
+                                        truncated to that date. Bad/absent date → exit 1 with the
+                                        list of available dates. Composes with --public / --output.
   aeo-platform report [--no-authority] [--no-entity-graph] [--no-page-signals] [--no-pricing]
                            Skip optional fetch-heavy checks (Wikipedia/Reddit/GitHub authority,
                            sameAs reciprocity, own-domain HTML crawl, competitor pricing pages).
@@ -4214,6 +4345,17 @@ const { values, positionals } = parseArgs({
     // v0.8 — bento HTML is the default; --no-html skips it for CI/email-only flows.
     // `--html` is kept (no-op) for backwards-compat with existing scripts.
     'no-html':       { type: 'boolean', default: false },
+    // Public-proof mode — omit internals that must never appear in a HOSTED
+    // proof report: the Session-cost card ($/run + per-engine $ + tokens) and
+    // the UVI source-path footnote (lib/… paths). The UVI FORMULA stays; only
+    // the file-path provenance is dropped. Leak-free by construction so a
+    // published proof report needs no manual scrub (see resources memory
+    // feedback_aeo_platform_report_leaks_cost_and_source_paths).
+    'public':        { type: 'boolean', default: false },
+    // Render a SPECIFIC historical run instead of the newest one. Re-points
+    // `report` at aeo-responses/<date>/_summary.json so an older proof report
+    // can be regenerated from data still on disk. See cmdReport --for-date block.
+    'for-date':      { type: 'string' },
     // Optional `report` fetches — skip when offline / behind corp VPN / rate-limited
     'no-authority':    { type: 'boolean', default: false },
     'no-entity-graph': { type: 'boolean', default: false },
@@ -4234,6 +4376,10 @@ const { values, positionals } = parseArgs({
     'gemini-model':     { type: 'string' },
     'anthropic-model':  { type: 'string' },
     'perplexity-model': { type: 'string' },
+    // Hard-FAIL (exit 1) when a provider serves a different model lineage than
+    // requested on an answer cell. Default is WARN+provenance — this is the
+    // opt-in for CI / frozen-basket timeline guards. See lib/providers/model-drift.js.
+    'strict-model-pin': { type: 'boolean', default: false },
   },
   allowPositionals: true,
   strict: false,
@@ -4314,6 +4460,7 @@ try {
       geminiModel:     values['gemini-model'],
       anthropicModel:  values['anthropic-model'],
       perplexityModel: values['perplexity-model'],
+      strictModelPin:  values['strict-model-pin'],
       // Replay mode (see replay-mode block at top of file)
       replay: values.replay,
       replayFrom: values['replay-from'],
@@ -4335,6 +4482,8 @@ try {
       noPageSignals:  values['no-page-signals'],
       noPricing:      values['no-pricing'],
       refreshCache:   values['refresh-cache'],
+      public:         values['public'],
+      forDate:        values['for-date'],
     });
   } else if (command === 'export') {
     await cmdExport({ format: values.format || 'csv', output: values.output });

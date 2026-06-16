@@ -133,8 +133,8 @@
      decoration. Disabled on print + reduced-motion via overrides below. */
   --paper-grain: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.10 0 0 0 0 0.09 0 0 0 0 0.06 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
-  /* Legacy token aliases — external CSS modules (mc-bridge.js) written
-     against v0.4 token names continue to resolve. */
+  /* Legacy token aliases — the mc-bridge card's CSS module, written
+     against v0.4 token names, continues to resolve. */
   --bg:           var(--paper);
   --bg-raised:    var(--raised);
   --bg-subtle:    var(--paper-2);
