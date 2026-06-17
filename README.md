@@ -189,6 +189,23 @@ aeo-platform run-manual perplexity --from-dir .\perplexity-responses
 
 Results merge into today's `_summary.json` alongside API runs. `diff` and `report` treat both identically.
 
+## What this measures — and what it does NOT
+
+Be precise about scope: `aeo-platform` queries each engine's **API surface** with your own keys. That is a reproducible, auditable proxy you can re-run and put in CI — but it is **not** the same thing a human sees in the consumer app. The consumer apps use a different retrieval pipeline, can serve a different model version, and add personalization and locale that the API does not. Treat the score as *"how the engine's API answers your queries"*, not *"exactly what a user of chatgpt.com sees"*.
+
+Each run records this in `_summary.json` under `measurement` (`{ "surface": "api", "disclaimer": "…" }`), and the report header shows it.
+
+| Engine measured (API) | What we call | Is NOT the same as |
+|---|---|---|
+| OpenAI `gpt-5-search-api` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
+| Perplexity `sonar-reasoning` | direct REST, always grounded | perplexity.ai Pro browser UI |
+| Gemini `generateContent` + grounding | direct REST | the Gemini app |
+| Anthropic `claude-sonnet-4-6` | direct REST (optional column) | claude.ai chat |
+
+**Not covered at all (no first-party query API):** **Google AI Overviews / AI Mode** and **Microsoft Copilot**. A run reports zero signal for these because the tool never queries them — their absence from the score is a coverage gap, not evidence you are invisible there. For the browser-only surfaces above, use `run-manual` paste mode (previous section) to fold a real UI answer into the same `_summary.json`.
+
+A Google AI Overviews connector is on the [roadmap](#roadmap) (not built yet).
+
 ## AI-bot crawlability audit (zero LLM cost)
 
 **The crawlability audit scores your domain against the 12-bot AI-crawler matrix (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, and 8 others) using ~3 HTTPS GETs against your `/robots.txt`, `/sitemap.xml`, and `/llms.txt`. No LLM calls, no auth, no cost. The composite **AI-Bot Crawl Readiness** score (0–100) weighs robots posture 30%, bots-not-blocked 25%, sitemap 25%, llms.txt 20%.**
@@ -556,7 +573,8 @@ Validator-honesty release (1.0.4 work + a pool top-up follow-up that landed in 1
 
 Honest list of where `aeo-platform` stops short — read before you wire it into a contract or a board slide.
 
-- **API ≠ browser UI.** Personalisation, session context, and occasional model upgrades mean API responses can differ slightly from what users see in the ChatGPT / Gemini / Claude browser apps. Manual paste mode catches the browser-personalisation layer.
+- **API ≠ browser UI.** Personalisation, session context, and occasional model upgrades mean API responses can differ slightly from what users see in the ChatGPT / Gemini / Claude browser apps. Manual paste mode catches the browser-personalisation layer. Scope is spelled out in full under [What this measures — and what it does NOT](#what-this-measures--and-what-it-does-not).
+- **No Google AI Overviews / AI Mode or Microsoft Copilot coverage.** These have no first-party query API; the tool does not measure them, so their absence from a score is a coverage gap, not invisibility on those surfaces. A connector is on the roadmap.
 - **Week-over-week stochastic variance.** Same queries on the same day typically produce ±5–10% score fluctuation because AI outputs are probabilistic. Use weekly cadence (not daily) to smooth noise.
 - **Provider rate limits on free tiers.** Running 3 queries in parallel is usually fine, but back-to-back brand runs can hit 429s.
 - **Single-brand scope per config.** Multi-brand workflows need a wrapper that loops over per-client directories.
@@ -567,6 +585,7 @@ Honest list of where `aeo-platform` stops short — read before you wire it into
 
 Where `aeo-platform` is going next (no fixed dates — feedback-driven):
 
+- Google AI Overviews / AI Mode coverage (no first-party query API today — needs a separate connector; see [What this measures — and what it does NOT](#what-this-measures--and-what-it-does-not))
 - Multi-brand profiles for agencies running weekly audits on many clients
 - Diagnostic prompts asking AI engines *why* they don't cite you
 - Optional SQLite-backed history for trends beyond filesystem snapshots

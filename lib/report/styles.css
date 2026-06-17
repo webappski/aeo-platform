@@ -318,6 +318,17 @@ body::before {
   background: var(--line-strong);
   display: inline-block;
 }
+/* Measurement-scope disclaimer — muted, full-width under the headline so it
+   never crowds the date/version row (review #3, AP-DISCLAIMER-API-SURFACE). */
+.mast-disclaimer {
+  margin: 12px 0 0;
+  max-width: 70ch;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
 
 /* ─── Hero — editorial dominant number ──────────────────── */
 .hero {

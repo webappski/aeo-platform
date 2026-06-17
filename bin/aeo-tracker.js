@@ -40,6 +40,7 @@ import { parseGeoFlag, wrapQueryForRegion, listRegionCodes } from '../lib/report
 import { computeTopDomains } from '../lib/report/top-domains.js';
 import { aggregateCanonicalSources } from '../lib/report/canonical-url.js';
 import { isOwnDomain } from '../lib/report/own-domain.js';
+import { MEASUREMENT_DISCLAIMER, MEASUREMENT_DISCLAIMER_SHORT } from '../lib/report/measurement-disclaimer.js';
 // `report`-only and `export`-only modules are dynamically imported inside their
 // command handlers to keep cold-start fast for `--help`, `--version`, `init`
 // and `run` paths (saved ~9 eager imports / ~250–300 ms on a cold disk).
@@ -2523,9 +2524,10 @@ async function cmdRun(options = {}) {
                 ...(region ? { region: region.code, regionLabel: region.label } : {}),
                 ...(adSignal.hasAdSignal ? { adMarkers: adSignal.adMarkers, adNetworkCitations: adSignal.adNetworkCitations } : {}),
                 responseQuality,
-                hasBrandInCitations: citations.some(u =>
-                  u.toLowerCase().includes(domain.toLowerCase())
-                ),
+                // Registrable-domain (eTLD+1) match — not raw substring — so a
+                // look-alike citation host (`domain.com.evil.com`) never counts
+                // as a brand citation. See lib/report/own-domain.js#isOwnDomain.
+                hasBrandInCitations: citations.some(u => isOwnDomain(u, domain)),
                 responseExcerpt: String(text || '').slice(0, 1500),
                 elapsedMs,
                 inputTokens: costInfo.inputTokens,
@@ -2879,6 +2881,10 @@ async function cmdRun(options = {}) {
     extractorMode: extractionProviders.secondary ? 'dual' : 'single',
     // version stamp — answers "which build produced this run?" from the artifact
     generatedBy: `aeo-platform@${TRACKER_VERSION}`,
+    // measurement scope — honest record that we query each engine's API surface
+    // (a reproducible proxy), NOT the consumer apps, and exclude AI Overviews /
+    // Copilot. Single source of truth: lib/report/measurement-disclaimer.js.
+    measurement: MEASUREMENT_DISCLAIMER,
     results: results.map(({ raw, ...r }) => r),
     topCompetitors: classifiedCompetitors.map(([name, count]) => ({ name, count })),
     // Unverified-only tier: names where only one of the two extractor models agreed.
@@ -2995,13 +3001,12 @@ function buildHtmlSummary(snapshots, rawResponses) {
     }
   }
 
-  // Bare host form for matching citation URLs against the brand's own domain.
-  // Strip protocol / www. / trailing slash so "https://www.foo.com/" and
-  // "foo.com" both match a citation URL containing "foo.com".
-  const ownDomainBare = (domain || '').toLowerCase()
-    .replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-  const isOwnDomainCite = (u) =>
-    typeof u === 'string' && ownDomainBare && u.toLowerCase().includes(ownDomainBare);
+  // Match citation URLs against the brand's own domain by registrable-domain
+  // (eTLD+1) host equality, NOT raw substring: a substring test let a look-
+  // alike host (`foo.com.evil.com`) be counted as "they cited you", inflating
+  // the hero "cited you N times" KPI. isOwnDomain accepts the exact host plus
+  // any subdomain (`blog.foo.com`) and rejects spoofs.
+  const isOwnDomainCite = (u) => isOwnDomain(u, domain);
 
   // Per-engine visibility + delta + tiny trend series (per provider+model)
   const engines = engineList.map(en => {
@@ -3054,11 +3059,13 @@ function buildHtmlSummary(snapshots, rawResponses) {
     ...compList.map(c => ({ name: c.name, count: c.count })),
   ];
 
-  // Canonical sources — flag rows whose host matches our domain
+  // Canonical sources — flag rows whose host matches our domain (registrable-
+  // domain match via isOwnDomain, not substring, so a look-alike host is not
+  // accented as ours).
   const sources = (latest.topCanonicalSources || []).slice(0, 10).map(s => ({
     url: s.url,
     count: s.count,
-    accent: s.url.toLowerCase().includes(domain.toLowerCase()),
+    accent: isOwnDomain(s.url, domain),
   }));
 
   const actions = latest.llmActions || [];
@@ -3107,10 +3114,9 @@ function buildHtmlSummary(snapshots, rawResponses) {
   // headline by mixing "they cited goforgeai.com" into "they cited you".
   const totalCitations = latest.results.reduce((s, r) => s + (r.citations || []).filter(isOwnDomainCite).length, 0);
   const totalCitationsPrev = prev ? (function () {
-    const prevDomainBare = (prev.domain || domain || '').toLowerCase()
-      .replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+    const prevDomain = prev.domain || domain;
     return prev.results.reduce((s, r) => s + (r.citations || []).filter(u =>
-      typeof u === 'string' && prevDomainBare && u.toLowerCase().includes(prevDomainBare)
+      isOwnDomain(u, prevDomain)
     ).length, 0);
   })() : null;
 
@@ -3129,6 +3135,11 @@ function buildHtmlSummary(snapshots, rawResponses) {
       runId: `run_${latest.date.replace(/-/g, '').slice(-6)}`,
       queryCount: queryOrder.length,
       providerCount: engineList.length,
+      // Measurement-scope disclaimer for the report header. Prefer what the run
+      // stamped into _summary.json; fall back to the current constant for legacy
+      // snapshots produced before the field existed.
+      measurement: latest.measurement || MEASUREMENT_DISCLAIMER,
+      measurementShort: MEASUREMENT_DISCLAIMER_SHORT,
     },
     score: latest.score,
     scorePrev: prev?.score ?? null,
@@ -3869,7 +3880,9 @@ async function cmdRunManual(argv) {
       ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
       ...(queryBrandFitsManual[qi] ? { brandFit: queryBrandFitsManual[qi] } : {}),
       responseQuality,
-      hasBrandInCitations: citations.some(u => u.toLowerCase().includes(domain.toLowerCase())),
+      // Registrable-domain (eTLD+1) match — not raw substring — so a look-alike
+      // citation host never counts as a brand citation (lib/report/own-domain.js).
+      hasBrandInCitations: citations.some(u => isOwnDomain(u, domain)),
       elapsedMs: null,
     });
 

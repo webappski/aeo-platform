@@ -290,5 +290,34 @@ test('trend panel reads slipping when the window is down even if the last step i
     'subtitle must report the window delta (80→55), not the last step (+15)');
 });
 
+// ─── review #3: measurement-surface disclaimer in the report header ──────────
+test('masthead renders the measurement-surface disclaimer when meta carries it', () => {
+  const summary = {
+    ...baseSummary,
+    meta: {
+      ...baseSummary.meta,
+      measurementShort: 'API surface (your keys) — a reproducible proxy, not the consumer apps; no AI Overviews / Copilot.',
+      measurement: { surface: 'api', disclaimer: 'Measures each engine’s API surface via your own keys — a reproducible proxy, NOT a guarantee of what the consumer app shows.' },
+    },
+  };
+  const html = renderHtml(summary, [baseSnapshot]);
+  const mastBlock = html.split('class="mast"')[1].split('class="hero"')[0];
+  assert.ok(/mast-disclaimer/.test(mastBlock), 'disclaimer element missing from masthead');
+  assert.ok(/API surface/.test(mastBlock), 'disclaimer short text missing from masthead');
+  // The full sentence rides in the title attribute for hover-detail.
+  assert.ok(/reproducible proxy, NOT a guarantee/.test(mastBlock), 'full disclaimer missing from title attr');
+  // It must appear in the HEADER, not buried elsewhere — before the hero.
+  assert.ok(mastBlock.indexOf('mast-disclaimer') > 0, 'disclaimer not located inside the masthead');
+});
+
+test('masthead omits disclaimer gracefully for legacy summaries without the field', () => {
+  // baseSummary.meta has no measurement field (pre-feature snapshot).
+  const html = renderHtml(baseSummary, [baseSnapshot]);
+  const mastBlock = html.split('class="mast"')[1].split('class="hero"')[0];
+  assert.ok(!/mast-disclaimer/.test(mastBlock), 'disclaimer must not render when meta lacks measurement');
+  // Layout still intact — date/version row untouched.
+  assert.ok(/<dt>Run<\/dt>/.test(mastBlock), 'masthead date row broke');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

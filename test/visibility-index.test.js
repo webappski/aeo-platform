@@ -162,6 +162,79 @@ test('sentiment: low-confidence positive (not neutral) kept as signal', () => {
   assert.equal(c.sentimentSample, 1);
 });
 
+// ─── citation axis: registrable-domain match, NOT raw substring (AP-CITATION-ETLD1) ───
+// Regression guard for review #8: the citation axis used `url.includes(domain)`,
+// which let look-alike hosts (`gcore.com.evil.com`, `notgcore.com.evil.com`,
+// `xgcore.com`) count as brand citations and inflate the citation component.
+
+test('citation: subdomain of brand domain counts (blog.gcore.com)', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://blog.gcore.com/post'] }],
+  });
+  assert.equal(c.citation, 100);
+});
+
+test('citation: bare brand domain counts (gcore.com)', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://gcore.com/'] }],
+  });
+  assert.equal(c.citation, 100);
+});
+
+test('citation: brand domain with utm query counts (gcore.com/x?utm)', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://gcore.com/x?utm_source=chatgpt'] }],
+  });
+  assert.equal(c.citation, 100);
+});
+
+test('citation: suffix-spoof does NOT count (gcore.com.evil.com)', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://gcore.com.evil.com/x'] }],
+  });
+  // Under the old substring match this was 100 — a false brand citation.
+  assert.equal(c.citation, 0);
+});
+
+test('citation: prefix-then-suffix spoof does NOT count (notgcore.com.evil.com)', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://notgcore.com.evil.com/x'] }],
+  });
+  assert.equal(c.citation, 0);
+});
+
+test('citation: prefix look-alike host does NOT count (xgcore.com)', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://xgcore.com/x'] }],
+  });
+  assert.equal(c.citation, 0);
+});
+
+test('citation: real + spoof in one cell → cell counts once via the real one', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [{ mention: 'no', position: null, canonicalCitations: ['https://gcore.com.evil.com/x', 'https://gcore.com/real'] }],
+  });
+  assert.equal(c.citation, 100);
+});
+
+test('citation: spoof-only across two cells → citation axis 0, not 100', () => {
+  const c = computeComponents({
+    domain: 'gcore.com',
+    results: [
+      { mention: 'no', position: null, canonicalCitations: ['https://gcore.com.evil.com/a'] },
+      { mention: 'no', position: null, canonicalCitations: ['https://xgcore.com/b'] },
+    ],
+  });
+  assert.equal(c.citation, 0);
+});
+
 console.log('\ncomputeUVI');
 
 test('weighted sum of components', () => {

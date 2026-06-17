@@ -145,6 +145,31 @@ test('host with port matches own without port', () => {
   assert.equal(isOwnDomain('foo.com:443', 'foo.com'), true);
 });
 
+// ─── citation-URL matching contract (AP-CITATION-ETLD1, review #8) ───
+// isOwnDomain is the registrable-domain matcher the citation axis now uses in
+// place of substring `url.includes(domain)`. Lock the exact spoof hostnames
+// from the triage so the citation axis cannot silently regress to substring.
+
+test('citation spoof: gcore.com.evil.com is NOT gcore.com', () => {
+  assert.equal(isOwnDomain('https://gcore.com.evil.com/x', 'gcore.com'), false);
+});
+
+test('citation spoof: notgcore.com.evil.com is NOT gcore.com', () => {
+  assert.equal(isOwnDomain('https://notgcore.com.evil.com/x', 'gcore.com'), false);
+});
+
+test('citation spoof: xgcore.com is NOT gcore.com (prefix look-alike)', () => {
+  assert.equal(isOwnDomain('https://xgcore.com/x', 'gcore.com'), false);
+});
+
+test('citation real: blog.gcore.com IS gcore.com (subdomain)', () => {
+  assert.equal(isOwnDomain('https://blog.gcore.com/post', 'gcore.com'), true);
+});
+
+test('citation real: bare gcore.com with utm query IS gcore.com', () => {
+  assert.equal(isOwnDomain('https://gcore.com/x?utm_source=chatgpt', 'gcore.com'), true);
+});
+
 console.log('');
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
