@@ -1935,6 +1935,7 @@ async function cmdRun(options = {}) {
     perplexityModel: options.perplexityModel,
   });
   const { brand, domain, queries: rawQueries, providers: providerConfig } = config;
+  const brandAliases = Array.isArray(config.brandAliases) ? config.brandAliases : [];
 
   if (!brand || !domain || !rawQueries?.length) {
     console.error(`${c.red}Invalid config. brand, domain, and queries are required.${c.reset}`);
@@ -2397,8 +2398,8 @@ async function cmdRun(options = {}) {
               const rawFile = join(responseDir, `q${qi + 1}${regionSuffix}${modeSuffix}-${provider.name}-${safeModel}.json`);
               await writeFile(rawFile, JSON.stringify(raw, null, 2));
 
-              const mention = detectMention(text, citations, brand, domain);
-              const position = mention === 'yes' ? findPosition(text, brand, domain) : null;
+              const mention = detectMention(text, citations, brand, domain, brandAliases);
+              const position = mention === 'yes' ? findPosition(text, brand, domain, brandAliases) : null;
               const adSignal = detectAdsInResponse(text, citations);
 
               // Two-model LLM extraction + sentiment cross-check run in parallel
@@ -3739,6 +3740,7 @@ async function cmdRunManual(argv) {
 
   const config = await readConfigOrExit();
   const { brand, domain, queries: rawQueriesManual } = config;
+  const brandAliasesManual = Array.isArray(config.brandAliases) ? config.brandAliases : [];
   const { texts: queries, tags: queryTagsManual } = normalizeQueries(rawQueriesManual);
   const providerCfg = (config.providers || DEFAULT_CONFIG.providers)[providerName] || PROVIDERS[providerName];
   const providerLabel = PROVIDERS[providerName].label;
@@ -3785,8 +3787,8 @@ async function cmdRunManual(argv) {
 
     const text = await readFile(queryFile, 'utf-8');
     const citations = extractUrls(text);
-    const mention = detectMention(text, citations, brand, domain);
-    const position = mention === 'yes' ? findPosition(text, brand, domain) : null;
+    const mention = detectMention(text, citations, brand, domain, brandAliasesManual);
+    const position = mention === 'yes' ? findPosition(text, brand, domain, brandAliasesManual) : null;
     // Extraction and sentiment run in parallel (independent classify-tier calls).
     const sentimentTaskManual = (mention === 'yes' || mention === 'src')
       ? classifySentimentWithTwoModels({

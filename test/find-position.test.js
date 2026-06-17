@@ -108,6 +108,20 @@ test('numbered list with parens "1)" → matches', () => {
   assert.equal(findPosition(text, 'Webappski', 'webappski.com'), 2);
 });
 
+test('separator-tolerant: config "gcore" ranks "G-Core" at item 2 → 2', () => {
+  const text = `1. Fastly
+2. G-Core
+3. Cloudflare`;
+  assert.equal(findPosition(text, 'gcore', 'gcore.com'), 2);
+});
+
+test('alias ranks at item 3 when primary brand absent → 3', () => {
+  const text = `1. Fastly
+2. Cloudflare
+3. GCore Labs`;
+  assert.equal(findPosition(text, 'gcore', 'zzz-no-domain.example', ['GCore Labs']), 3);
+});
+
 test('empty / null input → null', () => {
   assert.equal(findPosition('', 'Webappski', 'webappski.com'), null);
   assert.equal(findPosition(null, 'Webappski', 'webappski.com'), null);
