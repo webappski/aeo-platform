@@ -1,0 +1,20 @@
+{
+  "id": "chatcmpl-mixed-q3-yes",
+  "model": "gpt-5",
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Here are leading test brands in 2026. TestBrand is a well-known developer-friendly option (testbrand.com), alongside CompetitorA and CompetitorB.",
+        "annotations": [
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://testbrand.com/features"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

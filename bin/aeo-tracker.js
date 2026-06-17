@@ -83,6 +83,7 @@ import { formatAllEnginesFailedPanel } from '../lib/errors/all-engines-failed-pa
 import { formatUnexpectedErrorPanel } from '../lib/errors/unexpected-error-panel.js';
 import { createSpinner } from '../lib/util/spinner.js';
 import { sanitizeForFilename } from '../lib/util/safe-filename.js';
+import { aggregateCellTrials, resolveSamples, MAX_SAMPLES } from '../lib/sampling.js';
 
 /**
  * Safely extract a human-readable message from any caught value.
@@ -340,9 +341,15 @@ function _extractFromRaw(providerName, raw) {
   return { text: '', citations: [] };
 }
 
-async function _tryReplay(qi, provider, srcDate) {
+async function _tryReplay(qi, provider, srcDate, trialSuffix = '') {
   const safeModel = sanitizeForFilename(provider.model);
-  const replayPath = join('aeo-responses', srcDate, `q${qi}-${provider.name}-${safeModel}.json`);
+  // AP-MEASURE-SAMPLING-CI: multi-trial runs persist each trial as a distinct
+  // file `q{n}…-{provider}-{model}.t{trial}.json`. The replay reader MUST take
+  // the SAME suffix the writer used, or N trials would all replay the single
+  // base file (defeating the whole point — sampling would be a no-op on replay).
+  // `trialSuffix` is '' for single-shot (byte-identical legacy path) and
+  // `.t{trial}` for sampled cells. See rawFile construction in the run loop.
+  const replayPath = join('aeo-responses', srcDate, `q${qi}-${provider.name}-${safeModel}${trialSuffix}.json`);
   if (!existsSync(replayPath)) return null;
   // Malformed cache → treat as miss; caller falls back to live call (or fails
   // through replaySrcDate gate). Prevents an uncaught SyntaxError from crashing
@@ -2139,6 +2146,25 @@ async function cmdRun(options = {}) {
     console.log(`${c.yellow}  --depth=full → 2 passes per cell (web + training-data on ${trainingProviders.join(', ')}; ${skippedProviders.length > 0 ? `skipped: ${skippedProviders.join(', ')}` : 'all providers covered'}). Cost ~2× web-only.${c.reset}`);
   }
 
+  // AP-MEASURE-SAMPLING-CI — resolve --samples (never-fail: garbage/over-cap
+  // degrades to a sane value). Default 1 → single-shot, byte-identical (R39).
+  // The ×N cost disclaimer prints BEFORE any call (mirrors the --geo warn) so
+  // the operator sees the multiplier with eyes open. resolveSamples already
+  // clamps; we surface a one-line note when the raw flag was silently clamped.
+  const samples = resolveSamples(options.samples);
+  if (samples > 1) {
+    const cellsApprox = queries.length * activeProviders.length * modesToRun.length;
+    console.log(
+      `${c.yellow}  --samples=${samples} → each cell queried ${samples}× ` +
+      `(~${cellsApprox * samples} answer calls vs ${cellsApprox} single-shot; ~${samples}× cost). ` +
+      `Presence gets a Wilson confidence interval; a noisy flip no longer trips a false regression.${c.reset}`,
+    );
+    const rawN = Math.floor(Number(options.samples));
+    if (Number.isFinite(rawN) && rawN > MAX_SAMPLES) {
+      console.log(`${c.yellow}  (requested ${rawN} samples — capped at MAX_SAMPLES=${MAX_SAMPLES} as a cost-stop.)${c.reset}`);
+    }
+  }
+
   const date = new Date().toISOString().split('T')[0];
   const responseDir = join('aeo-responses', date);
   await mkdir(responseDir, { recursive: true });
@@ -2265,6 +2291,11 @@ async function cmdRun(options = {}) {
   const results = [];
   /** @type {Map<string, Array<{fn: () => Promise<void>, estimatedTokens: number}>>} */
   const tasksByCdKey = new Map();
+  // AP-MEASURE-SAMPLING-CI — when samples>1, each cell's N trial outcomes land
+  // here keyed by stable cell key, then collapse to ONE record after the
+  // scheduler drains. Empty (and unused) on the single-shot default path.
+  /** @type {Map<string, Array<object>>} */
+  const cellTrials = new Map();
   // Extraction cost accumulates across all cells (each cell fires two LLM calls).
   const extractionCostTotal = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
   // AP-RATELIMIT-UX: tally rate-limit events per engine across the whole run so
@@ -2302,9 +2333,22 @@ async function cmdRun(options = {}) {
           const tag = `Q${qi + 1}${regionTag}${modeTag}/${provider.colLabel}`;
           // taskId includes region for --geo uniqueness — same (cdKey, queryIdx)
           // appears twice with --geo=us,uk and we'd otherwise overwrite each other.
-          const taskId = `${cdKey}#${qi}#${region?.code || ''}#${mode}`;
-          live?.add(taskId, tag);
-          const taskFn = async () => {
+          const baseTaskId = `${cdKey}#${qi}#${region?.code || ''}#${mode}`;
+          // AP-MEASURE-SAMPLING-CI — stable per-cell key (unique per query ×
+          // region × provider × model × mode, same uniqueness as baseTaskId).
+          // All N trials of a cell accumulate under this key, then collapse to
+          // ONE results[] record (the load-bearing «1 record/cell» invariant).
+          // The resume guard below independently re-derives the 5-component cell
+          // key from record fields to dedup carried-over records.
+          const cellKey = baseTaskId;
+          if (samples > 1) cellTrials.set(cellKey, []);
+          // taskFn factory: one closure per trial. `trialSuffix` drives the raw-
+          // file name + replay read (`.t{trial}` for sampled, '' for single-
+          // shot); `taskId` is per-trial so live rows don't collide; `sink`
+          // routes the built record (single-shot → results[]; multi-trial → this
+          // cell's trial bucket). For samples=1 the suffix is '' and the sink is
+          // results[].push → byte-identical legacy path (R39).
+          const makeTaskFn = (taskId, trialSuffix, sink) => async () => {
             const cellModel = mode === 'training' ? provider.trainingModel : provider.model;
             // Main query call: inject mainOptions (reasoning_effort=high for
             // OpenAI, thinking-enabled for Anthropic). Training call: keep clean
@@ -2371,7 +2415,7 @@ async function cmdRun(options = {}) {
               };
 
               // Replay mode (see replay-mode block at top of file)
-              const replayed = replaySrcDate ? await _tryReplay(qi + 1, provider, replaySrcDate) : null;
+              const replayed = replaySrcDate ? await _tryReplay(qi + 1, provider, replaySrcDate, trialSuffix) : null;
               // End replay
               const { text, citations, raw } = replayed
                 || await provider.call(query, provider.apiKey, cellModel, { ...callOpts, onStatus });
@@ -2408,7 +2452,10 @@ async function cmdRun(options = {}) {
               const safeModel = sanitizeForFilename(cellModel);
               const regionSuffix = region ? `-${region.code}` : '';
               const modeSuffix = mode === 'training' ? '-training' : '';
-              const rawFile = join(responseDir, `q${qi + 1}${regionSuffix}${modeSuffix}-${provider.name}-${safeModel}.json`);
+              // trialSuffix is '' for single-shot (legacy filename) and
+              // `.t{trial}` for sampled cells — keeps each trial's raw response
+              // on disk and lets `--replay` re-serve the SAME trial set.
+              const rawFile = join(responseDir, `q${qi + 1}${regionSuffix}${modeSuffix}-${provider.name}-${safeModel}${trialSuffix}.json`);
               await writeFile(rawFile, JSON.stringify(raw, null, 2));
 
               const mention = detectMention(text, citations, brand, domain, brandAliases);
@@ -2504,7 +2551,7 @@ async function cmdRun(options = {}) {
               const storeSources = competitorsUnverified.length > 0
                 || !!extraction.sources.primary?.error
                 || !!extraction.sources.secondary?.error;
-              results.push({
+              sink({
                 query: `Q${qi + 1}`,
                 queryText: baseQuery,
                 provider: provider.name,
@@ -2567,7 +2614,7 @@ async function cmdRun(options = {}) {
                 });
               }
               // --json mode: error is captured in results[].mention='error' below.
-              results.push({
+              sink({
                 query: `Q${qi + 1}`, queryText: baseQuery,
                 provider: provider.name, label: provider.label,
                 model: cellModel, mode, mention: 'error',
@@ -2579,14 +2626,31 @@ async function cmdRun(options = {}) {
                 error: errMsg(err),
               });
             }
-          };  // end of taskFn
+          };  // end of makeTaskFn body
 
           // Estimated token cost — fed into planSchedule so each (provider, model)
           // bucket can size its 60s windows. Pulled from the same ledger that the
           // ledger-throttle uses, so estimates and reservations agree.
           const est = estimatePerRequest(cdKey);
           if (!tasksByCdKey.has(cdKey)) tasksByCdKey.set(cdKey, []);
-          tasksByCdKey.get(cdKey).push({ fn: taskFn, estimatedTokens: est });
+          // AP-MEASURE-SAMPLING-CI — emit N task instances per cell so the
+          // EXISTING planSchedule paces them across TPM windows (NO inner for-
+          // loop inside a single taskFn — that would bypass the ledger and stall
+          // 60s; PITFALLS #5). Single-shot (samples=1): exactly one task, empty
+          // suffix, legacy taskId, sink → results[] (byte-identical path).
+          if (samples === 1) {
+            live?.add(baseTaskId, tag);
+            const fn = makeTaskFn(baseTaskId, '', (rec) => results.push(rec));
+            tasksByCdKey.get(cdKey).push({ fn, estimatedTokens: est });
+          } else {
+            const bucket = cellTrials.get(cellKey);
+            for (let t = 0; t < samples; t++) {
+              const trialTaskId = `${baseTaskId}#t${t}`;
+              live?.add(trialTaskId, `${tag} ·t${t + 1}/${samples}`);
+              const fn = makeTaskFn(trialTaskId, `.t${t}`, (rec) => bucket.push(rec));
+              tasksByCdKey.get(cdKey).push({ fn, estimatedTokens: est });
+            }
+          }
         }
       }
     }
@@ -2635,9 +2699,61 @@ async function cmdRun(options = {}) {
     live?.stop();
   }
 
+  // AP-MEASURE-SAMPLING-CI — collapse each cell's N trials into ONE record.
+  // The «1 record/cell» invariant is preserved: trials live INSIDE the record
+  // (`trials[]`) and top-level mention/position/citationCount carry the
+  // deterministic representative summary (aggregateCellTrials). Skipped cells
+  // (every trial returned early via skipKeys) have an empty bucket and are NOT
+  // emitted here — the resume-merge below re-injects their carried-over record.
+  // Deterministic emission order (insertion order of cellTrials = qi→region→
+  // provider→mode loop order) keeps results[] stable run-to-run.
+  if (samples > 1) {
+    for (const [, trials] of cellTrials) {
+      if (!trials || trials.length === 0) continue;       // skipped cell — resume handles it
+      // Static cell identity is identical across trials — take it from the
+      // first trial. Prefer a non-error trial so region/model fields are the
+      // real measured ones (error records still carry them, but be safe).
+      const base = trials.find(t => t.mention !== 'error') || trials[0];
+      const agg = aggregateCellTrials(trials);
+      // Per-trial slim record kept for audit/inspection — only the fields that
+      // vary trial-to-trial (keeps the year-over-year summary lean; the rest is
+      // on the representative record).
+      const trialRecords = trials.map(t => ({
+        mention: t.mention,
+        position: t.position ?? null,
+        citationCount: t.citationCount ?? 0,
+        hasBrandInCitations: t.hasBrandInCitations === true,
+        elapsedMs: t.elapsedMs,
+        ...(t.error ? { error: t.error } : {}),
+      }));
+      // Build the representative record from the base cell record, then OVERRIDE
+      // the aggregated fields. `raw` is stripped at summary-write time
+      // (results.map(({raw,...r})=>r)); these records have no `raw` anyway.
+      results.push({
+        ...base,
+        mention: agg.mention,
+        position: agg.position,
+        citationCount: agg.citationCount,
+        canonicalCitations: agg.canonicalCitations,
+        hasBrandInCitations: agg.hasBrandInCitations,
+        presence: agg.presence,
+        trials: trialRecords,
+      });
+    }
+  }
+
   // Merge newly-run results with successful results carried over from prior run today
   if (existingSummary) {
-    const keptOld = (existingSummary.results || []).filter(r => r.mention !== 'error');
+    // AP-MEASURE-SAMPLING-CI resume guard: a carried-over record must NOT create
+    // a SECOND record for a cell we measured THIS run (which would break the
+    // «1 record/cell» invariant the whole feature rests on). Key the new records
+    // by the 5-component cell key and drop any carried-over record that collides.
+    const newKeys = new Set(
+      results.map(r => `${r.query}:${r.region || ''}:${r.provider}:${r.model}:${r.mode || 'web'}`),
+    );
+    const keptOld = (existingSummary.results || [])
+      .filter(r => r.mention !== 'error')
+      .filter(r => !newKeys.has(`${r.query}:${r.region || ''}:${r.provider}:${r.model}:${r.mode || 'web'}`));
     results.push(...keptOld);
   }
 
@@ -2896,6 +3012,12 @@ async function cmdRun(options = {}) {
     // Track when we last ran a training-data baseline so `--depth=auto`
     // can prompt the user when the corpus signal is stale (>14 days).
     ...(depth === 'full' ? { lastFullRun: date } : {}),
+    // AP-MEASURE-SAMPLING-CI — record the sampling config ONLY when it was
+    // active (N>1). Absence === single-shot, keeping the default summary JSON
+    // byte-identical to pre-feature runs (R39). `perCell` is the requested N;
+    // individual cells may have fewer measured trials if some errored (see each
+    // record's `presence.n`).
+    ...(samples > 1 ? { sampling: { samples, perCell: samples } } : {}),
   };
   // Atomic — a Ctrl+C mid-write must never leave a half-written summary that
   // silently corrupts the next run/report/diff (AP-FAIL-BRANCHES).
@@ -4239,6 +4361,13 @@ ${c.bold}Usage:${c.reset}
                            than requested on an answer cell (floating-alias hot-swap). Default is
                            a loud WARN + requested/served provenance in the run JSON. Use to keep
                            a frozen-basket monthly timeline apples-to-apples.
+  aeo-platform run --samples N
+                           Query each cell N times instead of once, so a noisy LLM flip
+                           doesn't masquerade as a real change. Presence then carries a
+                           Wilson confidence interval (e.g. «3/5 · 95% CI [0.23, 0.88]») and
+                           diff treats a change as noise when the intervals overlap. Default
+                           1 (single-shot, byte-identical to before). Cost scales ~N×;
+                           capped at 25. Recommended: 5.
   aeo-platform run --replay [--replay-from=YYYY-MM-DD]
                            Replay mode — rebuild today's summary from cached raw responses
                            instead of calling APIs. Zero API cost. Useful for: iterating on
@@ -4386,6 +4515,11 @@ const { values, positionals } = parseArgs({
     replay:  { type: 'boolean', default: false },
     'replay-from': { type: 'string' },
     // End replay
+    // AP-MEASURE-SAMPLING-CI — query each cell N times so a noisy LLM flip
+    // doesn't masquerade as a real change. Default 1 = byte-identical
+    // single-shot (R39). Records a Wilson confidence interval on presence when
+    // N>1. Cost scales ×N — a disclaimer prints before the run (like --geo).
+    samples: { type: 'string' },
     // v0.7 — AEO Mission Control bridge opt-out
     'no-mc-block': { type: 'boolean', default: false },
     // v0.8 — bento HTML is the default; --no-html skips it for CI/email-only flows.
@@ -4511,6 +4645,8 @@ try {
       replay: values.replay,
       replayFrom: values['replay-from'],
       // End replay
+      // AP-MEASURE-SAMPLING-CI — trials per cell (default 1 = single-shot)
+      samples: values.samples,
       prompter,
     });
   } else if (command === 'run-manual') {

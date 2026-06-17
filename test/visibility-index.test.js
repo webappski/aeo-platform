@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { computeComponents, computeUVI, computeUVIBreakdown, computeDiscoverability } from '../lib/report/visibility-index.js';
+import { computeComponents, computeUVI, computeUVIBreakdown, computeDiscoverability, perCellPresence } from '../lib/report/visibility-index.js';
 
 let passed = 0;
 let failed = 0;
@@ -481,6 +481,70 @@ test('breakdown notes are descriptive', () => {
   });
   assert.ok(r.breakdown.llmsTxt.note.includes('missing'));
   assert.ok(r.breakdown.bots.note.includes('9/12'));
+});
+
+// ─── AP-MEASURE-SAMPLING-CI — presence boolean→fraction invariance ───
+//
+// perCellPresence is the ONE switch between the legacy boolean presence and the
+// sampled fractional presence. The R39 contract: a run with NO presence objects
+// (default samples=1 / every legacy snapshot) must yield byte-identical presence
+// to the pre-feature math.
+//
+// MUTATION-SANITY: make perCellPresence return r.presence.rate ?? (boolean) for
+// EVERY cell, or return the rate even when absent → the single-shot identity
+// test below goes RED (an undefined rate would poison the sum to NaN).
+
+console.log('\nperCellPresence — boolean/fraction switch');
+
+test('single-shot cell (no presence field) → boolean 1/0', () => {
+  assert.equal(perCellPresence({ mention: 'yes' }), 1);
+  assert.equal(perCellPresence({ mention: 'src' }), 1);
+  assert.equal(perCellPresence({ mention: 'no' }), 0);
+  assert.equal(perCellPresence({ mention: 'no', presence: undefined }), 0);
+});
+
+test('sampled cell contributes its fractional rate', () => {
+  assert.equal(perCellPresence({ mention: 'yes', presence: { rate: 0.6, hits: 3, n: 5 } }), 0.6);
+  assert.equal(perCellPresence({ mention: 'no', presence: { rate: 0, hits: 0, n: 5 } }), 0);
+});
+
+test('R39 INVARIANT — boolean run [y,n,y] gives presence 67 (unchanged)', () => {
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', canonicalCitations: [] },
+      { mention: 'no',  canonicalCitations: [] },
+      { mention: 'yes', canonicalCitations: [] },
+    ],
+  });
+  // 2/3 → 66.67 → round 67. Identical to the pre-feature formula.
+  assert.equal(c.presence, 67);
+});
+
+test('sampled run — fractional presence weighted across cells', () => {
+  // Two cells: 2/3 trials hit (0.6667) and 1/3 trials hit (0.3333).
+  // mean = (0.6667 + 0.3333) / 2 = 0.5 → presence 50.
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', presence: { rate: 2 / 3, hits: 2, n: 3 }, canonicalCitations: [] },
+      { mention: 'no',  presence: { rate: 1 / 3, hits: 1, n: 3 }, canonicalCitations: [] },
+    ],
+  });
+  assert.equal(c.presence, 50);
+});
+
+test('mixed sampled + single-shot cells both contribute correctly', () => {
+  // single-shot 'yes' = 1.0; sampled 0.5; sampled 0.0 → mean = 1.5/3 = 0.5 → 50.
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', canonicalCitations: [] },                                   // boolean 1
+      { mention: 'yes', presence: { rate: 0.5, hits: 1, n: 2 }, canonicalCitations: [] }, // 0.5
+      { mention: 'no',  presence: { rate: 0,   hits: 0, n: 2 }, canonicalCitations: [] }, // 0
+    ],
+  });
+  assert.equal(c.presence, 50);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

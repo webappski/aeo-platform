@@ -106,5 +106,79 @@ test('competitor movement still tracked (independent of cellChanges fix)', () =>
   assert.equal(d.newCompetitors[0].name, 'CompB');
 });
 
+// ─── AP-MEASURE-SAMPLING-CI — distribution-aware change classification ───
+//
+// When BOTH runs sampled a cell, an overlapping-CI change is noise (dropped,
+// never a regression); a clean separation is signal (emitted, method
+// 'distribution'). When EITHER run is single-shot we cannot test a
+// distribution → fall back to today's flip, tagged 'point-estimate'
+// (back-compat with every legacy snapshot on disk).
+//
+// MUTATION-SANITY:
+//   - revert diff to "was !== now" only (drop the classifier) → the
+//     noise-overlap test below goes RED (3/5→2/5 would wrongly become a change).
+//   - read r.presence.hits without the hasPresence guard on a mixed pair →
+//     the mixed-case test throws (undefined.hits) instead of falling back.
+
+console.log('\ndiff — sampled distribution classification');
+
+const sampled = (mention, hits, n) => ({
+  query: 'q1', provider: 'openai', mention,
+  presence: { hits, n, rate: n ? hits / n : 0, ci: { level: 0.95 } },
+});
+
+test('overlapping CIs (3/5 → 2/5) → NOISE, no cellChange emitted', () => {
+  const a = { score: 60, results: [sampled('yes', 3, 5)] };
+  const b = { score: 40, results: [sampled('no', 2, 5)] };
+  const d = diff(a, b);
+  assert.equal(d.cellChanges.length, 0,
+    `3/5 vs 2/5 overlap → sampling noise, not a regression, got ${JSON.stringify(d.cellChanges)}`);
+});
+
+test('clean separation (5/5 → 0/5) → SIGNAL, cellChange method=distribution', () => {
+  const a = { score: 100, results: [sampled('yes', 5, 5)] };
+  const b = { score: 0,   results: [sampled('no', 0, 5)] };
+  const d = diff(a, b);
+  assert.equal(d.cellChanges.length, 1, 'disjoint CIs → real signal');
+  assert.equal(d.cellChanges[0].was, 'yes');
+  assert.equal(d.cellChanges[0].now, 'no');
+  assert.equal(d.cellChanges[0].method, 'distribution');
+});
+
+test('CAVEAT #4 mixed-case — one sampled, one single-shot → point-estimate fallback, no crash', () => {
+  // prev sampled (has presence), now single-shot (no presence). Must NOT read
+  // .hits on the absent side; falls back to boolean flip.
+  const a = { score: 100, results: [sampled('yes', 5, 5)] };
+  const b = { score: 0,   results: [{ query: 'q1', provider: 'openai', mention: 'no' }] };
+  let d;
+  assert.doesNotThrow(() => { d = diff(a, b); }, 'mixed presence/no-presence must not throw');
+  assert.equal(d.cellChanges.length, 1, 'yes → no flip still emitted on the single-shot side');
+  assert.equal(d.cellChanges[0].method, 'point-estimate', 'mixed pair falls back to point-estimate');
+});
+
+test('CAVEAT #4 reverse mixed-case — prev single-shot, now sampled → point-estimate', () => {
+  const a = { score: 0,   results: [{ query: 'q1', provider: 'openai', mention: 'no' }] };
+  const b = { score: 100, results: [sampled('yes', 5, 5)] };
+  let d;
+  assert.doesNotThrow(() => { d = diff(a, b); });
+  assert.equal(d.cellChanges.length, 1);
+  assert.equal(d.cellChanges[0].method, 'point-estimate');
+});
+
+test('single-shot → single-shot keeps point-estimate (legacy back-compat)', () => {
+  const a = { score: 0,   results: [{ query: 'q1', provider: 'openai', mention: 'no' }] };
+  const b = { score: 100, results: [{ query: 'q1', provider: 'openai', mention: 'yes' }] };
+  const d = diff(a, b);
+  assert.equal(d.cellChanges.length, 1);
+  assert.equal(d.cellChanges[0].method, 'point-estimate');
+});
+
+test('sampled-but-same-mention (4/5 → 5/5) → no change (was === now short-circuit)', () => {
+  const a = { score: 80, results: [sampled('yes', 4, 5)] };
+  const b = { score: 100, results: [sampled('yes', 5, 5)] };
+  const d = diff(a, b);
+  assert.equal(d.cellChanges.length, 0, 'same representative mention → no cellChange regardless of distribution');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -1,15 +1,20 @@
 /**
  * E2E test helpers — shared utilities for `node --test test/e2e/*.test.js`.
  *
- * Replay-mode call sites in bin/aeo-tracker.js (per auditor verdict):
- *   247-255  — header comment block documenting replay mode
- *   257-293  — _extractFromRaw (provider-shape unpacker)
- *   295-310  — _tryReplay (the actual read + JSON.parse, now hardened)
- *   341-349  — _resolveReplaySource (latest-snapshot resolver)
- *  1919-1928 — argv → replaySrcDate resolution
- *  2025-2027 — per-cell replay dispatch inside the run loop
- *  3784-3787 — parseArgs flag definition
- *  3860-3863 — argv → options mapping
+ * Replay-mode call sites in bin/aeo-tracker.js (refreshed 2026-06-17 for the
+ * AP-MEASURE-SAMPLING-CI trial-aware seam — line numbers approximate, grep to
+ * confirm):
+ *   ~300     — header comment block documenting replay mode
+ *   ~306     — _extractFromRaw (provider-shape unpacker)
+ *   ~344     — _tryReplay(qi, provider, srcDate, trialSuffix) — trial-aware read
+ *   ~396     — _resolveReplaySource (latest-snapshot resolver)
+ *  ~2416     — per-cell replay dispatch inside the run loop (passes trialSuffix)
+ *  ~4513     — parseArgs flag definition (replay / replay-from / samples)
+ *  ~4643     — argv → options mapping (replay / replayFrom / samples)
+ *
+ * Trial files: a sampled cell persists `q{n}…-{provider}-{model}.t{trial}.json`;
+ * single-shot keeps the suffix-free filename. seedReplayProject copies both
+ * verbatim (the rename rule only touches `-search-api.json`).
  *
  * When refactoring replay, sweep ALL of these sites.
  */

@@ -1,0 +1,13 @@
+{
+  "id": "chatcmpl-mixed-q2-no",
+  "model": "gpt-5",
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "The leading brands in this category for 2026 include CompetitorA, CompetitorB, and several niche players.",
+        "annotations": []
+      }
+    }
+  ]
+}
