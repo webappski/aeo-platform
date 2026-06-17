@@ -832,7 +832,7 @@ async function cmdInit(opts = {}) {
     const geoTags = detectGeography(existingDomain, site);
 
     const { research } = await import('../lib/init/research/research.js');
-    const { selectTopThree, formatSelection } = await import('../lib/init/research/select.js');
+    const { selectTopThree, formatSelection, compareCandidates } = await import('../lib/init/research/select.js');
     console.log(`${c.dim}  [brainstorm → filter → score → validate]${c.reset}\n`);
 
     let newQueries = [];
@@ -891,7 +891,7 @@ async function cmdInit(opts = {}) {
           const passing = allFiveQOnly.filter(PASS);
           commercialPassingCountQOnly = passing.length;
           if (commercialPassingCountQOnly >= 3) {
-            passing.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+            passing.sort(compareCandidates);
             selectResult.selected = passing.slice(0, 3).map(c => ({
               intent: c.intent || 'commercial',
               candidate: c,
@@ -927,6 +927,8 @@ async function cmdInit(opts = {}) {
             search_behavior: a.search_behavior,
             confidence: a.confidence,
           } : {}),
+          // AP-FIX-BRANDFIT: cache the fit label (see --auto path).
+          ...(a.brandFit ? { brandFit: a.brandFit } : {}),
           ...(a.topUp ? { topUp: true } : {}),
         }));
       }
@@ -1509,7 +1511,7 @@ async function cmdInit(opts = {}) {
               } else {
                 // Full research pipeline (v0.5 default)
                 const { research } = await import('../lib/init/research/research.js');
-                const { selectTopThree, formatSelection } = await import('../lib/init/research/select.js');
+                const { selectTopThree, formatSelection, compareCandidates } = await import('../lib/init/research/select.js');
 
                 if (i === 0) console.log(`${c.dim}  [full pipeline] brainstorm → filter → score → cross-model validate${c.reset}`);
                 const t0 = Date.now();
@@ -1638,8 +1640,9 @@ async function cmdInit(opts = {}) {
                     }
 
                     if (commercialPassingCount >= 3) {
-                      // Happy path — re-sort passing by score, take top-3.
-                      passing.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+                      // Happy path — re-sort passing by score (brand-fit as
+                      // tiebreaker via the shared comparator), take top-3.
+                      passing.sort(compareCandidates);
                       selectResult.selected = passing.slice(0, 3).map(c => ({
                         intent: c.intent || 'commercial',
                         candidate: c,
@@ -1701,6 +1704,9 @@ async function cmdInit(opts = {}) {
                     // 1.1.8: carry the verdict's valid flag — required by
                     // isVerifiedSubstitute for llm-blocker recovery.
                     ...(typeof a.valid === 'boolean' ? { valid: a.valid } : {}),
+                    // AP-FIX-BRANDFIT: cache the fit label so `run` keeps the
+                    // same ranking signal without reclassifying between runs.
+                    ...(a.brandFit ? { brandFit: a.brandFit } : {}),
                     ...(a.topUp ? { topUp: true } : {}),
                   }));
                 }
