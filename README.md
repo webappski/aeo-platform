@@ -244,6 +244,15 @@ Why this matters: in Webappski's 2026 weekly audits, brands with a Wikidata enti
 
 Sub-components with insufficient data (e.g. zero rank positions in a first run) are excluded; remaining weights re-normalise and the popover flags the re-norm. No phantom values. Sample size is published alongside the score (`n=K high-confidence cells`).
 
+## A 0% is a hypothesis, not a fact
+
+**A low or zero score is a question to investigate, not a conclusion to act on.** The tool measures exactly what it asked — and a score is only as trustworthy as the basket behind it. Before you treat a 0% as "AI does not know my brand", confirm two things the tool now surfaces for you in the report's *"How representative is this score?"* panel:
+
+1. **Did the raw answer mention your brand under every spelling?** A naive match misses `G-Core` when you tracked `Gcore`, or a brand cited only inside a source URL. The tool checks aliases and separators and shows the exact sentences engines produced (the *"What AI engines actually said"* section) — read them before trusting a 0. If you see the brand there but the score is 0, that is a matching gap to report, not invisibility.
+2. **Does the basket cover the field where your brand actually competes?** A CDN brand measured only on "VPC for healthcare" will score 0 — not because it is invisible, but because the basket asked about ground it does not play on. The report's coverage line ("your queries touch X of N product lines") and the small-sample warning are there to catch this. A headline driven by off-target or too-few queries is an artefact of the basket, not a verdict on the brand.
+
+This is the same discipline the tool applies to itself: a number without provenance is a guess. Re-run with a corrected basket (`aeo-platform init --queries-only --add-queries` preserves your trend history) before drawing conclusions. Only a 0% on a basket that covers your real product lines, checked against the raw answer text, is evidence of an AEO gap worth acting on.
+
 ## Comparison vs hosted AEO platforms
 
 | Tool | Pricing model | Open source | Raw data stays local | Paste-into-AI 30-mission plan |
@@ -485,7 +494,7 @@ Yes. `--json` flag for structured stdout, ANSI auto-disabled on non-TTY, `NO_COL
 
 ### My first run showed 0% — is the tool broken?
 
-No. New brands typically score 0–5% in the first 4 weeks. AI engines update when third-party sources (blog posts, directories, review sites) start mentioning your brand, not in real time. Typical trajectory: 0% in weeks 1–4, first mention between week 6 and 12. The value is in week-over-week deltas, not the absolute score on day 1. The Recommended actions section of every report tells you which third-party sources to pitch to move the needle.
+No. New brands typically score 0–5% in the first 4 weeks. AI engines update when third-party sources (blog posts, directories, review sites) start mentioning your brand, not in real time. Typical trajectory: 0% in weeks 1–4, first mention between week 6 and 12. The value is in week-over-week deltas, not the absolute score on day 1. The Recommended actions section of every report tells you which third-party sources to pitch to move the needle. Before acting on a 0%, treat it as a hypothesis and confirm the two checks in [A 0% is a hypothesis, not a fact](#a-0-is-a-hypothesis-not-a-fact) — a zero on an off-target basket is an artefact, not invisibility.
 
 ### Does it work with non-English sites?
 

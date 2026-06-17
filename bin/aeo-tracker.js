@@ -927,7 +927,9 @@ async function cmdInit(opts = {}) {
             search_behavior: a.search_behavior,
             confidence: a.confidence,
           } : {}),
-          // AP-FIX-BRANDFIT: cache the fit label (see --auto path).
+          // AP-FIX-BRANDFIT: cache the fit label so validator-recovery's pool
+          // sort (tryAutoRecover) can use it as the score-tie tiebreaker on a
+          // later run without reclassifying. See --auto path for the same cache.
           ...(a.brandFit ? { brandFit: a.brandFit } : {}),
           ...(a.topUp ? { topUp: true } : {}),
         }));
@@ -1704,8 +1706,10 @@ async function cmdInit(opts = {}) {
                     // 1.1.8: carry the verdict's valid flag — required by
                     // isVerifiedSubstitute for llm-blocker recovery.
                     ...(typeof a.valid === 'boolean' ? { valid: a.valid } : {}),
-                    // AP-FIX-BRANDFIT: cache the fit label so `run` keeps the
-                    // same ranking signal without reclassifying between runs.
+                    // AP-FIX-BRANDFIT: cache the fit label so validator-recovery
+                    // (tryAutoRecover) uses it as the score-tie tiebreaker when
+                    // auto-swapping a blocked query — same ranking signal as
+                    // select.js, no reclassification between runs.
                     ...(a.brandFit ? { brandFit: a.brandFit } : {}),
                     ...(a.topUp ? { topUp: true } : {}),
                   }));
@@ -1950,9 +1954,11 @@ async function cmdRun(options = {}) {
 
   // v0.4 — normalise queries to support both string and {q, tag} forms.
   // The `texts` array is what the rest of the run loop iterates over (no
-  // structural change downstream); `tags` are looked up by index when results
-  // are written.
-  const { texts: queries, tags: queryTags, hasTags } = normalizeQueries(rawQueries);
+  // structural change downstream); `tags` and `brandFits` are looked up by
+  // index when results are written. `brandFits` carries the persisted
+  // core/adjacent/aspirational label (AP-FIX-BRANDFIT) into the report so it
+  // can segment Score without re-running research.
+  const { texts: queries, tags: queryTags, brandFits: queryBrandFits, hasTags } = normalizeQueries(rawQueries);
   if (hasTags) {
     console.log(`${c.dim}Funnel/intent tags: ${[...new Set(queryTags.filter(Boolean))].join(', ')}${c.reset}`);
   }
@@ -2513,6 +2519,7 @@ async function cmdRun(options = {}) {
                 ...(storeSources ? { extractionSources: extraction.sources } : {}),
                 ...(sentiment ? { sentiment: { label: sentiment.label, confidence: sentiment.confidence, rationale: sentiment.rationale } } : {}),
                 ...(queryTags[qi] ? { tag: queryTags[qi] } : {}),
+                ...(queryBrandFits[qi] ? { brandFit: queryBrandFits[qi] } : {}),
                 ...(region ? { region: region.code, regionLabel: region.label } : {}),
                 ...(adSignal.hasAdSignal ? { adMarkers: adSignal.adMarkers, adNetworkCitations: adSignal.adNetworkCitations } : {}),
                 responseQuality,
@@ -2662,6 +2669,23 @@ async function cmdRun(options = {}) {
 
   console.log(`\n${c.bold}  Score: ${score}%${c.reset} (${mentions}/${total} checks returned a mention)`);
   if (errors > 0) console.log(`  ${c.yellow}${errors} checks failed (API errors)${c.reset}`);
+
+  // AP-QBAR-ZERO-IS-HYPOTHESIS — when the headline is 0%/very-low AND the basket
+  // is small, the score is more likely a basket artefact than a verdict. One
+  // honest line pointing at the README + the report's representativeness panel;
+  // NOT printed in --json mode (programmatic consumers) and NOT on the happy path
+  // (a decent score, or a wide basket, prints nothing extra). Coverage isn't
+  // computed at run time (no own-domain fetch here) — the report panel adds the
+  // «X of N product lines» check; this WARN keys on the always-available small-N
+  // signal. Threshold mirrors SMALL_N_CELL_THRESHOLD in lib/report/sections.js
+  // (kept local so the run path doesn't eagerly import the heavy report module).
+  const SMALL_BASKET_CELLS = 9;
+  if (!silent && total > 0 && total <= SMALL_BASKET_CELLS && score < 25) {
+    console.log(
+      `  ${c.yellow}A ${score}% on only ${total} check${total === 1 ? '' : 's'} can be an artefact of the basket, not a verdict. ` +
+      `Before acting, confirm the raw answers (see the report) and that your queries cover the field your brand competes in — see "A 0% is a hypothesis, not a fact" in the README.${c.reset}`
+    );
+  }
 
   // Aggregate per-cell LLM-extracted brand lists. Both models agreed → r.competitors
   // (strong). Only one agreed → r.competitorsUnverified (weaker, dashed badge).
@@ -3747,7 +3771,7 @@ async function cmdRunManual(argv) {
   const config = await readConfigOrExit();
   const { brand, domain, queries: rawQueriesManual } = config;
   const brandAliasesManual = Array.isArray(config.brandAliases) ? config.brandAliases : [];
-  const { texts: queries, tags: queryTagsManual } = normalizeQueries(rawQueriesManual);
+  const { texts: queries, tags: queryTagsManual, brandFits: queryBrandFitsManual } = normalizeQueries(rawQueriesManual);
   const providerCfg = (config.providers || DEFAULT_CONFIG.providers)[providerName] || PROVIDERS[providerName];
   const providerLabel = PROVIDERS[providerName].label;
   const modelUsed = providerCfg.model || 'manual';
@@ -3843,6 +3867,7 @@ async function cmdRunManual(argv) {
       ...(storeManualSources ? { extractionSources: extractionManual.sources } : {}),
       ...(sentimentManual ? { sentiment: { label: sentimentManual.label, confidence: sentimentManual.confidence, rationale: sentimentManual.rationale } } : {}),
       ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
+      ...(queryBrandFitsManual[qi] ? { brandFit: queryBrandFitsManual[qi] } : {}),
       responseQuality,
       hasBrandInCitations: citations.some(u => u.toLowerCase().includes(domain.toLowerCase())),
       elapsedMs: null,

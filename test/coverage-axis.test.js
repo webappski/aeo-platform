@@ -20,8 +20,16 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { deriveProductLines } from '../lib/init/research/product-lines.js';
 import { scoreCandidate } from '../lib/init/research/score.js';
+import { tokenize } from '../lib/init/research/brand-fit.js';
 import { compareCandidates } from '../lib/init/research/select.js';
 import { buildBrainstormPrompt } from '../lib/init/research/brainstorm.js';
+import {
+  coverageOfProductLines,
+  segmentByBrandFit,
+  productLinesFromPageSignals,
+  sectionScoreRepresentativeness,
+  SMALL_N_CELL_THRESHOLD,
+} from '../lib/report/sections.js';
 
 // ── product-line derivation ─────────────────────────────────────────────────
 
@@ -159,6 +167,144 @@ test('rule B falls back to offering-diversity guidance when product lines cannot
   });
   assert.match(prompt, /Product-line coverage/);
   assert.match(prompt, /distinct offerings/);
+});
+
+// ── score.js tokenizer reuse (minor #2) ─────────────────────────────────────
+
+test('score overlap uses token equality, not substring — "cloud" does NOT match "clouds"', () => {
+  // MUTATION SANITY: the old naive `lower.includes(token)` matched the line
+  // "cloud" inside the query word "clouds". Token equality must NOT.
+  const r = scoreCandidate(
+    { text: 'best clouds review portal', intent: 'commercial' },
+    { productLines: ['cloud'] },
+  );
+  assert.ok(!r.scoreReasons.some(x => x.includes('product-line match')),
+    'substring-only collision (clouds⊃cloud) must not earn the product-line bonus');
+});
+
+test('score overlap still fires on a genuine token hit (CDN)', () => {
+  const r = scoreCandidate(
+    { text: 'best CDN providers 2026', intent: 'commercial' },
+    { productLines: ['CDN', 'GPU Cloud'] },
+  );
+  assert.ok(r.scoreReasons.some(x => x.includes('+10 product-line match')));
+});
+
+test('score.js and brand-fit share one tokenizer (stopwords + 3-char floor)', () => {
+  // The shared tokenizer drops stopwords and <3-char tokens — proves score.js
+  // is using brand-fit's tokenize, not a private regex.
+  assert.deepEqual(tokenize('best CDN for the 2026'), ['cdn']);
+});
+
+// ── AP-FIX-SCORE-SEGMENT: coverage measure ───────────────────────────────────
+
+test('coverageOfProductLines counts lines the basket touches (token overlap)', () => {
+  const { covered, total } = coverageOfProductLines(
+    ['CDN', 'DDoS Protection', 'GPU Cloud', 'Object Storage'],
+    ['best CDN for video', 'cheap object storage'],
+  );
+  assert.equal(total, 4);
+  assert.equal(covered, 2, 'CDN + Object Storage are touched; DDoS + GPU are not');
+});
+
+test('coverageOfProductLines: no lines → {covered:0,total:0} (caller omits the line)', () => {
+  assert.deepEqual(coverageOfProductLines([], ['anything']), { covered: 0, total: 0 });
+});
+
+test('coverageOfProductLines: zero overlap is honestly zero, not rounded up', () => {
+  const { covered, total } = coverageOfProductLines(
+    ['CDN', 'GPU Cloud'],
+    ['best VPC for healthcare'],
+  );
+  assert.equal(covered, 0);
+  assert.equal(total, 2);
+});
+
+// ── AP-FIX-SCORE-SEGMENT: brand-fit segmentation ─────────────────────────────
+
+test('segmentByBrandFit aggregates hit-rate per fit bucket', () => {
+  const seg = segmentByBrandFit([
+    { brandFit: 'core', mention: 'yes' },
+    { brandFit: 'core', mention: 'no' },
+    { brandFit: 'aspirational', mention: 'no' },
+    { brandFit: 'aspirational', mention: 'no' },
+    { brandFit: 'core', mention: 'src' },
+  ]);
+  assert.deepEqual(seg.core, { total: 3, mentions: 2, rate: 67 });
+  assert.deepEqual(seg.aspirational, { total: 2, mentions: 0, rate: 0 });
+  assert.equal(seg.adjacent, undefined, 'absent buckets are omitted, not zero-filled');
+});
+
+test('segmentByBrandFit: no brandFit labels → {} (block skipped, never fabricated)', () => {
+  assert.deepEqual(segmentByBrandFit([{ mention: 'yes' }, { mention: 'no' }]), {});
+});
+
+test('segmentByBrandFit excludes error cells from the denominator', () => {
+  const seg = segmentByBrandFit([
+    { brandFit: 'core', mention: 'yes' },
+    { brandFit: 'core', mention: 'error' },
+  ]);
+  assert.deepEqual(seg.core, { total: 1, mentions: 1, rate: 100 });
+});
+
+// ── AP-FIX-SCORE-SEGMENT: pageSignals adapter ────────────────────────────────
+
+test('productLinesFromPageSignals adapts {h2:{samples}} → product lines', () => {
+  const r = productLinesFromPageSignals({ h2: { samples: ['CDN', 'DDoS Protection', 'GPU Cloud'] } });
+  assert.ok(r && r.lines.length === 3);
+});
+
+test('productLinesFromPageSignals: no headings → null (coverage line omitted)', () => {
+  assert.equal(productLinesFromPageSignals({ h2: { samples: [] }, h1: { samples: [] } }), null);
+  assert.equal(productLinesFromPageSignals(null), null);
+});
+
+test('productLinesFromPageSignals: slogan-only headings degrade to null', () => {
+  const r = productLinesFromPageSignals({ h2: { samples: ['Build without limits', 'Get started today'] } });
+  assert.equal(r, null, 'degraded derivation must not produce a junk coverage line');
+});
+
+// ── AP-FIX-SCORE-SEGMENT: section assembly ───────────────────────────────────
+
+const cellGrid = (n, fit) => Array.from({ length: n }, (_, i) => ({
+  query: `Q${i + 1}`, queryText: `q${i + 1}`, mention: 'no', ...(fit ? { brandFit: fit } : {}),
+}));
+
+test('section fires a small-N warning at/below the threshold', () => {
+  const md = sectionScoreRepresentativeness([{ domain: 'x.com', results: cellGrid(SMALL_N_CELL_THRESHOLD) }]);
+  assert.match(md, /Small sample/);
+  assert.match(md, /How representative is this score\?/);
+});
+
+test('section suppresses the small-N warning above the threshold (no other blocks)', () => {
+  // A wide basket, no pageSignals, no brandFit → all three blocks absent → ''.
+  const md = sectionScoreRepresentativeness([{ domain: 'x.com', results: cellGrid(SMALL_N_CELL_THRESHOLD + 1) }]);
+  assert.equal(md, '', 'no warning, no coverage data, no fit labels → empty section');
+});
+
+test('section renders the coverage line from pageSignals', () => {
+  const md = sectionScoreRepresentativeness([{
+    domain: 'gcore.com',
+    pageSignals: { h2: { samples: ['CDN', 'DDoS Protection', 'GPU Cloud'] } },
+    results: [
+      { query: 'Q1', queryText: 'best CDN for video', mention: 'no' },
+      { query: 'Q2', queryText: 'cheap object storage', mention: 'no' },
+    ],
+  }]);
+  assert.match(md, /Basket coverage/);
+  assert.match(md, /1 of 3/, 'only CDN is touched by these queries');
+});
+
+test('section renders the fit segmentation only when results carry brandFit', () => {
+  const withFit = sectionScoreRepresentativeness([{ domain: 'x.com', results: cellGrid(12, 'core') }]);
+  assert.match(withFit, /Score by brand-capability fit/);
+  const withoutFit = sectionScoreRepresentativeness([{ domain: 'x.com', results: cellGrid(12) }]);
+  assert.doesNotMatch(withoutFit, /Score by brand-capability fit/);
+});
+
+test('section returns empty string on an all-error / empty run (no fabricated context)', () => {
+  assert.equal(sectionScoreRepresentativeness([{ domain: 'x.com', results: [] }]), '');
+  assert.equal(sectionScoreRepresentativeness([{ domain: 'x.com', results: [{ mention: 'error' }] }]), '');
 });
 
 console.log('coverage-axis.test.js — all assertions passed');

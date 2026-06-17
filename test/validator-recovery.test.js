@@ -141,6 +141,35 @@ test('tryAutoRecover: no intent data → falls back to highest-score any', () =>
   assert.equal(r.substitutions[0].replacement, 'high');
 });
 
+test('tryAutoRecover: brand-fit breaks a score tie (core beats aspirational) — minor #1', () => {
+  // Two equal-score alternatives, same intent, only brandFit differs. The
+  // persisted candidatePool[].brandFit is now CONSUMED at recovery time as the
+  // score-tie tiebreaker (was a dead cache before). Core must be picked.
+  const blockers = [{ query: 'q1', search_behavior: 'mixed' }];
+  const queries = [{ text: 'q1', intent: 'commercial' }, { text: 'q2', intent: 'vertical' }, { text: 'q3', intent: 'problem' }];
+  const pool = [
+    { text: 'aspirational alt', intent: 'comparison', score: 80, brandFit: 'aspirational' },
+    { text: 'core alt',         intent: 'comparison', score: 80, brandFit: 'core' },
+  ];
+  const r = tryAutoRecover({ blockers, queries, candidatePool: pool });
+  assert.equal(r.substitutions[0].replacement, 'core alt',
+    'on a score tie the more brand-relevant (core) alternative wins');
+});
+
+test('tryAutoRecover: brand-fit NEVER overrides a higher score — minor #1 invariant', () => {
+  // MUTATION SANITY: score is still primary. A higher-scored aspirational query
+  // must beat a lower-scored core one — the tiebreaker is ONLY for ties.
+  const blockers = [{ query: 'q1', search_behavior: 'mixed' }];
+  const queries = [{ text: 'q1', intent: 'commercial' }, { text: 'q2', intent: 'vertical' }, { text: 'q3', intent: 'problem' }];
+  const pool = [
+    { text: 'higher aspirational', intent: 'comparison', score: 92, brandFit: 'aspirational' },
+    { text: 'lower core',          intent: 'comparison', score: 70, brandFit: 'core' },
+  ];
+  const r = tryAutoRecover({ blockers, queries, candidatePool: pool });
+  assert.equal(r.substitutions[0].replacement, 'higher aspirational',
+    'higher score wins regardless of brand-fit');
+});
+
 // ─── formatRecoveryPanel ───
 
 test('formatRecoveryPanel: shows pre-filled --keywords from pool', () => {

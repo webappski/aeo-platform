@@ -67,5 +67,33 @@ test('whitespace in tag is trimmed', () => {
   assert.equal(r.tags[0], 'bofu');
 });
 
+// ── brandFit axis (AP-FIX-SCORE-SEGMENT wiring) ──────────────────────────────
+
+test('brandFits is a parallel array, null for untagged/string queries', () => {
+  const r = normalizeQueries(['plain', { q: 'tagged', tag: 't' }]);
+  assert.deepEqual(r.brandFits, [null, null],
+    'string and tag-only objects carry no brandFit');
+});
+
+test('brandFit is carried, lower-cased, parallel to texts', () => {
+  const r = normalizeQueries([
+    { q: 'best CDN', brandFit: 'CORE' },
+    { q: 'edge AI', tag: 'tofu', brandFit: 'aspirational' },
+    'untagged',
+  ]);
+  assert.deepEqual(r.brandFits, ['core', 'aspirational', null]);
+  // brandFit must NOT leak into the funnel-tag axis (separate dimensions).
+  assert.deepEqual(r.tags, [null, 'tofu', null]);
+});
+
+test('empty / whitespace brandFit treated as null', () => {
+  const r = normalizeQueries([{ q: 'x', brandFit: '' }, { q: 'y', brandFit: '   ' }]);
+  assert.deepEqual(r.brandFits, [null, null]);
+});
+
+test('non-array input → empty brandFits', () => {
+  assert.deepEqual(normalizeQueries(null).brandFits, []);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
