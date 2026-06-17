@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { computeComponents, computeUVI, computeUVIBreakdown, computeDiscoverability, perCellPresence } from '../lib/report/visibility-index.js';
+import { computeComponents, computeUVI, computeUVIBreakdown, computeDiscoverability, perCellPresence, usableProseRank } from '../lib/report/visibility-index.js';
 
 let passed = 0;
 let failed = 0;
@@ -545,6 +545,95 @@ test('mixed sampled + single-shot cells both contribute correctly', () => {
     ],
   });
   assert.equal(c.presence, 50);
+});
+
+// ─── AP-PROSE-RANK — prose ordinals fold into the rank axis (down-weighted) ───
+//
+// rank-strength(pos) = 100 - (pos-1)*15  → pos1=100, pos2=85, pos3=70
+// prose contribution = rank-strength × PROSE_RANK_DISCOUNT (0.7)
+//   prose#1 = 70, prose#2 = 59.5
+console.log('\nAP-PROSE-RANK rank axis');
+
+test('R39: records with NO proseRank field → rank byte-identical to pre-feature', () => {
+  // One list-rank cell at position 2 → rank 85, no prose anywhere.
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [{ mention: 'yes', position: 2, canonicalCitations: [] }],
+  });
+  assert.equal(c.rank, 85);
+  assert.equal(c.rankSample, 1);
+  assert.equal(c.proseRankSample, 0);
+});
+
+test('prose-rank fills the axis where list-rank was null', () => {
+  // No list positions at all; one prose mention ranked #1 (med confidence).
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', position: null, proseRank: { rank: 1, confidence: 'med' }, canonicalCitations: [] },
+    ],
+  });
+  assert.equal(c.rank, 70);          // 100 * 0.7
+  assert.equal(c.rankSample, 1);
+  assert.equal(c.proseRankSample, 1);
+});
+
+test('list-rank and prose-rank average together; list cell NOT double-counted', () => {
+  // list #1 (=100) + prose #2 (=85*0.7=59.5) → mean = 79.75 → round 80, n=2
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', position: 1, canonicalCitations: [] },
+      { mention: 'yes', position: null, proseRank: { rank: 2, confidence: 'med' }, canonicalCitations: [] },
+    ],
+  });
+  assert.equal(c.rank, 80);
+  assert.equal(c.rankSample, 2);
+  assert.equal(c.proseRankSample, 1);
+});
+
+test('a cell with BOTH a list position and a (stray) proseRank counts ONCE as list', () => {
+  // list #1 = 100. The proseRank on the SAME cell must be ignored (list wins).
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', position: 1, proseRank: { rank: 5, confidence: 'med' }, canonicalCitations: [] },
+    ],
+  });
+  assert.equal(c.rank, 100);         // not dragged down by the stray prose #5
+  assert.equal(c.rankSample, 1);
+  assert.equal(c.proseRankSample, 0);
+});
+
+test('prose-rank with null rank or sub-floor confidence does NOT contribute', () => {
+  const c = computeComponents({
+    domain: 'a.com',
+    results: [
+      { mention: 'yes', position: null, proseRank: { rank: null, confidence: 'none' }, canonicalCitations: [] },
+      { mention: 'yes', position: null, proseRank: { rank: 2, confidence: 'failed' }, canonicalCitations: [] },
+    ],
+  });
+  assert.equal(c.rank, null);        // nothing usable → axis absent, not fabricated
+  assert.equal(c.rankSample, 0);
+  assert.equal(c.proseRankSample, 0);
+});
+
+test('prose discount makes a prose #1 weaker than a list #1', () => {
+  const listC = computeComponents({ domain: 'a.com', results: [{ mention: 'yes', position: 1, canonicalCitations: [] }] });
+  const proseC = computeComponents({ domain: 'a.com', results: [{ mention: 'yes', position: null, proseRank: { rank: 1, confidence: 'med' }, canonicalCitations: [] }] });
+  assert.ok(proseC.rank < listC.rank, `prose #1 (${proseC.rank}) must be < list #1 (${listC.rank})`);
+});
+
+console.log('\nusableProseRank');
+
+test('usableProseRank gate: rank≥1 + ok confidence', () => {
+  assert.equal(usableProseRank({ rank: 1, confidence: 'med' }), true);
+  assert.equal(usableProseRank({ rank: 3, confidence: 'low' }), true);
+  assert.equal(usableProseRank({ rank: 2, confidence: 'single-model' }), true);
+  assert.equal(usableProseRank({ rank: null, confidence: 'med' }), false);
+  assert.equal(usableProseRank({ rank: 2, confidence: 'none' }), false);
+  assert.equal(usableProseRank({ rank: 2, confidence: 'failed' }), false);
+  assert.equal(usableProseRank(undefined), false);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

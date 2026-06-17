@@ -156,5 +156,53 @@ test('resolveSamples valid values pass through; over-cap clamps', () => {
   assert.equal(resolveSamples(String(MAX_SAMPLES)), MAX_SAMPLES);
 });
 
+// ─── AP-PROSE-RANK — representative prose ordinal across trials ───
+//
+// MUTATION-SANITY:
+//   - average instead of lower-median rank → [1,3] median test (expects 1) RED.
+//   - pick STRONGEST confidence instead of weakest → mixed-confidence test RED.
+//   - emit proseRank when the cell has a list position → list-wins test RED.
+console.log('\naggregateCellTrials — prose-rank');
+
+test('representative prose rank = lower-median over prose trials, weakest confidence', () => {
+  // all prose mentions (no list position) ranked [1, 3, 3] → lower-median = 3?
+  // lower-median of [1,3,3] sorted = index floor((3-1)/2)=1 → value 3.
+  const agg = aggregateCellTrials([
+    { mention: 'yes', position: null, proseRank: { rank: 1, confidence: 'med' } },
+    { mention: 'yes', position: null, proseRank: { rank: 3, confidence: 'low' } },
+    { mention: 'yes', position: null, proseRank: { rank: 3, confidence: 'med' } },
+  ]);
+  assert.equal(agg.position, null);          // no list rank on any trial
+  assert.ok(agg.proseRank, 'expected a representative proseRank');
+  assert.equal(agg.proseRank.rank, 3);
+  assert.equal(agg.proseRank.confidence, 'low'); // weakest among contributors
+});
+
+test('two prose ranks [1,3] → lower-median 1', () => {
+  const agg = aggregateCellTrials([
+    { mention: 'yes', position: null, proseRank: { rank: 1, confidence: 'med' } },
+    { mention: 'yes', position: null, proseRank: { rank: 3, confidence: 'med' } },
+  ]);
+  assert.equal(agg.proseRank.rank, 1);
+});
+
+test('no prose rank on any trial → proseRank null', () => {
+  const agg = aggregateCellTrials([
+    { mention: 'yes', position: null },
+    { mention: 'yes', position: null },
+  ]);
+  assert.equal(agg.proseRank, null);
+});
+
+test('list-rank cell → proseRank suppressed (list wins, no double signal)', () => {
+  // representative mention 'yes' with a numeric position → list path, prose ignored
+  const agg = aggregateCellTrials([
+    { mention: 'yes', position: 2, proseRank: { rank: 5, confidence: 'med' } },
+    { mention: 'yes', position: 2, proseRank: { rank: 5, confidence: 'med' } },
+  ]);
+  assert.equal(agg.position, 2);
+  assert.equal(agg.proseRank, null);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

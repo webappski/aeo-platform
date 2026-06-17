@@ -34,9 +34,10 @@ import { runTwoStageValidation, formatValidationResult, hasBlockers } from '../l
 import { classifyResponseQuality } from '../lib/report/response-quality.js';
 import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
+import { extractProseRankWithTwoModels } from '../lib/report/prose-rank.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
 import { normalizeQueries } from '../lib/config/queries-normalize.js';
-import { parseGeoFlag, wrapQueryForRegion, listRegionCodes } from '../lib/report/geo-context.js';
+import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
 import { computeTopDomains } from '../lib/report/top-domains.js';
 import { aggregateCanonicalSources } from '../lib/report/canonical-url.js';
 import { isOwnDomain } from '../lib/report/own-domain.js';
@@ -1971,18 +1972,40 @@ async function cmdRun(options = {}) {
     console.log(`${c.dim}Funnel/intent tags: ${[...new Set(queryTags.filter(Boolean))].join(', ')}${c.reset}`);
   }
 
-  // v0.4 — parse --geo flag here; the cost-warn line is emitted *after*
-  // provider discovery so we can include activeProviders.length in the message
-  // (referencing it before the const declaration would TDZ-crash).
+  // v0.4 — parse --geo / --regions flag here; the cost-warn line is emitted
+  // *after* provider discovery so we can include activeProviders.length in the
+  // message (referencing it before the const declaration would TDZ-crash).
+  // `--regions` is an operator-facing alias for `--geo` (AP-REGION-LANG-MATRIX);
+  // both feed the same parser. --geo wins if both are passed (back-compat).
   let regionsToRun = [null];
   let parsedGeo = null;
-  if (options.geo) {
-    parsedGeo = parseGeoFlag(options.geo);
+  const geoRaw = options.geo || options.regions;
+  if (geoRaw) {
+    parsedGeo = parseGeoFlag(geoRaw);
     if (parsedGeo.invalid && parsedGeo.invalid.length > 0) {
-      console.warn(`${c.yellow}  Unknown geo codes ignored: ${parsedGeo.invalid.join(', ')} (valid: ${listRegionCodes()})${c.reset}`);
+      console.warn(`${c.yellow}  Unknown region codes ignored: ${parsedGeo.invalid.join(', ')} (valid: ${listRegionCodes()})${c.reset}`);
     }
     if (parsedGeo.regions && parsedGeo.regions.length > 0) {
       regionsToRun = parsedGeo.regions;
+    }
+  }
+
+  // AP-REGION-LANG-MATRIX — optional --lang axis. Asks each region's query IN
+  // the locale language (localised preamble) instead of the default English
+  // market-instruction, so the model reaches locale-native sources (the PL/DACH
+  // beachhead signal). --lang is a PARAMETER of the region axis, not a new
+  // multiplication axis: each region carries ONE language, so cell count stays
+  // (regions × samples) — no combinatorial blow-up. Ignored with no --regions.
+  let langsToRun = [];
+  if (options.lang) {
+    const parsedLang = parseLangFlag(options.lang);
+    if (parsedLang.invalid && parsedLang.invalid.length > 0) {
+      console.warn(`${c.yellow}  Unknown lang codes ignored (degrade to English): ${parsedLang.invalid.join(', ')} (valid: ${listLangCodes()})${c.reset}`);
+    }
+    langsToRun = parsedLang.langs;
+    if (langsToRun.length > 0 && regionsToRun.length === 1 && regionsToRun[0] === null) {
+      console.warn(`${c.yellow}  --lang has no effect without --regions (it localises the per-region preamble). Ignored.${c.reset}`);
+      langsToRun = [];
     }
   }
 
@@ -2111,7 +2134,12 @@ async function cmdRun(options = {}) {
   if (parsedGeo && parsedGeo.regions && parsedGeo.regions.length > 0) {
     const codes = regionsToRun.map(r => r.code).join(', ');
     const multiplier = regionsToRun.length;
-    console.log(`${c.yellow}  --geo=${codes} → ${multiplier}× cost (${multiplier} regions × ${queries.length} queries × ${activeProviders.length} providers)${c.reset}`);
+    console.log(`${c.yellow}  --regions=${codes} → ${multiplier}× cost (${multiplier} regions × ${queries.length} queries × ${activeProviders.length} providers)${c.reset}`);
+    if (langsToRun.length > 0) {
+      // Honesty: name exactly what --lang changes (soft geo, not a real geo-signal).
+      const perRegion = regionsToRun.map(r => `${r.code}→${resolveRegionLang(r, langsToRun)}`).join(', ');
+      console.log(`${c.dim}  --lang=${langsToRun.join(',')} → each region's query asked in: ${perRegion}. This localises the prompt language only — provider APIs expose no per-request geo/IP signal, so this is "ask as a local would phrase it", not a geolocated request.${c.reset}`);
+    }
   }
 
   // v0.3 — depth selection: web (default) | full | auto.
@@ -2320,7 +2348,10 @@ async function cmdRun(options = {}) {
   for (let qi = 0; qi < queries.length; qi++) {
     const baseQuery = queries[qi];
     for (const region of regionsToRun) {
-      const query = wrapQueryForRegion(baseQuery, region);
+      // AP-REGION-LANG-MATRIX — resolve the language for THIS region from
+      // --lang (empty → 'en' → byte-identical English preamble, R39).
+      const regionLang = resolveRegionLang(region, langsToRun);
+      const query = wrapQueryForRegion(baseQuery, region, regionLang);
       for (const provider of activeProviders) {
         for (const mode of modesToRun) {
           // training-data pass is skipped for providers that don't support it
@@ -2478,7 +2509,7 @@ async function cmdRun(options = {}) {
               // downstream code already handles (verified/unverified arrays both
               // empty → `storeSources` is false → no source-list bloat;
               // sentiment=null is already guarded everywhere it's read).
-              let extraction, sentiment;
+              let extraction, sentiment, proseRank;
               if (replaySrcDate) {
                 extraction = {
                   verified: [],
@@ -2490,6 +2521,7 @@ async function cmdRun(options = {}) {
                   costInfo: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
                 };
                 sentiment = null;
+                proseRank = null;
               } else {
                 const sentimentTask = (mention === 'yes' || mention === 'src')
                   ? classifySentimentWithTwoModels({
@@ -2498,7 +2530,19 @@ async function cmdRun(options = {}) {
                       secondary: extractionProviders.secondary,
                     })
                   : Promise.resolve(null);
-                [extraction, sentiment] = await Promise.all([
+                // AP-PROSE-RANK — fire ONLY when the brand is named in the body
+                // (mention 'yes') but list-rank came back null (a prose answer).
+                // List answers already have an exact rank; non-mentions have no
+                // rank to find. This keeps the extra classify-tier call off the
+                // common paths (~$0.0008 only on prose-mention cells).
+                const proseRankTask = (mention === 'yes' && position === null)
+                  ? extractProseRankWithTwoModels({
+                      text, brand, domain,
+                      primary: extractionProviders.primary,
+                      secondary: extractionProviders.secondary,
+                    })
+                  : Promise.resolve(null);
+                [extraction, sentiment, proseRank] = await Promise.all([
                   extractWithTwoModels({
                     text, brand, domain,
                     category: config.category || '',
@@ -2506,6 +2550,7 @@ async function cmdRun(options = {}) {
                     secondary: extractionProviders.secondary,
                   }),
                   sentimentTask,
+                  proseRankTask,
                 ]);
               }
               const competitors = extraction.verified;
@@ -2543,6 +2588,11 @@ async function cmdRun(options = {}) {
                 extractionCostTotal.outputTokens += sentiment.costInfo.outputTokens || 0;
                 extractionCostTotal.costUsd      += sentiment.costInfo.costUsd      || 0;
               }
+              if (proseRank && proseRank.costInfo) {
+                extractionCostTotal.inputTokens  += proseRank.costInfo.inputTokens  || 0;
+                extractionCostTotal.outputTokens += proseRank.costInfo.outputTokens || 0;
+                extractionCostTotal.costUsd      += proseRank.costInfo.costUsd      || 0;
+              }
 
               // Store per-model extractionSources ONLY when the two models disagreed
               // (something landed in the unverified tier). On unanimous agreement both
@@ -2566,9 +2616,19 @@ async function cmdRun(options = {}) {
                 competitorsUnverified,
                 ...(storeSources ? { extractionSources: extraction.sources } : {}),
                 ...(sentiment ? { sentiment: { label: sentiment.label, confidence: sentiment.confidence, rationale: sentiment.rationale } } : {}),
+                // AP-PROSE-RANK — persist only when the prose pass produced a
+                // usable ordinal (rank present). A null-rank verdict carries no
+                // axis signal, so omitting it keeps the year-over-year JSON lean
+                // and a single-shot run without the pass has no field at all.
+                ...(proseRank && typeof proseRank.rank === 'number' && proseRank.rank > 0
+                  ? { proseRank: { rank: proseRank.rank, confidence: proseRank.confidence, rationale: proseRank.rationale } }
+                  : {}),
                 ...(queryTags[qi] ? { tag: queryTags[qi] } : {}),
                 ...(queryBrandFits[qi] ? { brandFit: queryBrandFits[qi] } : {}),
                 ...(region ? { region: region.code, regionLabel: region.label } : {}),
+                // Only persist lang when it changed the prompt (non-English) —
+                // absence means the default English preamble (keeps lean JSON).
+                ...(region && regionLang && regionLang !== 'en' ? { lang: regionLang } : {}),
                 ...(adSignal.hasAdSignal ? { adMarkers: adSignal.adMarkers, adNetworkCitations: adSignal.adNetworkCitations } : {}),
                 responseQuality,
                 // Registrable-domain (eTLD+1) match — not raw substring — so a
@@ -2724,19 +2784,28 @@ async function cmdRun(options = {}) {
         citationCount: t.citationCount ?? 0,
         hasBrandInCitations: t.hasBrandInCitations === true,
         elapsedMs: t.elapsedMs,
+        // AP-PROSE-RANK — keep the per-trial prose ordinal so the collapsed
+        // record's representative proseRank is aggregated, not just trial-1's.
+        ...(t.proseRank ? { proseRank: t.proseRank } : {}),
         ...(t.error ? { error: t.error } : {}),
       }));
       // Build the representative record from the base cell record, then OVERRIDE
       // the aggregated fields. `raw` is stripped at summary-write time
       // (results.map(({raw,...r})=>r)); these records have no `raw` anyway.
+      // AP-PROSE-RANK — base spread may carry trial-1's proseRank; the aggregate
+      // is authoritative. Drop the field entirely when the aggregate has none
+      // (e.g. the cell resolved to a list-rank, or no trial produced a prose
+      // ordinal) so a list-rank cell never also carries a stale prose rank.
+      const { proseRank: _baseProseRank, ...baseRest } = base;
       results.push({
-        ...base,
+        ...baseRest,
         mention: agg.mention,
         position: agg.position,
         citationCount: agg.citationCount,
         canonicalCitations: agg.canonicalCitations,
         hasBrandInCitations: agg.hasBrandInCitations,
         presence: agg.presence,
+        ...(agg.proseRank ? { proseRank: agg.proseRank } : {}),
         trials: trialRecords,
       });
     }
@@ -3960,7 +4029,15 @@ async function cmdRunManual(argv) {
           secondary: extractionProvidersManual.secondary,
         })
       : Promise.resolve(null);
-    const [extractionManual, sentimentManual] = await Promise.all([
+    // AP-PROSE-RANK — same gate as the live path: prose body-mention only.
+    const proseRankTaskManual = (mention === 'yes' && position === null)
+      ? extractProseRankWithTwoModels({
+          text, brand, domain,
+          primary:   extractionProvidersManual.primary,
+          secondary: extractionProvidersManual.secondary,
+        })
+      : Promise.resolve(null);
+    const [extractionManual, sentimentManual, proseRankManual] = await Promise.all([
       extractWithTwoModels({
         text, brand, domain,
         category: config.category || '',
@@ -3968,6 +4045,7 @@ async function cmdRunManual(argv) {
         secondary: extractionProvidersManual.secondary,
       }),
       sentimentTaskManual,
+      proseRankTaskManual,
     ]);
     const competitors           = extractionManual.verified;
     const competitorsUnverified = extractionManual.unverified;
@@ -3999,6 +4077,9 @@ async function cmdRunManual(argv) {
       competitorsUnverified,
       ...(storeManualSources ? { extractionSources: extractionManual.sources } : {}),
       ...(sentimentManual ? { sentiment: { label: sentimentManual.label, confidence: sentimentManual.confidence, rationale: sentimentManual.rationale } } : {}),
+      ...(proseRankManual && typeof proseRankManual.rank === 'number' && proseRankManual.rank > 0
+        ? { proseRank: { rank: proseRankManual.rank, confidence: proseRankManual.confidence, rationale: proseRankManual.rationale } }
+        : {}),
       ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
       ...(queryBrandFitsManual[qi] ? { brandFit: queryBrandFitsManual[qi] } : {}),
       responseQuality,
@@ -4426,8 +4507,13 @@ ${c.bold}Query validation:${c.reset}
   ${c.bold}--force${c.reset}                Bypass validation gate AND today's response cache (re-queries every cell)
   ${c.bold}--strict-validation${c.reset}    Cross-check query validation with 2 LLM providers (unanimous approve OR flag as split).
                          2× validation cost. Use when reliability > latency (e.g. CI pipelines).
-  ${c.bold}--geo=us,uk,de${c.reset}         Run each query under multiple regional contexts (multiplies cost by region count).
+  ${c.bold}--regions=us,de,pl${c.reset}     Run each query under multiple regional contexts (multiplies cost by region count).
                          Valid codes: us, uk, de, fr, es, it, ca, au, in, br, jp, nl. Adds "Visibility by Region" section.
+                         (--geo is the original name and still works as an alias.)
+  ${c.bold}--lang=de,pl${c.reset}           With --regions: ask each region's query IN the locale language (localised prompt),
+                         so the model reaches locale-native sources — the signal a PL/DACH searcher actually sees.
+                         Soft geo only: provider APIs expose no per-request geo/IP signal, so this changes the
+                         prompt language, not the request origin. Valid: en, de, pl, fr, es, it, nl, pt, ja.
   ${c.bold}--depth=<mode>${c.reset}         web (default) — single web-search pass per cell.
                          full — adds a training-data pass (no web search) where supported. Cost ~2×.
                          auto — defaults to web; prompts you if last training-data baseline is stale (>14 days).
@@ -4508,6 +4594,8 @@ const { values, positionals } = parseArgs({
     force:   { type: 'boolean', default: false },
     'strict-validation': { type: 'boolean', default: false },
     geo:     { type: 'string' },
+    regions: { type: 'string' },                 // AP-REGION-LANG-MATRIX — operator-facing alias for --geo
+    lang:    { type: 'string' },                 // AP-REGION-LANG-MATRIX — localise per-region prompt language (de,pl,…)
     depth:   { type: 'string' },                 // web | full | auto (default: web)
     format:  { type: 'string' },
     'log-file': { type: 'string' },
@@ -4634,6 +4722,8 @@ try {
       force: values.force,
       strictValidation: values['strict-validation'],
       geo: values.geo,
+      regions: values.regions,                   // AP-REGION-LANG-MATRIX — alias for --geo
+      lang: values.lang,                         // AP-REGION-LANG-MATRIX — per-region prompt language
       depth: values.depth,                       // web | full | auto (default: web)
       // Per-run model overrides — applied via applyCliModelOverrides()
       openaiModel:     values['openai-model'],
