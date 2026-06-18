@@ -11,6 +11,8 @@ import { checkNodeVersion } from '../lib/util/node-version.js';
 import { atomicWriteJson } from '../lib/util/atomic-write.js';
 import { keySetupLines } from '../lib/init/keys.js';
 import { classifyProviderError } from '../lib/providers/classify-error.js';
+import { renderMarkdown } from '../lib/report/markdown.js';
+import { sectionAdsDetection } from '../lib/report/sections.js';
 
 let passed = 0;
 let failed = 0;
@@ -94,6 +96,90 @@ await test('classifyProviderError: bare HTTP 529 → retryable rate-limit (not "
   const r = classifyProviderError(new Error('Request failed with status code 529'));
   assert.equal(r.retryable, true);
   assert.equal(r.category, 'rate-limit');
+});
+
+// ─── AP-ALLNO-RENDER-CRASH: a fully-invisible 0% run must render, never crash ───
+//
+// The 0%-brand operator is the reader who needs this report MOST (the prime
+// consulting lead), yet a run where EVERY cell is `mention:'no'` used to throw
+// mid-render — they got a crash instead of an honest "0% — here's why and what
+// to do". Root cause: sectionAdsDetection did `Object.entries(ads.byProvider)`
+// when `adsDetected` was present-but-shapeless (an interrupted/older-schema run
+// persists an empty object or a partial record with no numeric counters, so the
+// `totalCellsWithAdSignal === 0` short-circuit was skipped and byProvider was
+// undefined). Guard: any non-conforming shape degrades to the honest
+// "scanned, clean" stanza. Never-fail standard (AP-FAIL-BRANCHES): on any
+// degenerate-input branch the reader gets a real report, never a bare stack.
+
+// Faithful all-'no' snapshot: 3 engines × 3 queries, every cell a miss,
+// zero citations, zero competitors, score 0 — a genuinely invisible brand.
+function allNoSnapshot(extra = {}) {
+  return {
+    date: '2026-06-17',
+    brand: 'aeo-platform',
+    domain: 'aeo-platform.dev',
+    score: 0,
+    mentions: 0,
+    total: 9,
+    errors: 0,
+    results: ['Q1', 'Q2', 'Q3'].flatMap(q =>
+      ['openai', 'gemini', 'anthropic'].map(p => ({
+        query: q, queryText: `query ${q}`,
+        provider: p, label: p, model: `${p}-m`,
+        mention: 'no', position: null, citationCount: 0,
+        canonicalCitations: [], competitors: [], competitorsUnverified: [],
+        hasBrandInCitations: false,
+      }))
+    ),
+    topCompetitors: [], topCanonicalSources: [], topDomains: [],
+    ...extra,
+  };
+}
+
+await test('renderMarkdown: fully-invisible all-"no" run renders without throwing', () => {
+  // Well-formed clean adsDetected (the shape a normal all-"no" run produces).
+  const md = renderMarkdown([allNoSnapshot({
+    adsDetected: { totalCellsScanned: 9, totalCellsWithAdSignal: 0, byProvider: {}, samples: [] },
+  })]);
+  assert.ok(md.length > 0, 'must produce a report');
+  // Honest 0% / invisible signal must be present — not an empty husk.
+  assert.match(md, /0%/, 'headline must show 0%');
+  assert.match(md, /INVISIBLE/, 'traffic-light label must read INVISIBLE at score 0');
+});
+
+await test('renderMarkdown: all-"no" + DEGENERATE adsDetected shapes never crash', () => {
+  // An interrupted run / older schema can persist adsDetected as an empty
+  // object, an array, or a partial record with a signal count but no provider
+  // map. Each previously crashed the WHOLE report at Object.entries(byProvider).
+  for (const ads of [{}, [], { totalCellsWithAdSignal: 2 }, { totalCellsScanned: 9, totalCellsWithAdSignal: 3 }]) {
+    const md = renderMarkdown([allNoSnapshot({ adsDetected: ads })]);
+    assert.ok(md.length > 0, `must still render with adsDetected=${JSON.stringify(ads)}`);
+    assert.match(md, /0%/, 'headline must still show 0%');
+  }
+});
+
+await test('sectionAdsDetection: degenerate shapes degrade to "scanned, clean", no throw', () => {
+  for (const ads of [{}, [], { totalCellsWithAdSignal: 2 }, { totalCellsScanned: 9, totalCellsWithAdSignal: 5 }]) {
+    const out = sectionAdsDetection([allNoSnapshot({ adsDetected: ads })]);
+    assert.match(out, /none found this run/, `must degrade cleanly for ${JSON.stringify(ads)}`);
+    assert.doesNotMatch(out, /undefined/, 'no leaked "undefined" in the rendered stanza');
+  }
+});
+
+await test('sectionAdsDetection: well-formed signal STILL renders the table (R39 — unchanged path)', () => {
+  // The guard must NOT suppress a real ad signal: a conforming byProvider map
+  // with a positive count renders the per-engine table + sample blocks exactly
+  // as before. This locks the non-empty render path against the fix.
+  const out = sectionAdsDetection([allNoSnapshot({
+    adsDetected: {
+      totalCellsScanned: 9, totalCellsWithAdSignal: 2,
+      byProvider: { openai: 2 },
+      samples: [{ provider: 'openai', query: 'Q1', kind: 'sponsored', snippet: 'Sponsored: ad copy' }],
+    },
+  })]);
+  assert.match(out, /\| ChatGPT \| 2 cells \|/, 'per-provider row must render for a real signal');
+  assert.match(out, /ads-sample/, 'sample block must render for a real signal');
+  assert.doesNotMatch(out, /none found this run/, 'must NOT degrade when a real signal exists');
 });
 
 // ─── Summary ───
