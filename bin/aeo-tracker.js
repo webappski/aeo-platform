@@ -3208,7 +3208,7 @@ function buildHtmlSummary(snapshots, rawResponses) {
     // v0.5 — citations to OWN domain only (used by hero copy + engine cards
     // that say "cited YOU N times"). r.citationCount is total-cited-anywhere
     // and would lie when AI cited only competitor pages.
-    const citations = rows.reduce((s, r) => s + (r.citations || []).filter(isOwnDomainCite).length, 0);
+    const citations = rows.reduce((s, r) => s + (r.canonicalCitations || []).filter(isOwnDomainCite).length, 0);
     const cells = queryOrder.map(q => {
       const c = rows.find(r => r.query === q.id);
       if (!c) return 'missing';
@@ -3303,10 +3303,10 @@ function buildHtmlSummary(snapshots, rawResponses) {
   // Hero KPI ("cited you N times") needs own-domain only; the raw r.citationCount
   // counts citations to any URL (competitors, sources) and would inflate the
   // headline by mixing "they cited goforgeai.com" into "they cited you".
-  const totalCitations = latest.results.reduce((s, r) => s + (r.citations || []).filter(isOwnDomainCite).length, 0);
+  const totalCitations = latest.results.reduce((s, r) => s + (r.canonicalCitations || []).filter(isOwnDomainCite).length, 0);
   const totalCitationsPrev = prev ? (function () {
     const prevDomain = prev.domain || domain;
-    return prev.results.reduce((s, r) => s + (r.citations || []).filter(u =>
+    return prev.results.reduce((s, r) => s + (r.canonicalCitations || []).filter(u =>
       isOwnDomain(u, prevDomain)
     ).length, 0);
   })() : null;
