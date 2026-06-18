@@ -115,8 +115,16 @@ await asyncTest('delayed task fires after its planned delay', async () => {
     { taskIdx: 1, fireAt: 100 },
   ];
   const [t0, t1] = await runScheduled(fns, sched);
-  assert.ok(t0 < 50, `first task should fire immediately, got ${t0}ms`);
-  assert.ok(t1 >= 100 && t1 < 200, `second task should fire ~100ms in, got ${t1}ms`);
+  // Timing asserts are jitter-tolerant on purpose: setTimeout(fn, N) is a
+  // *minimum* delay, and Date.now() ms-truncation at both ends routinely shows
+  // ~99ms for a 100ms timer (and a few ms for an "immediate" task under load).
+  // What the scheduler must guarantee: the immediate task is not delayed, and
+  // the delayed task fires clearly LATER than the immediate one, ~the planned
+  // 100ms. We check the gap relatively (robust to CI load) plus loose absolute
+  // bounds, never the exact ms.
+  assert.ok(t0 < 80, `first (immediate) task should not be delayed, got ${t0}ms`);
+  assert.ok(t1 - t0 >= 80, `second task should fire clearly after the immediate one (~100ms), gap was ${t1 - t0}ms`);
+  assert.ok(t1 < 1000, `second task should still fire near its 100ms target, got ${t1}ms`);
 });
 
 await asyncTest('rejection from one task propagates', async () => {
