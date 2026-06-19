@@ -3271,6 +3271,18 @@ function buildHtmlSummary(snapshots, rawResponses) {
       const r = latest.results.find(x => x.query === q.id && x.provider === en.provider);
       const verifiedCells  = (r?.competitors           || []).map(name => ({ name, unverified: false }));
       const unverifiedCells = (r?.competitorsUnverified || []).map(name => ({ name, unverified: true  }));
+      // Full verbatim engine answer for the click-to-reveal `<details>` behind
+      // each matrix cell. rawResponses is keyed `${query}|${provider}` and holds
+      // the COMPLETE answer text (parseRawResponse returns choices[].message
+      // .content for openai, the joined parts for gemini, the text blocks for
+      // anthropic; manual-paste .txt is the file verbatim). Renderer falls back
+      // to the (truncated) responseExcerpt when no raw file is on disk, and
+      // renders nothing at all when neither exists — never-fail: a cell with no
+      // captured answer must not break the matrix render.
+      const rawKey = `${q.id}|${en.provider}`;
+      const responseFull = (rawResponses && typeof rawResponses[rawKey] === 'string')
+        ? rawResponses[rawKey]
+        : null;
       return {
         provider: en.provider,
         label: en.label,
@@ -3283,6 +3295,7 @@ function buildHtmlSummary(snapshots, rawResponses) {
         // none of which named you" instead of a bare dash.
         citationCount: r?.citationCount ?? 0,
         responseExcerpt: r?.responseExcerpt ?? null,
+        responseFull,
         responseQuality: r?.responseQuality ?? null,
         // Surface the underlying provider error message for cells that errored.
         // Used by the matrix view to attach a tooltip instead of blending the
@@ -3504,6 +3517,18 @@ async function cmdReport(args = {}) {
   }
 
   const rawResponses = {};
+  // Directory listing — used to resolve the model-suffixed raw filenames the
+  // run writer produces (`q{N}-{provider}-{safeModel}.json`, see _tryReplay /
+  // the run loop). The historical loader looked for the bare `q{N}-{provider}
+  // .json`, which no run has written since models were added to the filename —
+  // so ChatGPT/Gemini verbatim text silently never loaded and the report fell
+  // back to the truncated excerpt for every API cell. We scan once, then match
+  // by prefix. Tolerate an unreadable dir (degrade to legacy bare-name probe).
+  let dateDirEntries = [];
+  try {
+    const { readdirSync } = await import('node:fs');
+    dateDirEntries = readdirSync(join(responsesDir, latest.date));
+  } catch { /* dir unreadable — graceful: per-result existsSync probes still run */ }
   for (const r of latest.results) {
     const qi = String(r.query).replace(/^Q/, '');
     const key = `${r.query}|${r.provider}`;
@@ -3512,7 +3537,26 @@ async function cmdReport(args = {}) {
         const txtPath = join(responsesDir, latest.date, `q${qi}-${r.provider}-manual.txt`);
         if (existsSync(txtPath)) rawResponses[key] = await readFile(txtPath, 'utf-8');
       } else {
-        const jsonPath = join(responsesDir, latest.date, `q${qi}-${r.provider}.json`);
+        // Resolve the JSON raw file. Preference order:
+        //   1. exact model-suffixed name the writer used (`q{N}-{provider}-{model}.json`);
+        //   2. any `q{N}-{provider}-*.json` (model drift / unknown sanitization),
+        //      preferring a single-shot file over a `.t{trial}` sampled variant;
+        //   3. legacy bare `q{N}-{provider}.json` (pre-model-suffix snapshots).
+        const exactName = r.model
+          ? `q${qi}-${r.provider}-${sanitizeForFilename(r.model)}.json`
+          : null;
+        const prefix = `q${qi}-${r.provider}-`;
+        let jsonName = null;
+        if (exactName && dateDirEntries.includes(exactName)) {
+          jsonName = exactName;
+        } else {
+          const candidates = dateDirEntries
+            .filter(f => f.startsWith(prefix) && f.endsWith('.json') && !f.endsWith('-manual.txt'))
+            // Prefer single-shot (no `.t{n}` trial suffix) for the canonical verbatim.
+            .sort((a, b) => (/\.t\d+\.json$/.test(a) ? 1 : 0) - (/\.t\d+\.json$/.test(b) ? 1 : 0));
+          jsonName = candidates[0] || `q${qi}-${r.provider}.json`;
+        }
+        const jsonPath = join(responsesDir, latest.date, jsonName);
         if (existsSync(jsonPath)) {
           const raw = JSON.parse(await readFile(jsonPath, 'utf-8'));
           rawResponses[key] = parseRawResponse(r.provider, raw);
@@ -3593,7 +3637,14 @@ async function cmdReport(args = {}) {
 
     // ─── LLM action recommendations (cached) ───
     (async () => {
-      if (!latest.llmActions) {
+      // White-label client snapshots carry statistics only — no recommendation
+      // block — so skip the (paid) generation entirely rather than generate
+      // then strip. The reader re-renders these regularly; making them pay LLM
+      // cost for a block we immediately drop is wrong, and skip-don't-strip
+      // closes the leak class at the source.
+      if (args.whiteLabel) {
+        // no-op: recommendations are not part of a white-label deliverable
+      } else if (!latest.llmActions) {
         let cfg = {};
         try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
         const category = cfg.category || '';
@@ -3781,7 +3832,11 @@ async function cmdReport(args = {}) {
   }
 
   // ─── Outreach email templates for top-3 cited domains (cached) ───
-  if (!latest.outreachTemplates && Array.isArray(latest.topDomains) && latest.topDomains.length > 0) {
+  // Skipped under --white-label (client snapshots are statistics-only; see the
+  // llmActions skip above for the skip-don't-strip rationale).
+  if (args.whiteLabel) {
+    // no-op: outreach drafts are not part of a white-label deliverable
+  } else if (!latest.outreachTemplates && Array.isArray(latest.topDomains) && latest.topDomains.length > 0) {
     let cfg = {};
     try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
     const category = cfg.category || '';
@@ -3839,9 +3894,17 @@ async function cmdReport(args = {}) {
     trackerRepoUrl = String(rawRepo).replace(/^git\+/, '').replace(/\.git$/, '');
   } catch { /* package metadata unreadable — falls through to defaults */ }
 
+  // --white-label is a superset of --public, and it removes the Webappski /
+  // Mission-Control bridge entirely — so it forces the bridge OFF and turns on
+  // every public-mode guard (cost-card suppression, source-path footnotes,
+  // destructive-sweep skip). Derived once here, threaded into both renderers.
+  const whiteLabel = args.whiteLabel === true;
+  const publicMode = args.public === true || whiteLabel;
+  const skipMcBlock = args.noMcBlock === true || whiteLabel;
+
   let mcMetadata = null;
   let daysSinceRun = 0;
-  if (!args.noMcBlock) {
+  if (!skipMcBlock) {
     let cfgLang = 'en';
     let cfgRaw = null;
     try {
@@ -3861,7 +3924,10 @@ async function cmdReport(args = {}) {
     }
   }
 
-  const md = renderMarkdown(snapshots, rawResponses, { mcMetadata, noMcBlock: args.noMcBlock, public: args.public });
+  const md = renderMarkdown(snapshots, rawResponses, {
+    mcMetadata, noMcBlock: skipMcBlock, public: publicMode,
+    whiteLabel, reportTitle: args.reportTitle,
+  });
 
   const outDir = join('aeo-reports', latest.date);
   await mkdir(outDir, { recursive: true });
@@ -3879,7 +3945,14 @@ async function cmdReport(args = {}) {
     const html = renderHtml(
       buildHtmlSummary(snapshots, rawResponses),
       snapshots,
-      { mcMetadata, daysSinceRun, noMcBlock: args.noMcBlock, pkgVersion: trackerVersion, repoUrl: trackerRepoUrl, public: args.public },
+      {
+        mcMetadata, daysSinceRun, noMcBlock: skipMcBlock,
+        // White-label drops the tool fingerprint, so pass NO version / repo URL
+        // (the masthead + colophon read these — withholding them is the strip).
+        pkgVersion: whiteLabel ? null : trackerVersion,
+        repoUrl: whiteLabel ? '' : trackerRepoUrl,
+        public: publicMode, whiteLabel, reportTitle: args.reportTitle,
+      },
     );
     await writeFile(htmlOutPath, html);
   }
@@ -3899,7 +3972,7 @@ async function cmdReport(args = {}) {
   // date being written is itself an OLD dir, making the sweep even more
   // destructive, so the guard protects that path too.
   let cleanupResult = { removedFiles: 0, removedDirs: 0 };
-  if (!args.output && !args.public) {
+  if (!args.output && !publicMode) {
     cleanupResult = await cleanupStaleReportArtifacts(latest.date);
   }
 
@@ -4620,6 +4693,18 @@ const { values, positionals } = parseArgs({
     // published proof report needs no manual scrub (see resources memory
     // feedback_aeo_platform_report_leaks_cost_and_source_paths).
     'public':        { type: 'boolean', default: false },
+    // Client-snapshot render mode (deliberately undocumented — not in --help,
+    // README, or CHANGELOG). A SUPERSET of --public: on top of dropping the
+    // cost card + source-path footnotes, it also removes every tool fingerprint
+    // (the «aeo-platform» masthead/colophon, version, repo link), the entire
+    // Webappski/Mission-Control bridge, and the recommendation/outreach blocks —
+    // leaving only the measured statistics in the same layout, under a neutral
+    // parameterizable title. Generic by design: works for any brand from config
+    // data, so it doubles as the client-deliverable mode for consulting work.
+    'white-label':   { type: 'boolean', default: false },
+    // Neutral report title for --white-label (e.g. "AEO Visibility Snapshot").
+    // Ignored unless --white-label is set; defaults to a brand+date headline.
+    'report-title':  { type: 'string' },
     // Render a SPECIFIC historical run instead of the newest one. Re-points
     // `report` at aeo-responses/<date>/_summary.json so an older proof report
     // can be regenerated from data still on disk. See cmdReport --for-date block.
@@ -4755,6 +4840,8 @@ try {
       noPricing:      values['no-pricing'],
       refreshCache:   values['refresh-cache'],
       public:         values['public'],
+      whiteLabel:     values['white-label'],
+      reportTitle:    values['report-title'],
       forDate:        values['for-date'],
     });
   } else if (command === 'export') {
