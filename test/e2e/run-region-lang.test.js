@@ -25,10 +25,14 @@
  *     the field entirely → "every DE-cell carries lang:'de'" RED. Verified
  *     out-of-tree against a /tmp copy of geo-context.js (repo file never edited).
  *   - The byte-identity sibling test asserts the no-`--lang` run carries region
- *     metadata but NO `lang` field. A mutant that removes the `regionLang !== 'en'`
- *     guard in the sink (bin/aeo-tracker.js — NOT editable here; the other-session
- *     WIP owns that file) would persist `lang:'en'` and make this RED. Described
- *     in words per the test-only constraint; not reproduced.
+ *     metadata but NO `lang` field. REPRODUCED (2026-06-19, AP-CYCLE-C-E2E
+ *     residual): with bin now editable, removing the `&& regionLang !== 'en'`
+ *     clause from the sink (bin/aeo-tracker.js ~2686) on an out-of-tree HEAD
+ *     copy makes the no-`--lang` regional run persist `lang:'en'` on every cell,
+ *     and the sibling test below fails with exactly its assertion message
+ *     ("an English-preamble (no --lang) cell must NOT carry a lang field") —
+ *     1 pass / 1 fail. The repo file is never edited; the guard is genuinely
+ *     load-bearing and this pair locks it.
  */
 import test from 'node:test';
 import assert from 'node:assert';

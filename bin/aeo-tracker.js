@@ -34,7 +34,7 @@ import { runTwoStageValidation, formatValidationResult, hasBlockers } from '../l
 import { classifyResponseQuality } from '../lib/report/response-quality.js';
 import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
-import { extractProseRankWithTwoModels } from '../lib/report/prose-rank.js';
+import { extractProseRankWithTwoModels, persistableProseRank } from '../lib/report/prose-rank.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
 import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
 import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
@@ -2675,7 +2675,8 @@ async function cmdRun(options = {}) {
                 // usable ordinal (rank present). A null-rank verdict carries no
                 // axis signal, so omitting it keeps the year-over-year JSON lean
                 // and a single-shot run without the pass has no field at all.
-                ...(proseRank && typeof proseRank.rank === 'number' && proseRank.rank > 0
+                // Shared write-side gate with run-manual (lib/report/prose-rank.js).
+                ...(persistableProseRank(proseRank)
                   ? { proseRank: { rank: proseRank.rank, confidence: proseRank.confidence, rationale: proseRank.rationale } }
                   : {}),
                 ...(queryTags[qi] ? { tag: queryTags[qi] } : {}),
@@ -4205,7 +4206,8 @@ async function cmdRunManual(argv) {
       competitorsUnverified,
       ...(storeManualSources ? { extractionSources: extractionManual.sources } : {}),
       ...(sentimentManual ? { sentiment: { label: sentimentManual.label, confidence: sentimentManual.confidence, rationale: sentimentManual.rationale } } : {}),
-      ...(proseRankManual && typeof proseRankManual.rank === 'number' && proseRankManual.rank > 0
+      // Shared write-side gate with the live run loop (lib/report/prose-rank.js).
+      ...(persistableProseRank(proseRankManual)
         ? { proseRank: { rank: proseRankManual.rank, confidence: proseRankManual.confidence, rationale: proseRankManual.rationale } }
         : {}),
       ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
