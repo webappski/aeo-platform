@@ -30,6 +30,7 @@ import {
   sectionScoreRepresentativeness,
   SMALL_N_CELL_THRESHOLD,
 } from '../lib/report/sections.js';
+import { normalizeQueries, attachBrandFit } from '../lib/config/queries-normalize.js';
 
 // ── product-line derivation ─────────────────────────────────────────────────
 
@@ -305,6 +306,82 @@ test('section renders the fit segmentation only when results carry brandFit', ()
 test('section returns empty string on an all-error / empty run (no fabricated context)', () => {
   assert.equal(sectionScoreRepresentativeness([{ domain: 'x.com', results: [] }]), '');
   assert.equal(sectionScoreRepresentativeness([{ domain: 'x.com', results: [{ mention: 'error' }] }]), '');
+});
+
+// ── AP-SEGMENT-LIVE: the source→config→run→report wiring wakes the block ──────
+//
+// End-result of the migration, exercised purely (no network/replay): a basket
+// SAVED as {q,brandFit} objects (attachBrandFit at init) is READ by run
+// (normalizeQueries), the per-index brandFit is COPIED onto each result exactly
+// as bin/aeo-tracker.js does (`...(brandFits[qi] ? { brandFit } : {})`), and the
+// report's segment block then renders a LIVE core-vs-aspirational split.
+
+/** Mirror of the run loop's result-attach: one result per (query, engine),
+ * carrying brandFit ONLY when the config supplied a label for that index —
+ * byte-for-byte the `...(queryBrandFits[qi] ? { brandFit } : {})` spread. */
+function attachResults(savedQueries, perQueryMention) {
+  const { texts, brandFits } = normalizeQueries(savedQueries);
+  const results = [];
+  for (let qi = 0; qi < texts.length; qi++) {
+    results.push({
+      query: `Q${qi + 1}`,
+      queryText: texts[qi],
+      provider: 'openai',
+      mention: perQueryMention[qi],
+      ...(brandFits[qi] ? { brandFit: brandFits[qi] } : {}),
+    });
+  }
+  return results;
+}
+
+test('LIVE WIRING: object basket → run-attach → segment splits core from aspirational', () => {
+  // Saved exactly as init would write it after AP-SEGMENT-LIVE.
+  const saved = attachBrandFit(
+    ['best CDN providers', 'edge GPU rental', 'object storage'],
+    { 'best CDN providers': 'core', 'edge GPU rental': 'aspirational', 'object storage': 'core' },
+  );
+  // CDN hits, GPU misses (aspirational 0%), object-storage misses (core partial).
+  const results = attachResults(saved, ['yes', 'no', 'no']);
+  const seg = segmentByBrandFit(results);
+  assert.deepEqual(seg.core, { total: 2, mentions: 1, rate: 50 }, 'core = CDN(yes)+storage(no) = 1/2');
+  assert.deepEqual(seg.aspirational, { total: 1, mentions: 0, rate: 0 }, 'aspirational = GPU(no) = 0/1');
+});
+
+test('LIVE WIRING: a raw 0% headline is decomposed — 0%-on-aspirational is NOT 0%-on-core', () => {
+  // The Gcore failure: a 0% headline that is really "invisible only where the
+  // brand does not compete". With one core MISS and one aspirational MISS, the
+  // segment block must show them as SEPARATE rows, not one undifferentiated 0%.
+  const saved = attachBrandFit(
+    ['core thing', 'moonshot thing'],
+    { 'core thing': 'core', 'moonshot thing': 'aspirational' },
+  );
+  const results = attachResults(saved, ['no', 'no']); // headline 0/2 = 0%
+  const md = sectionScoreRepresentativeness([{ domain: 'gcore.com', results }]);
+  assert.match(md, /Score by brand-capability fit/, 'segment block is now AWAKE (was dormant pre-wiring)');
+  assert.match(md, /Core \(brand sells this\)/);
+  assert.match(md, /Aspirational \(not a core player\)/);
+  // The honest framing: a 0% driven by aspirational rows is expected, not a regression.
+  assert.match(md, /aspirational rows is expected, not a regression/);
+});
+
+test('DORMANT BACK-COMPAT: a legacy string basket attaches NO brandFit → segment stays asleep', () => {
+  // The exact pre-AP-SEGMENT-LIVE config shape. run-attach adds no brandFit,
+  // so the segment block is absent — byte-identical behaviour to before.
+  const legacy = ['best CDN providers', 'edge GPU rental', 'object storage'];
+  const results = attachResults(legacy, ['no', 'no', 'no']);
+  assert.ok(results.every(r => !('brandFit' in r)), 'no label reaches results from a string basket');
+  assert.deepEqual(segmentByBrandFit(results), {}, 'segment data empty → block skipped');
+  const md = sectionScoreRepresentativeness([{ domain: 'x.com', results }]);
+  assert.doesNotMatch(md, /Score by brand-capability fit/, 'segmentation remains gracefully dormant');
+});
+
+test('DORMANT BACK-COMPAT: a summary missing brandFit (old _summary.json) renders no segment', () => {
+  // Re-reading a pre-wiring _summary.json: results have no brandFit field.
+  const oldSummaryResults = [
+    { query: 'Q1', queryText: 'a', mention: 'yes' },
+    { query: 'Q2', queryText: 'b', mention: 'no' },
+  ];
+  assert.deepEqual(segmentByBrandFit(oldSummaryResults), {});
 });
 
 console.log('coverage-axis.test.js — all assertions passed');

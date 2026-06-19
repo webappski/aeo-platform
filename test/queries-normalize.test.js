@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeQueries } from '../lib/config/queries-normalize.js';
+import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
 
 let passed = 0;
 let failed = 0;
@@ -93,6 +93,88 @@ test('empty / whitespace brandFit treated as null', () => {
 
 test('non-array input → empty brandFits', () => {
   assert.deepEqual(normalizeQueries(null).brandFits, []);
+});
+
+// ── queryText: shared text extractor (AP-SEGMENT-LIVE) ───────────────────────
+
+test('queryText reads a bare string', () => {
+  assert.equal(queryText('best CDN 2026'), 'best CDN 2026');
+});
+
+test('queryText reads {q} object', () => {
+  assert.equal(queryText({ q: 'best CDN', brandFit: 'core' }), 'best CDN');
+});
+
+test('queryText returns "" for an unrecognised shape (never throws / stringifies)', () => {
+  assert.equal(queryText(null), '');
+  assert.equal(queryText({ tag: 'orphan' }), '');
+  assert.equal(queryText(42), '');
+});
+
+// ── attachBrandFit: the source→config link that wakes segmentation ───────────
+
+test('attachBrandFit stamps a recognised label as {q,brandFit}', () => {
+  const out = attachBrandFit(['best CDN', 'edge AI'], { 'best CDN': 'core', 'edge AI': 'aspirational' });
+  assert.deepEqual(out, [
+    { q: 'best CDN', brandFit: 'core' },
+    { q: 'edge AI', brandFit: 'aspirational' },
+  ]);
+});
+
+test('R39 BACK-COMPAT: no labels → identical bare-string array (byte-identical to historical shape)', () => {
+  const input = ['best CDN', 'edge AI', 'object storage'];
+  const out = attachBrandFit(input, {});
+  // Must be plain strings, not {q} objects — an unclassified basket stays
+  // exactly as it was written before AP-SEGMENT-LIVE (segmentation dormant).
+  assert.deepEqual(out, input);
+  assert.ok(out.every(x => typeof x === 'string'), 'every entry stays a bare string');
+});
+
+test('attachBrandFit leaves an unlabelled query a bare string even when siblings are labelled', () => {
+  const out = attachBrandFit(['has-label', 'no-label'], { 'has-label': 'core' });
+  assert.deepEqual(out, [{ q: 'has-label', brandFit: 'core' }, 'no-label']);
+});
+
+test('attachBrandFit normalises label case and rejects unrecognised labels', () => {
+  const out = attachBrandFit(['a', 'b'], { a: 'CORE', b: 'banana' });
+  // 'CORE' → 'core' (object); 'banana' is not a valid fit → stays a string.
+  assert.deepEqual(out, [{ q: 'a', brandFit: 'core' }, 'b']);
+});
+
+test('attachBrandFit preserves an existing funnel tag alongside the new brandFit', () => {
+  const out = attachBrandFit([{ q: 'a', tag: 'tofu' }], { a: 'core' });
+  assert.deepEqual(out, [{ q: 'a', tag: 'tofu', brandFit: 'core' }]);
+});
+
+test('attachBrandFit accepts a Map as the lookup', () => {
+  const out = attachBrandFit(['a'], new Map([['a', 'adjacent']]));
+  assert.deepEqual(out, [{ q: 'a', brandFit: 'adjacent' }]);
+});
+
+test('attachBrandFit is pure — does not mutate the input array or its entries', () => {
+  const input = [{ q: 'a', tag: 'tofu' }];
+  const snapshot = JSON.parse(JSON.stringify(input));
+  attachBrandFit(input, { a: 'core' });
+  assert.deepEqual(input, snapshot, 'input untouched');
+});
+
+test('attachBrandFit on non-array → []', () => {
+  assert.deepEqual(attachBrandFit(null, { a: 'core' }), []);
+});
+
+// ── ROUND-TRIP: attach → normalize is the live wiring run uses ────────────────
+// This is the contract that wakes the report: a basket stamped at init, read
+// back by `run` via normalizeQueries, yields a brandFit per index that the
+// result-attach (bin/aeo-tracker.js) copies onto each result → segment fires.
+
+test('ROUND-TRIP: stamped basket → normalizeQueries recovers the label per index', () => {
+  const saved = attachBrandFit(
+    ['core q', 'asp q', 'plain q'],
+    { 'core q': 'core', 'asp q': 'aspirational' },
+  );
+  const norm = normalizeQueries(saved);
+  assert.deepEqual(norm.texts, ['core q', 'asp q', 'plain q'], 'texts unchanged — run loop iterates these');
+  assert.deepEqual(norm.brandFits, ['core', 'aspirational', null], 'labels recovered, plain stays null (dormant for that cell)');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

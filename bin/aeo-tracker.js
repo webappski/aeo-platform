@@ -36,7 +36,7 @@ import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
 import { extractProseRankWithTwoModels } from '../lib/report/prose-rank.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
-import { normalizeQueries } from '../lib/config/queries-normalize.js';
+import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
 import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
 import { computeTopDomains } from '../lib/report/top-domains.js';
 import { aggregateCanonicalSources } from '../lib/report/canonical-url.js';
@@ -808,7 +808,7 @@ async function cmdInit(opts = {}) {
 
     console.log(`${c.dim}  Brand: ${brand} | Domain: ${existingDomain}${c.reset}`);
     console.log(`${c.dim}  Existing queries:${c.reset}`);
-    (existing.queries || []).forEach((q, i) => console.log(`    Q${i + 1}: ${q}`));
+    (existing.queries || []).forEach((q, i) => console.log(`    Q${i + 1}: ${queryText(q)}`));
 
     // Build provider key map from existing config + standard env var names
     const standard = detectStandardKeys();
@@ -846,6 +846,16 @@ async function cmdInit(opts = {}) {
 
     let newQueries = [];
     let newCandidatePool = [];
+    // AP-SEGMENT-LIVE: query-text → brand-fit label for the re-suggested basket.
+    // Same role as cmdInit's config_queryBrandFits, scoped to this early-return
+    // --queries-only branch. Stamped onto the saved basket at write time so the
+    // report's core/aspirational segment block wakes for re-suggested baskets too.
+    const queriesOnlyBrandFits = new Map();
+    const noteQOnlyFit = (text, fit) => {
+      if (typeof text === 'string' && text.trim() && typeof fit === 'string' && fit.trim()) {
+        queriesOnlyBrandFits.set(text, fit.trim().toLowerCase());
+      }
+    };
     const queriesOnlySpinner = createSpinner();
     try {
       const researchResult = await research({
@@ -926,6 +936,11 @@ async function cmdInit(opts = {}) {
       } else if (!/^n/i.test(accept)) {
         newQueries = selectResult.selected.map(s => s.candidate.text);
       }
+      // AP-SEGMENT-LIVE: record brand-fit for selected + pool candidates (keyed
+      // by text), so the stamp at save time resolves selected, edited-to-match,
+      // and recovery-substituted queries alike.
+      for (const s of selectResult.selected) noteQOnlyFit(s.candidate?.text, s.candidate?.brandFit);
+      for (const a of selectResult.alternatives) noteQOnlyFit(a?.text, a?.brandFit);
       if (selectResult.alternatives.length > 0) {
         newCandidatePool = selectResult.alternatives.slice(0, 5).map(a => ({
           text: a.text,
@@ -999,16 +1014,23 @@ async function cmdInit(opts = {}) {
     let finalQueries;
     let basketUpdate;
     if (mode === 'add') {
-      finalQueries = mergeQueries(existing.queries || [], newQueries);
+      // AP-SEGMENT-LIVE: stamp the new queries BEFORE merge so the brand-fit
+      // label rides into the active basket; mergeQueries dedups by text (object-
+      // aware) and preserves prior entries' shapes, so existing tagged queries
+      // keep their labels and unclassified ones stay bare strings.
+      finalQueries = mergeQueries(existing.queries || [], attachBrandFit(newQueries, queriesOnlyBrandFits));
       // First time touching basket logic on a legacy config — synthesise v1
-      // entry from existing queries before recording the v2 expansion.
+      // entry from existing queries before recording the v2 expansion. History
+      // mirrors the active basket shape so a later dedup compares like-for-like.
       const hadHistory = Array.isArray(existing.basketHistory) && existing.basketHistory.length > 0;
       const baseConfig = hadHistory
         ? existing
         : { ...existing, ...initialBasket(existing.queries || [], today) };
       basketUpdate = recordExpansion(baseConfig, finalQueries, today);
     } else {
-      finalQueries = newQueries;
+      // Replace mode forks history — stamp the fresh basket so the new era
+      // carries brand-fit from query one.
+      finalQueries = attachBrandFit(newQueries, queriesOnlyBrandFits);
       basketUpdate = recordReplacement(existing, finalQueries, today);
     }
 
@@ -1028,7 +1050,7 @@ async function cmdInit(opts = {}) {
     } else {
       console.log(`  ${c.yellow}Mode: replace — basket forked at v${basketUpdate.basketVersion} (prior versions kept in basketHistory)${c.reset}`);
     }
-    finalQueries.forEach((q, i) => console.log(`  Q${i + 1}: ${q}`));
+    finalQueries.forEach((q, i) => console.log(`  Q${i + 1}: ${queryText(q)}`));
     console.log(`\nNext: ${c.cyan}aeo-platform run${c.reset}\n`);
     return;
   }
@@ -1351,6 +1373,20 @@ async function cmdInit(opts = {}) {
   // stays empty in manual / --keywords / single-shot modes — recovery falls
   // back to highest-score ranking when intents are unknown.
   let config_queryIntents = [];
+  // AP-SEGMENT-LIVE: query-text → brand-fit label (core/adjacent/aspirational/
+  // unknown), accumulated from the candidates the research pipeline classified
+  // (annotateBrandFit) and the persisted candidatePool. At save time it stamps
+  // the label onto config.queries (attachBrandFit) so `run` carries it into each
+  // result and the report's dormant core/aspirational segment block wakes. Keyed
+  // by text so it survives hand-edits and validator-recovery swaps (the swapped-
+  // in pool entry carries its own brandFit). Empty in manual/--keywords/--light
+  // modes → queries stay bare strings, segmentation stays gracefully dormant.
+  const config_queryBrandFits = new Map();
+  const noteBrandFit = (text, fit) => {
+    if (typeof text === 'string' && text.trim() && typeof fit === 'string' && fit.trim()) {
+      config_queryBrandFits.set(text, fit.trim().toLowerCase());
+    }
+  };
   // 1.0.6: count of commercial candidates passing both validator stages.
   // Set inside the silent-substitution block; threaded into recovery panel
   // so the "X of 5 commercial candidates" header is honest.
@@ -1365,7 +1401,7 @@ async function cmdInit(opts = {}) {
     }
     queries = list;
     console.log(`\n${c.green}Using --keywords (BYO mode, $0 LLM cost):${c.reset}`);
-    queries.forEach((q, i) => console.log(`  Q${i + 1}: ${q}`));
+    queries.forEach((q, i) => console.log(`  Q${i + 1}: ${queryText(q)}`));
     mode = 'keywords';
   }
 
@@ -1695,6 +1731,14 @@ async function cmdInit(opts = {}) {
                   return match?.candidate.intent || selectResult.selected[i]?.candidate.intent || '';
                 });
 
+                // AP-SEGMENT-LIVE: record each classified candidate's brand-fit
+                // label, keyed by text. Both the selected triplet and the pool
+                // (the validator-recovery swap source) are recorded so any final
+                // query — selected, edited-to-match, or recovery-substituted —
+                // resolves its label at save time.
+                for (const s of selectResult.selected) noteBrandFit(s.candidate?.text, s.candidate?.brandFit);
+                for (const a of selectResult.alternatives) noteBrandFit(a?.text, a?.brandFit);
+
                 // Persist candidate pool for future swap-without-LLM (D3).
                 // 1.0.4 Fix A.1b: include search_behavior + confidence when
                 // pool-validation succeeded so the recovery panel filter and
@@ -1854,19 +1898,30 @@ async function cmdInit(opts = {}) {
   queries = recovery.queries;
   const validation = recovery.v;
 
+  // AP-SEGMENT-LIVE: stamp the brand-fit label onto the saved basket. Queries
+  // with a recognised label become {q,brandFit}; unclassified queries stay bare
+  // strings (back-compat — a basket where nothing was classified is byte-
+  // identical to the historical shape). `run` reads these via normalizeQueries
+  // and attaches `brandFit` to each result → the report's core/aspirational
+  // segment block wakes. The headline UVI is untouched: brandFit never enters
+  // the score math, only the additive representativeness display.
+  const queriesToSave = attachBrandFit(queries, config_queryBrandFits);
+
   // Persist provider defaults. `selectedProviders` was seeded from FALLBACK
   // constants in lib/providers/discover.js — these defaults are the safety net
   // when `aeo-tracker run` discovery cannot reach a provider's /v1/models endpoint.
   // Actual model selection happens fresh at each run via discoverModels.
   const providers = selectedProviders;
 
-  // v0.7 — initialise basket version on first save
+  // v0.7 — initialise basket version on first save. History mirrors the active
+  // basket shape (objects included) so a later --add-queries dedup compares
+  // like-for-like.
   const { initialBasket } = await import('../lib/init/basket-history.js');
-  const basketInit = initialBasket(queries, new Date().toISOString().slice(0, 10));
+  const basketInit = initialBasket(queriesToSave, new Date().toISOString().slice(0, 10));
 
   const config = {
     brand, domain, category: categoryDescription || '',
-    queries, regressionThreshold: 10, providers,
+    queries: queriesToSave, regressionThreshold: 10, providers,
     ...basketInit,
   };
   if (config_candidatePool.length > 0) {
