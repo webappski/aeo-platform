@@ -146,6 +146,23 @@ test('attachBrandFit preserves an existing funnel tag alongside the new brandFit
   assert.deepEqual(out, [{ q: 'a', tag: 'tofu', brandFit: 'core' }]);
 });
 
+test('attachBrandFit preserves ANY pre-existing field on a query object (forward-compat spread)', () => {
+  // A future per-query field added upstream (here: `weight` + `note`) must ride
+  // through untouched — the stamp only ADDS brandFit, never rebuilds the object
+  // from a fixed {q,tag} whitelist that would silently drop unknown keys.
+  const out = attachBrandFit(
+    [{ q: 'a', tag: 'tofu', weight: 2, note: 'keep me' }],
+    { a: 'core' },
+  );
+  assert.deepEqual(out, [{ q: 'a', tag: 'tofu', weight: 2, note: 'keep me', brandFit: 'core' }]);
+});
+
+test('attachBrandFit keeps unknown fields even when the entry had no tag', () => {
+  // No funnel tag, but a future field present → object preserved + labelled.
+  const out = attachBrandFit([{ q: 'a', weight: 5 }], { a: 'adjacent' });
+  assert.deepEqual(out, [{ q: 'a', weight: 5, brandFit: 'adjacent' }]);
+});
+
 test('attachBrandFit accepts a Map as the lookup', () => {
   const out = attachBrandFit(['a'], new Map([['a', 'adjacent']]));
   assert.deepEqual(out, [{ q: 'a', brandFit: 'adjacent' }]);
