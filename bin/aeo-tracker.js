@@ -34,7 +34,7 @@ import { runTwoStageValidation, formatValidationResult, hasBlockers } from '../l
 import { classifyResponseQuality } from '../lib/report/response-quality.js';
 import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
-import { extractProseRankWithTwoModels, persistableProseRank } from '../lib/report/prose-rank.js';
+import { extractProseRankWithTwoModels, proseRankField } from '../lib/report/prose-rank.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
 import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
 import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
@@ -2675,10 +2675,9 @@ async function cmdRun(options = {}) {
                 // usable ordinal (rank present). A null-rank verdict carries no
                 // axis signal, so omitting it keeps the year-over-year JSON lean
                 // and a single-shot run without the pass has no field at all.
-                // Shared write-side gate with run-manual (lib/report/prose-rank.js).
-                ...(persistableProseRank(proseRank)
-                  ? { proseRank: { rank: proseRank.rank, confidence: proseRank.confidence, rationale: proseRank.rationale } }
-                  : {}),
+                // Shared field-builder with run-manual (lib/report/prose-rank.js)
+                // so the two sinks can never drift.
+                ...proseRankField(proseRank),
                 ...(queryTags[qi] ? { tag: queryTags[qi] } : {}),
                 ...(queryBrandFits[qi] ? { brandFit: queryBrandFits[qi] } : {}),
                 ...(region ? { region: region.code, regionLabel: region.label } : {}),
@@ -4206,10 +4205,9 @@ async function cmdRunManual(argv) {
       competitorsUnverified,
       ...(storeManualSources ? { extractionSources: extractionManual.sources } : {}),
       ...(sentimentManual ? { sentiment: { label: sentimentManual.label, confidence: sentimentManual.confidence, rationale: sentimentManual.rationale } } : {}),
-      // Shared write-side gate with the live run loop (lib/report/prose-rank.js).
-      ...(persistableProseRank(proseRankManual)
-        ? { proseRank: { rank: proseRankManual.rank, confidence: proseRankManual.confidence, rationale: proseRankManual.rationale } }
-        : {}),
+      // Shared field-builder with the live run loop (lib/report/prose-rank.js)
+      // so the manual and live sinks can never drift.
+      ...proseRankField(proseRankManual),
       ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
       ...(queryBrandFitsManual[qi] ? { brandFit: queryBrandFitsManual[qi] } : {}),
       responseQuality,
