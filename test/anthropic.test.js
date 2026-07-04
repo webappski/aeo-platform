@@ -62,11 +62,26 @@ await test('claude-haiku-4-5 + thinking → body has thinking', async () => {
   assert.deepStrictEqual(body.thinking, THINKING_OPTS.thinking);
 });
 
-await test('future claude-5-sonnet-X + thinking → body has thinking (future-proof)', async () => {
+await test('claude-sonnet-5 + thinking → adaptive type (gen5 rejects "enabled"), max_tokens bumped', async () => {
   stubFetch(OK_RESPONSE);
-  await callAnthropic('hi', 'sk-test', 'claude-5-sonnet-20270101', { ...THINKING_OPTS, webSearch: false });
+  await callAnthropic('hi', 'sk-test', 'claude-sonnet-5', { ...THINKING_OPTS, webSearch: false });
   const body = JSON.parse(captured[0].init.body);
-  assert.deepStrictEqual(body.thinking, THINKING_OPTS.thinking);
+  assert.deepStrictEqual(body.thinking, { type: 'adaptive' }, 'gen5 must send adaptive, never enabled');
+  assert.equal(body.max_tokens, 18048, 'budget hint still pads max_tokens (16000 + 2048)');
+});
+
+await test('claude-sonnet-5-20260615 (dated gen5 id) + thinking → adaptive type', async () => {
+  stubFetch(OK_RESPONSE);
+  await callAnthropic('hi', 'sk-test', 'claude-sonnet-5-20260615', { ...THINKING_OPTS, webSearch: false });
+  const body = JSON.parse(captured[0].init.body);
+  assert.deepStrictEqual(body.thinking, { type: 'adaptive' });
+});
+
+await test('claude-fable-5 + thinking → adaptive type (gen5 family variety)', async () => {
+  stubFetch(OK_RESPONSE);
+  await callAnthropic('hi', 'sk-test', 'claude-fable-5', { ...THINKING_OPTS, webSearch: false });
+  const body = JSON.parse(captured[0].init.body);
+  assert.deepStrictEqual(body.thinking, { type: 'adaptive' });
 });
 
 await test('claude-3-5-sonnet + thinking → field DROPPED (legacy gen)', async () => {
