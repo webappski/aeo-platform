@@ -143,5 +143,86 @@ test('scores.uvi falls back to computeUVI when summary.score is missing', () => 
   assert.equal(md.scores.uvi, expected);
 });
 
+// ─── Portal report mirror: un-denied client-own data + leak guard + bug fixes ───
+console.log('\nmc-metadata — portal report mirror (2026-07-06)');
+
+test("perCell carries the client's own data (queryText / responseExcerpt / canonicalCitations)", () => {
+  const summary = {
+    date: '2026-05-13', brand: 'X', domain: 'x.com', score: 0,
+    results: [
+      { provider: 'openai', query: 'q1', queryText: 'best crm for X', mention: 'no', position: null,
+        citationCount: 3, canonicalCitations: ['https://a.com', 'https://b.com'],
+        responseExcerpt: 'Here is what the engine said…',
+        costUsd: 0.04, inputTokens: 900, outputTokens: 700, elapsedMs: 1234,
+        extractionSources: ['gpt-5-mini'] },
+    ],
+  };
+  const cell = buildMcMetadata(summary, [summary]).perCell[0];
+  assert.equal(cell.queryText, 'best crm for X');
+  assert.equal(cell.responseExcerpt, 'Here is what the engine said…');
+  assert.deepEqual(cell.canonicalCitations, ['https://a.com', 'https://b.com']);
+});
+
+test('LEAK GUARD — cost/token/paths/outreach never reach the payload', () => {
+  const summary = {
+    date: '2026-05-13', brand: 'X', domain: 'x.com', score: 0,
+    sessionCostUsd: 4.21, costByModel: [{ model: 'gpt', costUsd: 4.21 }],
+    outreachTemplates: [{ to: 'sam@x.com', body: 'PII pitch body' }],
+    results: [
+      { provider: 'openai', query: 'q1', queryText: 'q', mention: 'no', canonicalCitations: [],
+        responseExcerpt: 'x', costUsd: 0.04, inputTokens: 900, outputTokens: 700,
+        elapsedMs: 1234, extractionSources: ['gpt-5-mini'] },
+    ],
+  };
+  const s = JSON.stringify(buildMcMetadata(summary, [summary]));
+  for (const k of ['costUsd', 'sessionCostUsd', 'inputTokens', 'outputTokens', 'elapsedMs', 'extractionSources', 'outreachTemplates', 'costByModel']) {
+    assert.equal(s.includes('"' + k + '"'), false, `deny-list key ${k} leaked`);
+  }
+  assert.equal(s.includes('4.21'), false, 'raw cost value leaked');
+  assert.equal(s.includes('PII pitch body'), false, 'outreach PII leaked');
+});
+
+test('recommendations + ads emitted; the two emit-empty bugs (topCitationDomains, crawl.bots) fixed', () => {
+  const summary = {
+    date: '2026-05-13', brand: 'X', domain: 'x.com', score: 0,
+    results: [{ provider: 'openai', query: 'q1', mention: 'no', canonicalCitations: [] }],
+    llmActions: [{ kind: 'gap', priority: 'high', engines: ['openai'], title: 'Do X', detail: 'because Y' }],
+    adsDetected: { totalCellsScanned: 3, totalCellsWithAdSignal: 1, byProvider: { gemini: 1 } },
+    topDomains: [{ host: 'commonsku.com', count: 17, share: 0.05 }],
+    citationClassification: { results: [{ hostname: 'commonsku.com', industry: 'Promo SaaS', onCategory: true }] },
+    crawlability: {
+      summary: { hasRobots: true, hasSitemap: true, totalBots: 2, allowedCount: 1, blockedCount: 1 },
+      sitemap: { urlCount: 5 },
+      botAccess: [{ name: 'GPTBot', label: 'GPTBot', access: 'allowed' }, { name: 'ClaudeBot', label: 'ClaudeBot', access: 'blocked' }],
+    },
+  };
+  const md = buildMcMetadata(summary, [summary]);
+  assert.equal(md.recommendations.length, 1);
+  assert.equal(md.recommendations[0].title, 'Do X');
+  assert.equal(md.ads.cellsWithAd, 1);
+  assert.equal(md.topCitationDomains.length, 1, 'topCitationDomains sourced from topDomains');
+  assert.equal(md.topCitationDomains[0].host, 'commonsku.com');
+  assert.equal(md.topCitationDomains[0].share, 0.05);
+  assert.equal(md.topCitationDomains[0].onCategory, true);
+  assert.equal(md.crawl.bots.length, 2, 'crawl.bots sourced from botAccess');
+  assert.deepEqual(md.crawl.bots.map(b => b.status), ['allowed', 'blocked']);
+});
+
+test('aggregates carry the matrix summary stats (errors / competitorMentions / citationPool)', () => {
+  const summary = {
+    date: '2026-05-13', brand: 'X', domain: 'x.com', score: 0, errors: 2,
+    topCompetitors: [{ name: 'A', count: 5, verified: true }],
+    unverifiedOnly: [{ name: 'B', count: 3 }],
+    results: [
+      { provider: 'openai', query: 'q1', mention: 'no', citationCount: 8, canonicalCitations: [] },
+      { provider: 'gemini', query: 'q1', mention: 'no', citationCount: 4, canonicalCitations: [] },
+    ],
+  };
+  const md = buildMcMetadata(summary, [summary]);
+  assert.equal(md.aggregates.errors, 2);
+  assert.equal(md.aggregates.competitorMentions, 8); // 5 verified + 3 unverified
+  assert.equal(md.aggregates.citationPool, 12); // 8 + 4
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
