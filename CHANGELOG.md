@@ -4,6 +4,10 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
+### Changed
+
+- **AEO Model Performance & Throttling:** Replaced the expensive `gpt-5-search-api` with mid-tier models (Gemini/OpenAI) for automated reasoning and web searching to reduce operational costs. Recalibrated CLI throttling limits to improve execution stability. Updated corresponding tests.
+
 ### Added
 
 - **Measurement-surface disclaimer — honest about what the score is and is not** (review #3). The tool queries each engine's **API surface** with your own keys (OpenAI `gpt-5-search-api`, Perplexity `sonar-reasoning`, Gemini `generateContent` + grounding, optional Anthropic) — a reproducible proxy, NOT the consumer apps (chatgpt.com, perplexity.ai, the Gemini app), which use different retrieval, can serve a different model version, and add personalization/locale. It also does not cover Google AI Overviews / AI Mode or Microsoft Copilot (no first-party query API). Three additive parts: (1) every run now stamps `_summary.json` with `measurement: { surface: "api", disclaimer: "…" }` (single source of truth: `lib/report/measurement-disclaimer.js`); (2) the report header renders the disclaimer as a muted one-liner under the headline (full sentence on hover), without touching the existing date/version/engine row; (3) a README section *"What this measures — and what it does NOT"* with a narrow engine→API-surface table, the AI Overviews / Copilot exclusion called out, and an AI Overviews connector listed on the roadmap (not built). No score math changed.

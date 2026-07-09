@@ -51,7 +51,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { withTmpProject } from './_helpers.js';
+import { withTmpProject, responsesDateDir } from './_helpers.js';
 import {
   extractProseRankWithTwoModels,
   persistableProseRank,
@@ -133,7 +133,7 @@ test('prose verdict → _summary.json on disk → read back → lifts the rank a
     };
 
     // 3. Persist to a REAL _summary.json via the SAME atomic writer the sinks use.
-    const responseDir = join(dir, 'aeo-responses', summary.date);
+    const responseDir = responsesDateDir(dir, summary.domain, summary.date);
     mkdirSync(responseDir, { recursive: true });
     const summaryPath = join(responseDir, '_summary.json');
     await atomicWriteJson(summaryPath, summary);

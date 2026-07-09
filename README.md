@@ -537,7 +537,9 @@ Known Windows-specific gotchas to watch for:
 
 ### Can I track multiple brands?
 
-Yes — create a separate working directory for each brand with its own `.aeo-tracker.json`. A wrapper script that loops over client directories is ~10 lines of bash (macOS / Linux) or PowerShell (Windows).
+Yes. All on-disk artifacts are namespaced by domain — `aeo-responses/<domain>/<date>/` and `aeo-reports/<domain>/<date>/` — so two different domains can safely share one working directory: re-run `init` for the next domain (it overwrites `.aeo-tracker.json`), then `run` / `report`. Each domain keeps its own runs, trend history, and reports; they never blend. `run`/`report`/`diff`/`export` operate on the domain in the current `.aeo-tracker.json` (or, if there's no config, the single domain present on disk).
+
+A separate working directory per brand still works and keeps each client's `.aeo-tracker.json` (queries, provider config, validation cache) fully isolated — that's the cleaner setup for many clients. A wrapper script that loops over client directories is ~10 lines of bash (macOS / Linux) or PowerShell (Windows).
 
 ### How often should I run it?
 

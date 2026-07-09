@@ -41,10 +41,6 @@ const OK_RESPONSE = () => ({
 console.log('\ncallOpenAI reasoning_effort gate');
 
 await test('gpt-5-search-api + reasoning_effort=high → field DROPPED (1.0.7 search-variant fix)', async () => {
-  // 1.0.7: search-variants reject reasoning_effort with HTTP 400. The
-  // SUPPORTS_REASONING_EFFORT gate must strip the field before the call.
-  // Pre-1.0.7 this test asserted the BUG (asserted field present); now it
-  // asserts the fix.
   stubFetch(OK_RESPONSE);
   await callOpenAI('hi', 'sk-test', 'gpt-5-search-api', { reasoning_effort: 'high' });
   const body = JSON.parse(captured[0].init.body);
@@ -109,8 +105,6 @@ await test('gpt-3.5-turbo + reasoning_effort → field DROPPED', async () => {
 });
 
 await test('future gpt-6-search-api → field DROPPED (1.0.7 search-variant future-proof)', async () => {
-  // 1.0.7: pre-fix this test codified the bug for a future gpt-6 search
-  // variant. Now asserts the search-exclusion fires regardless of generation.
   stubFetch(OK_RESPONSE);
   await callOpenAI('hi', 'sk-test', 'gpt-6-search-api', { reasoning_effort: 'high' });
   const body = JSON.parse(captured[0].init.body);

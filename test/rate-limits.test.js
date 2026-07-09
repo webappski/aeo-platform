@@ -33,47 +33,51 @@ test('unknown provider returns null',
 
 console.log('\ngetTier1Limit');
 
-test('OpenAI gpt-5-search-api: 6k TPM (matches user error report)',
+test('OpenAI gpt-5-search-api: 500k TPM (matches base gpt-5 per user decision)',
   () => {
     const lim = getTier1Limit('openai', 'gpt-5-search-api');
-    assert.equal(lim.tpm, 6000);
+    assert.equal(lim.tpm, 500000);
   });
 
-test('OpenAI gpt-5: 90k TPM (15× higher than search variant)',
+test('OpenAI gpt-5: 500k TPM',
   () => {
     const lim = getTier1Limit('openai', 'gpt-5');
-    assert.equal(lim.tpm, 90000);
-    // The "15× higher" claim in the docs:
-    assert.equal(90000 / 6000, 15);
+    assert.equal(lim.tpm, 500000);
+  });
+
+test('OpenAI gpt-5 and gpt-5-search-api are equal',
+  () => {
+    const limSearch = getTier1Limit('openai', 'gpt-5-search-api');
+    const limBase = getTier1Limit('openai', 'gpt-5');
+    assert.equal(limSearch.tpm, limBase.tpm);
   });
 
 test('Perplexity returns tpm=null (RPM-only by design)',
   () => {
     const lim = getTier1Limit('perplexity', 'sonar-pro');
     assert.equal(lim.tpm, null);
-    assert.equal(lim.rpm, 50);
+    assert.equal(lim.rpm, 150);
   });
 
 console.log('\nestimateRunDuration');
 
-test('mode=fast when estimate fits in tpm window with headroom (gpt-5, 7.5k vs 90k)', () => {
+test('mode=fast when estimate fits in tpm window with headroom (gpt-5, 7.5k vs 500k)', () => {
   const eta = estimateRunDuration('openai', 'gpt-5', 'run');
   assert.equal(eta.mode, 'fast');
   assert.equal(eta.etaSeconds, 5);
 });
 
-test('mode=paced when estimate exceeds budget (gpt-5-search-api, 7.5k vs 6k)', () => {
+test('mode=fast when estimate fits in tpm window with headroom (gpt-5-search-api, 7.5k vs 500k)', () => {
   const eta = estimateRunDuration('openai', 'gpt-5-search-api', 'run');
-  assert.equal(eta.mode, 'paced');
-  // 7500 / 5400 = 1.39 → ceil = 2 windows → (2-1)*60+5 = 65s
-  assert.equal(eta.etaSeconds, 65);
+  assert.equal(eta.mode, 'fast');
+  assert.equal(eta.etaSeconds, 5);
 });
 
-test('mode=paced for run-depth-full on tier-1 search (15k vs 6k, 3 windows)', () => {
-  const eta = estimateRunDuration('openai', 'gpt-5-search-api', 'run-depth-full');
+test('mode=paced when estimate exceeds budget (gpt-4o-search-preview, thinkingActive: true, run-depth-full, 51k vs 27k budget)', () => {
+  const eta = estimateRunDuration('openai', 'gpt-4o-search-preview', 'run-depth-full', { thinkingActive: true });
   assert.equal(eta.mode, 'paced');
-  // 15000 / 5400 = 2.78 → ceil = 3 windows → (3-1)*60+5 = 125s
-  assert.equal(eta.etaSeconds, 125);
+  // 51000 / 27000 = 1.89 → ceil = 2 windows → (2-1)*60+5 = 65s
+  assert.equal(eta.etaSeconds, 65);
 });
 
 test('mode=unknown when model not in table', () => {
@@ -88,17 +92,16 @@ test('mode=unknown when command not recognised', () => {
 
 console.log('\nformatTpmHint');
 
-test('search model shows "paced across" text', () => {
+test('search model (gpt-5-search-api) now completes in ~5s with the new 500k TPM budget', () => {
   const hint = formatTpmHint('openai', 'gpt-5-search-api');
-  assert.match(hint, /paced across/);
-  // toLocaleString may use comma or non-breaking space depending on OS locale.
-  assert.match(hint, /6.000 TPM/);
+  assert.match(hint, /completes in/);
+  assert.ok(hint.includes('500') && hint.includes('TPM'));
 });
 
 test('non-search model shows "completes in" text', () => {
   const hint = formatTpmHint('openai', 'gpt-5');
   assert.match(hint, /completes in/);
-  assert.match(hint, /90.000 TPM/);
+  assert.ok(hint.includes('500') && hint.includes('TPM'));
 });
 
 test('perplexity shows RPM-only hint (no TPM mention)', () => {

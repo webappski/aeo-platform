@@ -24,11 +24,13 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
   todayDateString,
   FIXTURE_ROOT,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real' };
+const DOMAIN = 'testbrand.com';
 
 test('P0-13 — run-manual perplexity --from-dir reads pasted text + writes summary', async () => {
   await withTmpProject('aeo-e2e-runmanual-', (dir) => {
@@ -72,7 +74,7 @@ test('P0-13 — run-manual perplexity --from-dir reads pasted text + writes summ
 
     // 4. Verify the summary landed.
     const today = todayDateString();
-    const summaryPath = join(dir, 'aeo-responses', today, '_summary.json');
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, today), '_summary.json');
     assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
     const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
     assert.equal(summary.brand, 'TestBrand');

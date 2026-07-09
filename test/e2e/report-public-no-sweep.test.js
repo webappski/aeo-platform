@@ -29,10 +29,14 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
+  reportsDateDir,
   todayDateString,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
+
+const DOMAIN = 'testbrand.com';
 
 // A date in the past, distinct from today, that carries a pre-existing proof
 // report we must not lose. Hard-coded date (not relative) is fine: it only has
@@ -63,11 +67,11 @@ function summaryFor(date) {
 // sweep would normally delete.
 function seedTodayRunPlusArchivedReport(dir) {
   const today = todayDateString();
-  const dd = join(dir, 'aeo-responses', today);
+  const dd = responsesDateDir(dir, DOMAIN, today);
   mkdirSync(dd, { recursive: true });
   writeFileSync(join(dd, '_summary.json'), JSON.stringify(summaryFor(today)));
 
-  const archiveDir = join(dir, 'aeo-reports', ARCHIVE_DATE);
+  const archiveDir = reportsDateDir(dir, DOMAIN, ARCHIVE_DATE);
   mkdirSync(archiveDir, { recursive: true });
   const archiveReport = join(archiveDir, 'report.html');
   writeFileSync(archiveReport, '<!doctype html><title>archived proof 2026-04-23</title>');

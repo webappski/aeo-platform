@@ -25,6 +25,7 @@ import {
   spawnCli,
   assertExitCode,
   seedReplayProject,
+  reportsDateDir,
   todayDateString,
 } from './_helpers.js';
 
@@ -47,7 +48,7 @@ test('P0-17a — README contains zero matches of the canonical commerce-CTA rege
 
 test('P0-17b — generated HTML report contains the <article id="mc-bridge"> anchor', async () => {
   await withTmpProject('aeo-e2e-funnel-html-', async (dir) => {
-    seedReplayProject(dir, { variant: 'stable' });
+    const { domain } = seedReplayProject(dir, { variant: 'stable' });
     // Run the replay; GEMINI key required by buildExtractionProviders even
     // though we don't expect it to be called for un-mentioned cells. Fake key
     // is fine — extractWithTwoModels catches 401s internally (per-cell error
@@ -70,7 +71,7 @@ test('P0-17b — generated HTML report contains the <article id="mc-bridge"> anc
 
     // report.html lives under aeo-reports/<today>/report.html
     const today = todayDateString();
-    const htmlPath = join(dir, 'aeo-reports', today, 'report.html');
+    const htmlPath = join(reportsDateDir(dir, domain, today), 'report.html');
     assert.ok(existsSync(htmlPath), `expected report.html at ${htmlPath}`);
     const html = readFileSync(htmlPath, 'utf-8');
     assert.match(

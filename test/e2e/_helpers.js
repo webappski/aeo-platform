@@ -24,10 +24,23 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } fr
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sanitizeForFilename } from '../../lib/util/safe-filename.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const BIN = join(REPO_ROOT, 'bin', 'aeo-tracker.js');
 export const FIXTURE_ROOT = join(REPO_ROOT, 'test', 'fixtures');
+
+// ─── Domain-scoped storage paths ───
+// Storage is namespaced by domain: aeo-responses/<slug>/<date>/ and
+// aeo-reports/<slug>/<date>/. Tests MUST build read-back paths through these
+// helpers (never `join(dir, 'aeo-responses', date)`) so the layout has a single
+// source of truth shared with bin/aeo-tracker.js's domainSlug().
+export function responsesDateDir(projectDir, domain, date) {
+  return join(projectDir, 'aeo-responses', sanitizeForFilename(domain), date);
+}
+export function reportsDateDir(projectDir, domain, date) {
+  return join(projectDir, 'aeo-reports', sanitizeForFilename(domain), date);
+}
 export const FIXTURE_REPLAY_DATE = '2026-05-13';
 export { REPO_ROOT };
 
@@ -81,11 +94,13 @@ export function spawnProc(cmd, args, opts = {}) {
   for (const k of Object.keys(env)) {
     if (k.startsWith('npm_')) delete env[k];
   }
-  return spawnSync(cmd, args, {
+  const finalCmd = process.platform === 'win32' && cmd === 'npm' ? 'npm.cmd' : cmd;
+  return spawnSync(finalCmd, args, {
     encoding: 'utf-8',
     stdio: 'pipe',
     env,
     cwd: opts.cwd,
+    shell: process.platform === 'win32',
     timeout: opts.timeout || 120000,
   });
 }
@@ -119,15 +134,14 @@ export function assertExitCode(result, expected, msg = '') {
  *
  * Copies a fixture variant (stable/regression/all-invisible/malformed) into
  * `<tmpDir>/aeo-responses/<date>/`. Writes a minimal `.aeo-tracker.json` that
- * declares one openai provider on the `gpt-5` (90k TPM) model — explicitly NOT
- * `gpt-5-search-api` (6k TPM) which would trip the scheduler pacing trap and
- * stall each test by 60s (see PITFALLS 2026-05-19 entry 5). The companion
- * fixture files in stable/regression/all-invisible directories are renamed
- * on the way in: any `q{N}-openai-gpt-5-search-api.json` is copied as
- * `q{N}-openai-gpt-5.json`. `_extractFromRaw` reads only `choices[0]…` /
- * `annotations[].url_citation.url` from the JSON body — it ignores the
- * `model` field — so the rename is shape-safe (verified bin/aeo-tracker.js:
- * 257-293 in design plan 2026-05-20 v2).
+ * declares one openai provider on the `gpt-5` (non-search) model — explicitly
+ * NOT `gpt-5-search-api` which hits real OpenAI search endpoints during live
+ * replay (fixtures don't stub network calls). The companion fixture files in
+ * stable/regression/all-invisible directories are renamed on the way in: any
+ * `q{N}-openai-gpt-5-search-api.json` is copied as `q{N}-openai-gpt-5.json`.
+ * `_extractFromRaw` reads only `choices[0]…` / `annotations[].url_citation.url`
+ * from the JSON body — it ignores the `model` field — so the rename is
+ * shape-safe (verified bin/aeo-tracker.js: 257-293 in design plan 2026-05-20 v2).
  *
  * `malformed/` variant ships files containing literally invalid JSON. They
  * cause `_tryReplay` (bin/aeo-tracker.js:295-310) to swallow the
@@ -147,6 +161,7 @@ export function seedReplayProject(tmpDir, opts = {}) {
   const variant = opts.variant || 'stable';
   const replayDate = opts.date || FIXTURE_REPLAY_DATE;
   const model = opts.model || 'gpt-5';
+  const domain = opts.domain || 'testbrand.com';
   const queries = opts.queries || [
     'best test brands 2026',
     'top test brand alternatives',
@@ -154,7 +169,9 @@ export function seedReplayProject(tmpDir, opts = {}) {
   ];
 
   const srcDir = join(FIXTURE_ROOT, 'aeo-responses', variant);
-  const destDir = join(tmpDir, 'aeo-responses', replayDate);
+  // Domain-namespaced: fixtures land under aeo-responses/<slug>/<date>/ exactly
+  // where the domain-scoped replay reader in bin/aeo-tracker.js looks.
+  const destDir = responsesDateDir(tmpDir, domain, replayDate);
   mkdirSync(destDir, { recursive: true });
 
   // Copy every fixture file EXCEPT `_summary.json`. The summary file in the
@@ -184,7 +201,7 @@ export function seedReplayProject(tmpDir, opts = {}) {
   // otherwise hit live API on every test boot).
   const config = {
     brand: 'TestBrand',
-    domain: 'testbrand.com',
+    domain,
     queries,
     providers: {
       openai: {
@@ -203,7 +220,7 @@ export function seedReplayProject(tmpDir, opts = {}) {
   const configPath = join(tmpDir, '.aeo-tracker.json');
   writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-  return { replayDate, configPath };
+  return { replayDate, configPath, domain };
 }
 
 /**

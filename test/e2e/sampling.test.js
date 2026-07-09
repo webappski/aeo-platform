@@ -34,8 +34,13 @@ import {
   assertExitCode,
   seedReplayProject,
   todayDateString,
+  responsesDateDir,
+  reportsDateDir,
   BIN,
 } from './_helpers.js';
+
+// All sampling fixtures seed the default domain in seedReplayProject.
+const DOMAIN = 'testbrand.com';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real' };
 
@@ -81,14 +86,14 @@ test('T-E2E-1 — `--samples 1` is byte-identical to no flag (R39)', async () =>
     seedReplayProject(dir, { variant: 'stable' });
     const r = spawnCli(['run', '--replay', '--replay-from=2026-05-13'], { cwd: dir, env: KEYS });
     assertExitCode(r, 0, 'no-flag replay should exit 0');
-    noFlag = readFileSync(join(dir, 'aeo-responses', todayDateString(), '_summary.json'), 'utf-8');
+    noFlag = readFileSync(join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json'), 'utf-8');
   });
 
   await withTmpProject('aeo-e2e-samples-identity-b-', (dir) => {
     seedReplayProject(dir, { variant: 'stable' });
     const r = spawnCli(['run', '--replay', '--replay-from=2026-05-13', '--samples', '1'], { cwd: dir, env: KEYS });
     assertExitCode(r, 0, '--samples 1 replay should exit 0');
-    samples1 = readFileSync(join(dir, 'aeo-responses', todayDateString(), '_summary.json'), 'utf-8');
+    samples1 = readFileSync(join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json'), 'utf-8');
   });
 
   const a = normaliseSummary(noFlag);
@@ -134,7 +139,7 @@ test('T-E2E-2 — distinct per-trial fixtures drive the fractional path end-to-e
     );
     assertExitCode(r, 0, 'mixed-trials replay --samples 3 should exit 0');
 
-    const summaryDir = join(dir, 'aeo-responses', todayDateString());
+    const summaryDir = responsesDateDir(dir, DOMAIN, todayDateString());
     const summary = JSON.parse(readFileSync(join(summaryDir, '_summary.json'), 'utf-8'));
 
     // Exactly ONE record per cell — the load-bearing invariant.
@@ -189,7 +194,7 @@ test('T-E2E-2 — distinct per-trial fixtures drive the fractional path end-to-e
     });
     void rep; // report writes to disk; assert on the markdown file
     const reportMd = readFileSync(
-      join(dir, 'aeo-reports', todayDateString(), 'report.md'), 'utf-8',
+      join(reportsDateDir(dir, DOMAIN, todayDateString()), 'report.md'), 'utf-8',
     );
     assert.match(reportMd, /trials/, 'report Presence hint should mention trials when sampled');
     assert.match(reportMd, /CI \[/, 'report Presence hint should render a confidence interval');
@@ -197,38 +202,39 @@ test('T-E2E-2 — distinct per-trial fixtures drive the fractional path end-to-e
   });
 });
 
-test('T-E2E-resume — same-day re-run with sampling keeps exactly 1 record/cell', async () => {
-  // CAVEAT #3: a carried-over record from an earlier run today must NOT create a
-  // SECOND record for a cell, which would break the «1 record/cell» invariant
-  // the whole feature rests on. Run --samples 3 twice; the second run resumes
-  // from the first's summary. Every cell must survive as exactly one (sampled)
-  // record — never duplicated, never downgraded.
-  await withTmpProject('aeo-e2e-samples-resume-', (dir) => {
+test('T-E2E-rerun — same-day re-run with sampling overwrites to exactly 1 record/cell', async () => {
+  // The same-day skip/resume/merge cache was removed: a second run in the same
+  // day fully RE-MEASURES every cell and OVERWRITES the summary (no carry-over).
+  // The «1 record/cell» invariant must still hold — now because each cell is
+  // measured fresh once, not because a merge dedups carried-over records. This
+  // guards against a regression where re-running would duplicate or downgrade
+  // sampled cell records.
+  await withTmpProject('aeo-e2e-samples-rerun-', (dir) => {
     seedReplayProject(dir, { variant: 'mixed-trials' });
-    const summaryPath = join(dir, 'aeo-responses', todayDateString(), '_summary.json');
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
 
     const r1 = spawnCli(['run', '--replay', '--replay-from=2026-05-13', '--samples', '3'], { cwd: dir, env: KEYS });
     assertExitCode(r1, 0, 'first sampled run should exit 0');
     const s1 = JSON.parse(readFileSync(summaryPath, 'utf-8'));
     assert.equal(s1.results.length, 3, 'first run writes 3 cell records');
 
-    // Second run, SAME day, no --force → resume path merges with s1.
+    // Second run, SAME day → re-measures all cells fresh and overwrites s1.
     const r2 = spawnCli(['run', '--replay', '--replay-from=2026-05-13', '--samples', '3'], { cwd: dir, env: KEYS });
-    assertExitCode(r2, 0, 'second sampled run (resume) should exit 0');
+    assertExitCode(r2, 0, 'second sampled run should exit 0');
     const s2 = JSON.parse(readFileSync(summaryPath, 'utf-8'));
 
     // The invariant: still exactly ONE record per (query, provider, model, mode)
-    // — no duplicate cell rows leaked from the merge.
+    // — a fresh re-measure must never produce duplicate cell rows.
     assert.equal(s2.results.length, 3,
-      `resume must keep exactly 3 records (1/cell), got ${s2.results.length}`);
+      `re-run must keep exactly 3 records (1/cell), got ${s2.results.length}`);
     const keys = s2.results.map(r => `${r.query}:${r.provider}:${r.model}:${r.mode || 'web'}`);
-    assert.equal(new Set(keys).size, keys.length, `duplicate cell records after resume: ${keys.join(', ')}`);
+    assert.equal(new Set(keys).size, keys.length, `duplicate cell records after re-run: ${keys.join(', ')}`);
 
-    // The carried-over Q1 record must still be the sampled record (trials +
+    // The re-measured Q1 record must still be the sampled record (trials +
     // presence intact — not downgraded to a single-shot shape).
     const q1 = s2.results.find(r => r.query === 'Q1');
-    assert.ok(Array.isArray(q1.trials) && q1.trials.length === 3, 'Q1 keeps its 3 trials after resume');
-    assert.equal(q1.presence.n, 3, 'Q1 keeps presence.n=3 after resume');
+    assert.ok(Array.isArray(q1.trials) && q1.trials.length === 3, 'Q1 keeps its 3 trials after re-run');
+    assert.equal(q1.presence.n, 3, 'Q1 keeps presence.n=3 after re-run');
   });
 });
 

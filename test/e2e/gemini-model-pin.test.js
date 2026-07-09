@@ -88,12 +88,31 @@ function configuredGeminiModel() {
  */
 function latestServedGeminiModel() {
   if (!existsSync(RESPONSES_ROOT)) return null;
-  const dated = readdirSync(RESPONSES_ROOT)
-    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort()
-    .reverse();
-  for (const date of dated) {
-    const summaryPath = join(RESPONSES_ROOT, date, '_summary.json');
+  // Storage is now namespaced by domain (aeo-responses/<domain>/<date>/), but
+  // legacy runs may still sit at the flat aeo-responses/<date>/ path. Collect
+  // candidate summary paths from BOTH layouts so this pin-vs-served check keeps
+  // working across the transition. Domain-agnostic on purpose: it only needs
+  // the newest served gemini id anywhere on this machine.
+  const summaryPaths = [];
+  for (const entry of readdirSync(RESPONSES_ROOT)) {
+    const entryPath = join(RESPONSES_ROOT, entry);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(entry)) {
+      // Legacy flat date dir.
+      summaryPaths.push(join(entryPath, '_summary.json'));
+    } else {
+      // Domain namespace — scan its date subdirs.
+      try {
+        for (const sub of readdirSync(entryPath)) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(sub)) {
+            summaryPaths.push(join(entryPath, sub, '_summary.json'));
+          }
+        }
+      } catch { /* not a dir / unreadable — skip */ }
+    }
+  }
+  // Newest first by the summary's own date field.
+  const found = [];
+  for (const summaryPath of summaryPaths) {
     if (!existsSync(summaryPath)) continue;
     let summary;
     try { summary = JSON.parse(readFileSync(summaryPath, 'utf-8')); }
@@ -102,10 +121,12 @@ function latestServedGeminiModel() {
       (c) => c.provider === 'gemini' && c.label === 'Gemini',
     );
     if (geminiCost && typeof geminiCost.model === 'string' && geminiCost.model.length > 0) {
-      return { date, served: geminiCost.model };
+      found.push({ date: summary.date || '', served: geminiCost.model });
     }
   }
-  return null;
+  if (found.length === 0) return null;
+  found.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  return found[0];
 }
 
 test('configured gemini answer-model is PINNED to the id Google currently serves', () => {

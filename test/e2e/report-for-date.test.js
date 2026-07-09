@@ -34,10 +34,12 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
 
+const DOMAIN = 'testbrand.com';
 const OLD_DATE = '2026-05-25';
 const NEW_DATE = '2026-06-11';
 const OLD_SCORE = 58;
@@ -68,7 +70,7 @@ function summaryFor(date, score) {
 // a real, distinguishable assertion.
 function seedTwoRuns(dir) {
   for (const [date, score] of [[OLD_DATE, OLD_SCORE], [NEW_DATE, NEW_SCORE]]) {
-    const dd = join(dir, 'aeo-responses', date);
+    const dd = responsesDateDir(dir, DOMAIN, date);
     mkdirSync(dd, { recursive: true });
     writeFileSync(join(dd, '_summary.json'), JSON.stringify(summaryFor(date, score)));
   }

@@ -34,9 +34,9 @@ test('export omits cdKeys that never learned a limit', () => {
 });
 
 test('import seeds limits queryable via getLearnedOrTierLimit', () => {
-  const n = importLearnedLimits({ 'openai:gpt-5-search-api': { limit: 25000, source: 'persisted' } });
+  const n = importLearnedLimits({ 'openai:gpt-5-search-api': { limit: 600000, source: 'persisted' } });
   assert.equal(n, 1);
-  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-search-api'), 25000);
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-search-api'), 600000);
 });
 
 test('export → import roundtrip preserves the learned ceiling', () => {
