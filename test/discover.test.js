@@ -38,47 +38,67 @@ process.stderr.write = (s, ...rest) => {
 
 console.log('\ndiscoverModels OpenAI');
 
-await test('openai: search-capable mini-search picked over flagship', async () => {
+await test('openai: general mini picked; search SKUs + flagship excluded/outranked', async () => {
   stub(() => ok({ data: [
-    { id: 'gpt-5-mini-search-api' },
-    { id: 'gpt-5-search-api' },
-    { id: 'gpt-4o-search' },
+    { id: 'gpt-5-mini-search-api' },  // search SKU — excluded (tiny bucket)
+    { id: 'gpt-5-search-api' },        // search SKU — excluded
+    { id: 'gpt-5' },                   // flagship — mini is required, so outranked
+    { id: 'gpt-5-mini' },              // ← winner
+    { id: 'gpt-5-nano' },              // nano is NOT mini
     { id: 'gpt-4o' },
-    { id: 'gpt-5' },
     { id: 'gpt-3.5-turbo' },
   ]}));
   const { models, authError } = await discoverModels('openai', 'sk-test');
   assert.equal(authError, false);
-  assert.deepStrictEqual(models, ['gpt-5-mini-search-api']);  // gen 5 mini search preferred
+  assert.deepStrictEqual(models, ['gpt-5-mini']);
 });
 
-await test('openai: gen-5 mini-search beats gen-4 flagship-search', async () => {
-  // Newer generation wins primary; mini penalty applies WITHIN gen only.
+await test('openai: newest-gen mini wins (5.4-mini > 5-mini via parseFloat)', async () => {
   stub(() => ok({ data: [
-    { id: 'gpt-5-mini-search-api' },
-    { id: 'gpt-4o-search' },
+    { id: 'gpt-5.4-mini' },
+    { id: 'gpt-5-mini' },
   ]}));
   const { models } = await discoverModels('openai', 'sk-test');
-  assert.deepStrictEqual(models, ['gpt-5-mini-search-api']);
+  assert.deepStrictEqual(models, ['gpt-5.4-mini']);
+});
+
+await test('openai: mini REQUIRED — falls back to newest general only when no mini', async () => {
+  stub(() => ok({ data: [
+    { id: 'gpt-5' },
+    { id: 'gpt-5.4' },
+  ]}));
+  const { models } = await discoverModels('openai', 'sk-test');
+  assert.deepStrictEqual(models, ['gpt-5.4']);
 });
 
 await test('openai: undated > dated within same gen', async () => {
   stub(() => ok({ data: [
-    { id: 'gpt-5-search-api-2026-01-15' },
-    { id: 'gpt-5-search-api' },
+    { id: 'gpt-5-mini-2026-01-15' },
+    { id: 'gpt-5-mini' },
   ]}));
   const { models } = await discoverModels('openai', 'sk-test');
-  assert.deepStrictEqual(models, ['gpt-5-search-api']);
+  assert.deepStrictEqual(models, ['gpt-5-mini']);
 });
 
-await test('openai: audio/realtime variants filtered out', async () => {
+await test('openai: audio/realtime/pro excluded', async () => {
   stub(() => ok({ data: [
-    { id: 'gpt-4o-audio-search' },
-    { id: 'gpt-5-realtime-search' },
-    { id: 'gpt-5-search-api' },
+    { id: 'gpt-5-audio' },
+    { id: 'gpt-5-realtime' },
+    { id: 'gpt-5.5-pro' },        // pro — low TPM (30k), excluded
+    { id: 'gpt-5-mini' },         // ← winner
   ]}));
   const { models } = await discoverModels('openai', 'sk-test');
-  assert.deepStrictEqual(models, ['gpt-5-search-api']);
+  assert.deepStrictEqual(models, ['gpt-5-mini']);
+});
+
+await test('openai: codex/chat-latest aliases excluded', async () => {
+  stub(() => ok({ data: [
+    { id: 'gpt-5.1-codex' },
+    { id: 'gpt-5-chat-latest' },
+    { id: 'gpt-5-mini' },
+  ]}));
+  const { models } = await discoverModels('openai', 'sk-test');
+  assert.deepStrictEqual(models, ['gpt-5-mini']);
 });
 
 await test('openai: 401 → authError=true, models=null', async () => {
@@ -209,28 +229,30 @@ await test('gemini: 401 → authError', async () => {
 
 console.log('\ndiscoverModels Perplexity');
 
-await test('perplexity: prefers sonar-reasoning over sonar-pro', async () => {
+await test('perplexity main: prefers sonar-reasoning-pro (successor of retired sonar-reasoning)', async () => {
   stub(() => ok({ data: [
     { id: 'sonar' },
     { id: 'sonar-pro' },
+    // Include the RETIRED sonar-reasoning so a partial revert (re-adding it to the
+    // top of the preference chain) would flip this assertion and fail.
     { id: 'sonar-reasoning' },
     { id: 'sonar-reasoning-pro' },
   ]}));
   const { models } = await discoverModels('perplexity', 'pplx-test');
-  assert.deepStrictEqual(models, ['sonar-reasoning']);
-});
-
-await test('perplexity: falls back to sonar-reasoning-pro if sonar-reasoning absent', async () => {
-  stub(() => ok({ data: [{ id: 'sonar' }, { id: 'sonar-reasoning-pro' }, { id: 'sonar-pro' }] }));
-  const { models } = await discoverModels('perplexity', 'pplx-test');
   assert.deepStrictEqual(models, ['sonar-reasoning-pro']);
 });
 
-await test('perplexity: 404 /models endpoint → preference chain fallback', async () => {
+await test('perplexity main: falls back to sonar-pro if sonar-reasoning-pro absent', async () => {
+  stub(() => ok({ data: [{ id: 'sonar' }, { id: 'sonar-pro' }] }));
+  const { models } = await discoverModels('perplexity', 'pplx-test');
+  assert.deepStrictEqual(models, ['sonar-pro']);
+});
+
+await test('perplexity main: 404 /models endpoint → preference chain fallback (sonar-reasoning-pro)', async () => {
   stub(() => err(404));
   const { models, authError } = await discoverModels('perplexity', 'pplx-test');
   assert.equal(authError, false);
-  assert.deepStrictEqual(models, ['sonar-reasoning']);
+  assert.deepStrictEqual(models, ['sonar-reasoning-pro']);
 });
 
 await test('perplexity: 401 → authError', async () => {
@@ -294,46 +316,58 @@ await test('anthropic classify: falls back to newest haiku overall when none in 
   assert.deepStrictEqual(models, ['claude-haiku-3-5']);
 });
 
-console.log('\ndiscoverClassifyModel Gemini (reuses the main fetcher verbatim — see discover.js NOTE)');
+console.log('\ndiscoverClassifyModel Gemini (classify trails a gen below main — 2.5-flash, see discover.js)');
 
-await test('gemini classify: identical pick to discoverModels for the same catalogue', async () => {
+await test('gemini classify: pins gemini-2.5-flash while main picks the newest flash', async () => {
   const catalogue = () => ok({ models: [
-    { name: 'models/gemini-3.1-pro-preview', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-3.1-flash', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.5-flash',      supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.1-flash',      supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-2.5-flash',      supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-2.5-pro',        supportedGenerationMethods: ['generateContent'] },
   ]});
   stub(catalogue);
   const main = await discoverModels('gemini', 'AIzaSy');
   stub(catalogue);
   const classify = await discoverClassifyModel('gemini', 'AIzaSy');
-  assert.deepStrictEqual(classify.models, main.models);
-  assert.deepStrictEqual(classify.models, ['gemini-3.1-flash']);
+  assert.deepStrictEqual(main.models, ['gemini-3.5-flash']);       // newest flash (answer tier)
+  assert.deepStrictEqual(classify.models, ['gemini-2.5-flash']);   // one gen below, dynamic-thinking tier
+  assert.notDeepStrictEqual(classify.models, main.models);
+});
+
+await test('gemini classify: excludes 2.5 lite/pro — returns null when no plain 2.5 flash exists', async () => {
+  stub(() => ok({ models: [
+    { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-2.5-pro',        supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.5-flash',      supportedGenerationMethods: ['generateContent'] },
+  ]}));
+  const classify = await discoverClassifyModel('gemini', 'AIzaSy');
+  assert.deepStrictEqual(classify.models, null);  // → falls through to cfg/FALLBACK ('gemini-2.5-flash')
 });
 
 console.log('\ndiscoverClassifyModel Perplexity');
 
-await test('perplexity classify: sonar-reasoning preferred, matches main (decision Alex 2026-07-08)', async () => {
+await test('perplexity classify: prefers cheap plain sonar (≠ main; decision Alex 2026-07-13)', async () => {
   stub(() => ok({ data: [
     { id: 'sonar' },
     { id: 'sonar-pro' },
-    { id: 'sonar-reasoning' },
     { id: 'sonar-reasoning-pro' },
   ]}));
   const { models } = await discoverClassifyModel('perplexity', 'pplx-test');
-  assert.deepStrictEqual(models, ['sonar-reasoning']);
+  assert.deepStrictEqual(models, ['sonar']);  // cheap classify tier, not the reasoning main
 });
 
-await test('perplexity classify: falls back to sonar-pro when reasoning variants absent', async () => {
-  stub(() => ok({ data: [{ id: 'sonar' }, { id: 'sonar-pro' }] }));
+await test('perplexity classify: falls back to sonar-pro when plain sonar absent', async () => {
+  stub(() => ok({ data: [{ id: 'sonar-pro' }, { id: 'sonar-reasoning-pro' }] }));
   const { models } = await discoverClassifyModel('perplexity', 'pplx-test');
   assert.deepStrictEqual(models, ['sonar-pro']);
 });
 
-await test('perplexity classify: 404 /models endpoint → preference chain fallback', async () => {
+await test('perplexity classify: 404 /models endpoint → preference chain fallback (sonar)', async () => {
   stub(() => err(404));
   const { models, authError } = await discoverClassifyModel('perplexity', 'pplx-test');
   assert.equal(authError, false);
-  assert.deepStrictEqual(models, ['sonar-reasoning']);
+  assert.deepStrictEqual(models, ['sonar']);
 });
 
 console.log('\nFALLBACK ↔ DEFAULT_CONFIG drift catcher');

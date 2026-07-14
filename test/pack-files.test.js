@@ -23,7 +23,7 @@
 
 import { execSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PROJ = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -35,7 +35,10 @@ function walk(dir) {
     const full = join(dir, entry);
     const st = statSync(full);
     if (st.isDirectory()) out.push(...walk(full));
-    else out.push(relative(PROJ, full));
+    // Normalize to POSIX separators: npm's `pack --json` always emits '/'-paths,
+    // but relative() yields '\' on Windows, so the Set membership check below
+    // would never match and every file would be falsely reported "missing".
+    else out.push(relative(PROJ, full).split(sep).join('/'));
   }
   return out;
 }

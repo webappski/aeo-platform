@@ -33,10 +33,10 @@ test('unknown provider returns null',
 
 console.log('\ngetTier1Limit');
 
-test('OpenAI gpt-5-search-api: 500k TPM (matches base gpt-5 per user decision)',
+test('OpenAI gpt-5-search-api: 6k TPM (its own tiny dedicated bucket, NOT the gpt-5 cap)',
   () => {
     const lim = getTier1Limit('openai', 'gpt-5-search-api');
-    assert.equal(lim.tpm, 500000);
+    assert.equal(lim.tpm, 6000);
   });
 
 test('OpenAI gpt-5: 500k TPM',
@@ -45,11 +45,13 @@ test('OpenAI gpt-5: 500k TPM',
     assert.equal(lim.tpm, 500000);
   });
 
-test('OpenAI gpt-5 and gpt-5-search-api are equal',
+test('OpenAI gpt-5-search-api bucket is far smaller than base gpt-5 (6k vs 500k)',
   () => {
     const limSearch = getTier1Limit('openai', 'gpt-5-search-api');
     const limBase = getTier1Limit('openai', 'gpt-5');
-    assert.equal(limSearch.tpm, limBase.tpm);
+    assert.equal(limSearch.tpm, 6000);
+    assert.equal(limBase.tpm, 500000);
+    assert.ok(limSearch.tpm < limBase.tpm, 'search SKU bucket must be smaller than the general gpt-5 bucket');
   });
 
 test('Perplexity returns tpm=null (RPM-only by design)',
@@ -67,8 +69,15 @@ test('mode=fast when estimate fits in tpm window with headroom (gpt-5, 7.5k vs 5
   assert.equal(eta.etaSeconds, 5);
 });
 
-test('mode=fast when estimate fits in tpm window with headroom (gpt-5-search-api, 7.5k vs 500k)', () => {
+test('mode=paced for the tiny gpt-5-search-api bucket (7.5k run vs 6k TPM → 2 windows = 65s)', () => {
   const eta = estimateRunDuration('openai', 'gpt-5-search-api', 'run');
+  assert.equal(eta.mode, 'paced');
+  // budget = 6000 * 0.9 = 5400; ceil(7500/5400) = 2 windows → (2-1)*60 + 5 = 65s
+  assert.equal(eta.etaSeconds, 65);
+});
+
+test('mode=fast for gpt-5-mini (the new web-search main, 7.5k vs 500k)', () => {
+  const eta = estimateRunDuration('openai', 'gpt-5-mini', 'run');
   assert.equal(eta.mode, 'fast');
   assert.equal(eta.etaSeconds, 5);
 });
@@ -92,10 +101,12 @@ test('mode=unknown when command not recognised', () => {
 
 console.log('\nformatTpmHint');
 
-test('search model (gpt-5-search-api) now completes in ~5s with the new 500k TPM budget', () => {
+test('formatTpmHint: tiny search bucket (gpt-5-search-api) shows a PACED hint (6k TPM)', () => {
   const hint = formatTpmHint('openai', 'gpt-5-search-api');
-  assert.match(hint, /completes in/);
-  assert.ok(hint.includes('500') && hint.includes('TPM'));
+  assert.match(hint, /paced across/);
+  // locale-agnostic: 6000 renders as "6,000" / "6000" / "6 000" depending on ICU/locale.
+  const digitsOnly = hint.replace(/[\s,. ]/g, '');
+  assert.ok(digitsOnly.includes('6000') && hint.includes('TPM'), `unexpected hint: ${hint}`);
 });
 
 test('non-search model shows "completes in" text', () => {

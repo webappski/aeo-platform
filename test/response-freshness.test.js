@@ -146,6 +146,18 @@ await test('Gemini groundingChunks → web-search detected', () => {
   assert.equal(r.freshness, 'fresh');
 });
 
+await test('OpenAI Responses web_search_call → web-search detected (new shape)', () => {
+  // gpt-5-mini via the Responses web_search tool: the raw has an output[] with a
+  // web_search_call item even before any url_citation is emitted.
+  const cell = {
+    provider: 'openai',
+    raw: { output: [{ type: 'reasoning' }, { type: 'web_search_call' }, { type: 'message', content: [] }] },
+  };
+  const r = classifyResponseFreshness(cell);
+  assert.equal(r.usedWebSearch, true);
+  assert.equal(r.freshness, 'fresh');
+});
+
 console.log('\naggregateFreshness');
 
 await test('per-provider verdicts', () => {

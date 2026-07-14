@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 
 import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides } from '../lib/config.js';
 import { PROVIDERS } from '../lib/providers/index.js';
+import { extractOpenAIResponse } from '../lib/providers/openai.js';
 import { pickClassifyProvider } from '../lib/providers/pick-classify.js';
 import { detectMention, findPosition, extractUrls } from '../lib/mention.js';
 import { brandTerms, textMentionsBrand } from '../lib/brand-match.js';
@@ -395,10 +396,9 @@ function _extractFromRaw(providerName, raw) {
     return { text, citations };
   }
   if (providerName === 'openai') {
-    const text = raw.choices?.[0]?.message?.content || '';
-    const citations = (raw.choices?.[0]?.message?.annotations || [])
-      .filter(a => a.url_citation).map(a => a.url_citation.url);
-    return { text, citations };
+    // Shared extractor — handles BOTH Responses-API (output[]) and legacy
+    // Chat-Completions (choices[]) cache shapes. See lib/providers/openai.js.
+    return extractOpenAIResponse(raw);
   }
   if (providerName === 'gemini') {
     const text = (raw.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('\n');
@@ -1695,7 +1695,7 @@ async function cmdInit(opts = {}) {
               } else {
                 // Full research pipeline (v0.5 default)
                 const { research } = await import('../lib/init/research/research.js');
-                const { selectTopThree, formatSelection, compareCandidates } = await import('../lib/init/research/select.js');
+                const { selectTopThree, formatSelection, compareCandidates, applySelectionFloor, SELECTION_MIN_SCORE } = await import('../lib/init/research/select.js');
 
                 if (i === 0) console.log(`${c.dim}  [full pipeline] brainstorm → filter → score → cross-model validate${c.reset}`);
                 const t0 = Date.now();
@@ -1843,14 +1843,21 @@ async function cmdInit(opts = {}) {
 
                     if (commercialPassingCount >= 3) {
                       // Happy path — re-sort passing by score (brand-fit as
-                      // tiebreaker via the shared comparator), take top-3.
+                      // tiebreaker via the shared comparator), then apply the same
+                      // quality floor as selectTopThree so weak queries (score <
+                      // SELECTION_MIN_SCORE) are demoted to alternatives when there
+                      // are ≥3 stronger ones.
                       passing.sort(compareCandidates);
-                      selectResult.selected = passing.slice(0, 3).map(c => ({
+                      const floored = applySelectionFloor(passing);
+                      selectResult.selected = floored.picks.map(c => ({
                         intent: c.intent || 'commercial',
                         candidate: c,
                         fallbackUsed: null,
                       }));
-                      selectResult.alternatives = passing.slice(3).map(c => ({ ...c }));
+                      selectResult.alternatives = floored.rest.map(c => ({ ...c }));
+                      if (floored.weakBasket) {
+                        console.log(`${c.yellow}  ${SYM.warn} Basket is weak — only ${floored.aboveFloor} of ${passing.length} queries clear the quality floor (score ≥ ${SELECTION_MIN_SCORE}); consider refining your company description.${c.reset}`);
+                      }
                     }
                     // ELSE <3 passing: leave selectResult as-is; recovery panel
                     // will fire downstream with the honest "X of 5" message.
@@ -2799,7 +2806,16 @@ async function cmdRun(options = {}) {
               });
 
               const usage = extractUsage(provider.name, raw);
-              const calcd = calcCost(cellModel, usage);
+              // Count the OpenAI web_search tool calls this response ACTUALLY made
+              // (Responses raw carries one `web_search_call` output item per search)
+              // and bill each. Reading the real count (0 for training/non-search,
+              // ≥1 for a forced search, >1 for multi-search) is honest and doesn't
+              // trust a `mode`/flag assumption. Search-SKU overrides (chat shape,
+              // no output[]) → count 0, but their pricing row's perRequest covers it.
+              const webSearchCalls = (provider.name === 'openai' && Array.isArray(raw?.output))
+                ? raw.output.filter(o => o?.type === 'web_search_call').length
+                : 0;
+              const calcd = calcCost(cellModel, usage, { webSearchCalls });
               // Honesty (fail-branch #6): when the engine model is not in the
               // pricing table, calcCost returns null. The old fallback set
               // costUsd:0, which made an UNKNOWN cost render as «free» — a
@@ -3812,13 +3828,34 @@ async function cmdReport(args = {}) {
     }
   }
 
+  const { createLiveRows } = await import('../lib/util/live-rows.js');
+  const reportRows = createLiveRows({ stream: process.stdout });
+  reportRows.start();
+
+  // Whenever the live-rows block actually animates (TTY, non-legacy console),
+  // NO other code may write to the terminal directly or it corrupts the
+  // cursor-managed rows. Route the provider retry/cooldown layer's diagnostic
+  // lines (transient backoff, TPM cooldown, give-up notices) through the block's
+  // buffered log(), which flushes cleanly after stop(). Restored right after
+  // reportRows.stop() below. Non-TTY/legacy keep the plain stderr default.
+  const { setRetryStatusSink } = await import('../lib/providers/_retry.js');
+  const isLegacyWinConsole = process.platform === 'win32'
+    && !process.env.WT_SESSION && !process.env.TERM_PROGRAM;
+  const reportAnimating = !!process.stdout.isTTY && !isLegacyWinConsole;
+  if (reportAnimating) setRetryStatusSink((line) => reportRows.log(line));
+
   // ─── Wave 1: independent blocks run in parallel ───────────────────────
-  // Citation classification (LLM) | LLM actions (LLM) | Page signals (HTTP)
-  // | Crawlability (HTTP) | Entity graph (HTTP) | Competitor pricing (heuristic).
-  // Authority presence is the only dependency — it reads pageSignals — so it
-  // runs sequentially after this wave. Each task has its own try/catch so a
-  // single failure doesn't cancel the others. Logs may interleave (each line
-  // carries its own block-prefix marker, so output stays readable).
+  // Citation classification (LLM) | LLM actions (LLM) | Page signals → Authority
+  // (HTTP) | Crawlability (HTTP) | Entity graph (HTTP) | Competitor pricing →
+  // Outreach (heuristic HTTP → LLM). Two tasks are CHAINED onto their sole
+  // dependency instead of running after the wave barrier: Authority onto
+  // pageSignals, and Outreach onto competitorPricing (it reads competitorOwnedHosts,
+  // derived from pricing) — each starts the instant its producer resolves while
+  // staying parallel with everything else. This replaces the old tail-serialized
+  // Authority/Outreach (Outreach also paid a redundant live /models GET). Each task
+  // has its own try/catch so a single failure doesn't cancel the others. Logs may
+  // interleave (each line carries its own block-prefix marker, so output stays
+  // readable).
   await Promise.all([
     // ─── Citation classification (LLM-based, cached) ───
     // Classify top cited domains against brand's category. Universal — works for any
@@ -3838,9 +3875,11 @@ async function cmdReport(args = {}) {
         const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
 
         if (cfgReadError) {
-          console.log(`  ${c.dim}Citation classification skipped: could not read ${CONFIG_FILE} (${errMsg(cfgReadError)})${c.reset}`);
+          reportRows.add('cite', 'Citation classification');
+          reportRows.finish('cite', { status: 'error', detail: `could not read ${CONFIG_FILE} (${errMsg(cfgReadError)})` });
         } else if (!category) {
-          console.log(`  ${c.dim}Citation classification skipped: no category in ${CONFIG_FILE}. Re-run: aeo-platform init${c.reset}`);
+          reportRows.add('cite', 'Citation classification');
+          reportRows.finish('cite', { status: 'error', detail: `no category in ${CONFIG_FILE}. Re-run: aeo-platform init` });
         } else {
           // One-model classify task — CLASSIFY_PROVIDER_PRIORITY order (Gemini
           // first, OpenAI residual), not object-key order (which would silently
@@ -3851,12 +3890,13 @@ async function cmdReport(args = {}) {
           const providerEntry = classifyProviderName ? [classifyProviderName, providersCfg[classifyProviderName]] : null;
 
           if (!providerEntry) {
-            console.log(`  ${c.dim}Citation classification skipped: no API key found in environment${c.reset}`);
+            reportRows.add('cite', 'Citation classification');
+            reportRows.finish('cite', { status: 'error', detail: 'no API key found in environment' });
           } else {
             const [providerKey, providerCfg] = providerEntry;
             const providerCall = PROVIDERS[providerKey]?.call;
             if (providerCall) {
-              console.log(`  ${c.dim}Classifying citations via ${PROVIDERS[providerKey].label}...${c.reset}`);
+              reportRows.add('cite', `Classifying citations via ${PROVIDERS[providerKey].label}`);
               try {
                 const classification = await classifyCitations({
                   brand, category,
@@ -3873,19 +3913,29 @@ async function cmdReport(args = {}) {
                 await persistSnapshot(latest);
                 const off = classification.offCategoryDomains.length;
                 if (off > 0) {
-                  console.log(`  ${c.yellow}${SYM.warn} ${off} cited domain${off !== 1 ? 's' : ''} classified as off-category${c.reset}`);
+                  reportRows.finish('cite', { status: 'done', detail: `${c.yellow}${SYM.warn} ${off} cited domain${off !== 1 ? 's' : ''} classified as off-category${c.reset}` });
                 } else {
-                  console.log(`  ${c.green}${SYM.ok} All cited domains match brand category${c.reset}`);
+                  reportRows.finish('cite', { status: 'done', detail: 'All cited domains match brand category' });
                 }
               } catch (err) {
-                console.log(`  ${c.dim}Citation classification skipped: ${errMsg(err)}${c.reset}`);
-                if (process.env.DEBUG) console.error(err.stack);
+                reportRows.finish('cite', { status: 'error', detail: errMsg(err) });
+                // Same single-writer invariant: while the rows animate, buffer
+                // the stack through log() instead of writing stderr mid-frame.
+                // Guard the value: a non-Error / nullish throw has no .stack, and
+                // log()'s buffer flush calls .endsWith() — a non-string would
+                // crash the whole report at stop(). errMsg() always yields a string.
+                if (process.env.DEBUG) {
+                  const dump = (err && err.stack) || errMsg(err);
+                  if (reportAnimating) reportRows.log(dump);
+                  else console.error(dump);
+                }
               }
             }
           }
         }
       } else if (latest.citationClassification) {
-        console.log(`  ${c.dim}Citation classification loaded from cache${c.reset}`);
+        reportRows.add('cite', 'Citation classification');
+        reportRows.finish('cite', { status: 'done', detail: 'loaded from cache' });
       }
     })(),
 
@@ -3903,13 +3953,21 @@ async function cmdReport(args = {}) {
         try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
         const category = cfg.category || '';
         const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
-        const providerEntry = Object.entries(providersCfg).find(([, p]) => process.env[p.env]);
+        // Recommendations = single-model GENERATION on the main/flagship model, so
+        // pick the provider by PROVIDER_PRIORITY (Gemini-first, main-tier) rather
+        // than object-key order — object-key order silently favoured OpenAI (it's
+        // key #1 in DEFAULT_CONFIG.providers), the exact footgun the citation block
+        // above documents. Fallback down the list is preserved.
+        const recProviderName = PROVIDER_PRIORITY.find(
+          name => providersCfg[name] && process.env[providersCfg[name].env],
+        );
+        const providerEntry = recProviderName ? [recProviderName, providersCfg[recProviderName]] : null;
         if (providerEntry && category) {
           const [providerKey, providerCfg] = providerEntry;
           const providerCall = PROVIDERS[providerKey]?.call;
           if (providerCall) {
             const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
-            console.log(`  ${c.dim}Generating recommendations via ${PROVIDERS[providerKey].label}...${c.reset}`);
+            reportRows.add('actions', `Generating recommendations via ${PROVIDERS[providerKey].label}`);
             try {
               const { actions, costInfo } = await deriveActionsWithLLM(latest, prev, category, {
                 providerName: providerKey,
@@ -3925,40 +3983,80 @@ async function cmdReport(args = {}) {
                 (latest.costByModel.reduce((s, v) => s + (v.costUsd || 0), 0)) * 1_000_000
               ) / 1_000_000;
               await persistSnapshot(latest);
-              console.log(`  ${c.green}${SYM.ok} ${actions.length} recommendations generated${c.reset}`);
+              reportRows.finish('actions', { status: 'done', detail: `${actions.length} recommendations generated` });
             } catch (err) {
-              console.log(`  ${c.yellow}${SYM.warn} Recommendations skipped: ${errMsg(err)}${c.reset}`);
+              reportRows.finish('actions', { status: 'error', detail: errMsg(err) });
             }
           }
         }
       } else {
-        console.log(`  ${c.dim}Recommendations loaded from cache${c.reset}`);
+        reportRows.add('actions', 'Recommendations');
+        reportRows.finish('actions', { status: 'done', detail: 'loaded from cache' });
       }
     })(),
 
-    // ─── v1.1: Page signals (own-domain HTML crawl, cached) ───
-    // Surfaces H1/H2 patterns, answer-capsule coverage, Schema.org block
-    // count + types, FAQ count. Pure HTTP fetch, no LLM cost.
-    // Authority presence (Wave 2 below) reads latest.pageSignals.
+    // ─── v1.1: Page signals (own-domain HTML crawl, cached) → Authority ───
+    // Page signals surfaces H1/H2 patterns, answer-capsule coverage, Schema.org
+    // block count + types, FAQ count. Pure HTTP fetch, no LLM cost. Authority
+    // presence is CHAINED after it (below, same IIFE): it's the ONLY task that
+    // depends on pageSignals, so it starts the instant the crawl resolves — in
+    // parallel with the rest of Wave 1 — instead of waiting for the whole barrier.
     (async () => {
       if (!latest.pageSignals && latest.domain && !args.noPageSignals) {
-        console.log(`  ${c.dim}Crawling own-domain page signals (${latest.domain})...${c.reset}`);
+        reportRows.add('page', `Crawling own-domain page signals (${latest.domain})`);
         try {
           latest.pageSignals = await checkPageSignals(latest.domain);
           await persistSnapshot(latest);
           const ps = latest.pageSignals.homepage;
           if (ps?.ok) {
-            console.log(`  ${c.green}${SYM.ok}${c.reset} h1:${ps.headings.h1.count} h2:${ps.headings.h2.count} capsules:${ps.answerCapsules.coverage}% schemas:${ps.schemaOrg.blockCount}`);
+            reportRows.finish('page', { status: 'done', detail: `h1:${ps.headings.h1.count} h2:${ps.headings.h2.count} capsules:${ps.answerCapsules.coverage}% schemas:${ps.schemaOrg.blockCount}` });
           } else {
-            console.log(`  ${c.yellow}${SYM.warn} Page signals: ${ps?.error || 'unavailable'}${c.reset}`);
+            reportRows.finish('page', { status: 'error', detail: ps?.error || 'unavailable' });
           }
         } catch (err) {
-          console.log(`  ${c.yellow}${SYM.warn} Page signals skipped: ${errMsg(err)}${c.reset}`);
+          reportRows.finish('page', { status: 'error', detail: errMsg(err) });
         }
       } else if (latest.pageSignals) {
-        console.log(`  ${c.dim}Page signals loaded from cache${c.reset}`);
+        reportRows.add('page', 'Page signals');
+        reportRows.finish('page', { status: 'done', detail: 'loaded from cache' });
       } else if (args.noPageSignals) {
-        console.log(`  ${c.dim}Page signals skipped (--no-page-signals)${c.reset}`);
+        reportRows.add('page', 'Page signals');
+        reportRows.finish('page', { status: 'error', detail: 'skipped (--no-page-signals)' });
+      }
+
+      // ─── Authority presence — depends ONLY on latest.pageSignals (resolved
+      // just above), so it's chained here rather than after the Wave 1 barrier.
+      // Off-page signals AI engines weight heavily; free public endpoints, cached.
+      if (!latest.authorityPresence && latest.brand && !args.noAuthority) {
+        reportRows.add('auth', `Checking authority signals for ${latest.brand}`);
+        try {
+          // Pass domain + category + pageSignals so getAuthorityProfile() can
+          // promote a dev-tool brand to also check GitHub (alongside wiki+reddit).
+          // pageSignals.homepage.headings is the strongest signal when init
+          // didn't fill category — it's brand-authored text.
+          // GITHUB_TOKEN env var is read directly when present (60→5000 req/h).
+          latest.authorityPresence = await checkAuthorityPresence(latest.brand, {
+            domain: latest.domain,
+            category: latest.category,
+            pageSignals: latest.pageSignals,
+          });
+          await persistSnapshot(latest);
+          const ap = latest.authorityPresence;
+          const wiki = ap.wikipedia.found ? `${c.green}wiki${SYM.ok}${c.reset}` : `${c.yellow}wiki${SYM.err}${c.reset}`;
+          const red = ap.reddit.found ? `${c.green}reddit${SYM.ok}${c.reset} (${ap.reddit.mentionCount})` : `${c.yellow}reddit${SYM.err}${c.reset}`;
+          const gh = ap.github
+            ? (ap.github.found ? `${c.green}gh${SYM.ok}${c.reset}` : `${c.yellow}gh${SYM.err}${c.reset}`)
+            : '';
+          reportRows.finish('auth', { status: 'done', detail: `${wiki} · ${red}${gh ? ' · ' + gh : ''}` });
+        } catch (err) {
+          reportRows.finish('auth', { status: 'error', detail: errMsg(err) });
+        }
+      } else if (latest.authorityPresence) {
+        reportRows.add('auth', 'Authority presence');
+        reportRows.finish('auth', { status: 'done', detail: 'loaded from cache' });
+      } else if (args.noAuthority) {
+        reportRows.add('auth', 'Authority presence');
+        reportRows.finish('auth', { status: 'error', detail: 'skipped (--no-authority)' });
       }
     })(),
 
@@ -3967,18 +4065,19 @@ async function cmdReport(args = {}) {
     // /llms.txt / sitemap.xml — common root causes of "AI doesn't see me".
     (async () => {
       if (!latest.crawlability && latest.domain) {
-        console.log(`  ${c.dim}Auditing AI-bot crawlability for ${latest.domain}...${c.reset}`);
+        reportRows.add('crawl', `Auditing AI-bot crawlability for ${latest.domain}`);
         try {
           latest.crawlability = await auditCrawlability(latest.domain);
           await persistSnapshot(latest);
           const s = latest.crawlability.summary;
-          const flag = s.blockedCount > 0 ? `${c.red}${s.blockedCount} bot${s.blockedCount !== 1 ? 's' : ''} blocked${c.reset}` : `${c.green}all bots OK${c.reset}`;
-          console.log(`  ${c.green}${SYM.ok}${c.reset} robots:${s.hasRobots ? SYM.ok : SYM.err} llms.txt:${s.hasLlmsTxt ? SYM.ok : SYM.err} sitemap:${s.hasSitemap ? SYM.ok : SYM.err} — ${flag}`);
+          const flag = s.blockedCount > 0 ? `${c.red}${s.blockedCount} bot${s.blockedCount !== 1 ? 's' : ''} blocked${c.reset}` : `all bots OK`;
+          reportRows.finish('crawl', { status: 'done', detail: `robots:${s.hasRobots ? SYM.ok : SYM.err} llms.txt:${s.hasLlmsTxt ? SYM.ok : SYM.err} sitemap:${s.hasSitemap ? SYM.ok : SYM.err} — ${flag}` });
         } catch (err) {
-          console.log(`  ${c.yellow}${SYM.warn} Crawlability audit skipped: ${errMsg(err)}${c.reset}`);
+          reportRows.finish('crawl', { status: 'error', detail: errMsg(err) });
         }
       } else if (latest.crawlability) {
-        console.log(`  ${c.dim}Crawlability audit loaded from cache${c.reset}`);
+        reportRows.add('crawl', 'Crawlability audit');
+        reportRows.finish('crawl', { status: 'done', detail: 'loaded from cache' });
       }
     })(),
 
@@ -3986,23 +4085,25 @@ async function cmdReport(args = {}) {
     // Reuses homepage HTML from pageSignals if available — avoids re-fetch.
     (async () => {
       if (!latest.entityGraph && latest.domain && !args.noEntityGraph) {
-        console.log(`  ${c.dim}Verifying cross-platform sameAs chain...${c.reset}`);
+        reportRows.add('entity', 'Verifying cross-platform sameAs chain');
         try {
           latest.entityGraph = await checkEntityGraph(latest.domain);
           await persistSnapshot(latest);
           const eg = latest.entityGraph;
           if (eg.ok) {
-            console.log(`  ${c.green}${SYM.ok}${c.reset} sameAs:${eg.sameAsCount} reciprocity:${eg.summary.reciprocityRate}%`);
+            reportRows.finish('entity', { status: 'done', detail: `sameAs:${eg.sameAsCount} reciprocity:${eg.summary.reciprocityRate}%` });
           } else {
-            console.log(`  ${c.yellow}${SYM.warn} Entity graph: ${eg.error || 'unavailable'}${c.reset}`);
+            reportRows.finish('entity', { status: 'error', detail: eg.error || 'unavailable' });
           }
         } catch (err) {
-          console.log(`  ${c.yellow}${SYM.warn} Entity graph skipped: ${errMsg(err)}${c.reset}`);
+          reportRows.finish('entity', { status: 'error', detail: errMsg(err) });
         }
       } else if (latest.entityGraph) {
-        console.log(`  ${c.dim}Entity graph loaded from cache${c.reset}`);
+        reportRows.add('entity', 'Entity graph');
+        reportRows.finish('entity', { status: 'done', detail: 'loaded from cache' });
       } else if (args.noEntityGraph) {
-        console.log(`  ${c.dim}Entity graph skipped (--no-entity-graph)${c.reset}`);
+        reportRows.add('entity', 'Entity graph');
+        reportRows.finish('entity', { status: 'error', detail: 'skipped (--no-entity-graph)' });
       }
     })(),
 
@@ -4010,56 +4111,88 @@ async function cmdReport(args = {}) {
     // Heuristic only — no LLM cost. Uses citations from this run.
     (async () => {
       if (!latest.competitorPricing && Array.isArray(latest.topCompetitors) && latest.topCompetitors.length > 0 && !args.noPricing) {
-        console.log(`  ${c.dim}Classifying competitor pricing tiers (top-5)...${c.reset}`);
+        reportRows.add('pricing', 'Classifying competitor pricing tiers (top-5)');
         try {
           const allCitations = (latest.results || []).flatMap(r => r.canonicalCitations || []);
           latest.competitorPricing = await classifyCompetitorPricing(latest.topCompetitors, allCitations, { limit: 5 });
           await persistSnapshot(latest);
           const tiers = latest.competitorPricing.map(c => `${c.name}=${c.tier}`).join(' ');
-          console.log(`  ${c.green}${SYM.ok}${c.reset} ${tiers}`);
+          reportRows.finish('pricing', { status: 'done', detail: tiers });
         } catch (err) {
-          console.log(`  ${c.yellow}${SYM.warn} Competitor pricing skipped: ${errMsg(err)}${c.reset}`);
+          reportRows.finish('pricing', { status: 'error', detail: errMsg(err) });
         }
       } else if (latest.competitorPricing) {
-        console.log(`  ${c.dim}Competitor pricing loaded from cache${c.reset}`);
+        reportRows.add('pricing', 'Competitor pricing');
+        reportRows.finish('pricing', { status: 'done', detail: 'loaded from cache' });
       } else if (args.noPricing) {
-        console.log(`  ${c.dim}Competitor pricing skipped (--no-pricing)${c.reset}`);
+        reportRows.add('pricing', 'Competitor pricing');
+        reportRows.finish('pricing', { status: 'error', detail: 'skipped (--no-pricing)' });
+      }
+
+      // ─── Outreach email templates — CHAINED after pricing (same IIFE) ───
+      // Outreach reads competitorOwnedHosts(latest), which derives ONLY from
+      // latest.competitorPricing[].domain — produced by the pricing block just
+      // above. So outreach MUST run after pricing resolves, not concurrently: a
+      // concurrent read (outreach only awaits a fast local readFile before this)
+      // saw competitorPricing still undefined → an empty host set → fail-branch #10
+      // silently defeated, drafting a pitch to a direct competitor's OWN domain.
+      // Chaining here (same pattern as authority→pageSignals) keeps outreach
+      // parallel with the other Wave-1 tasks while honouring its one real data
+      // dependency. Skipped under --white-label (client snapshots are stats-only).
+      if (args.whiteLabel) {
+        // no-op: outreach drafts are not part of a white-label deliverable
+      } else if (!latest.outreachTemplates && Array.isArray(latest.topDomains) && latest.topDomains.length > 0) {
+        let cfg = {};
+        try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
+        const category = cfg.category || '';
+        const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
+        // Pick the PROVIDER by CLASSIFY_PROVIDER_PRIORITY (Gemini first); the MODEL
+        // is the flagship (providerCfg.model, user decision — outreach is structured
+        // GENERATION, not a cheap classify). Using the flagship directly also drops
+        // the old live /models discovery round-trip that pinned this to a classify
+        // tier — one fewer network hop per report.
+        const providerKeyPicked = CLASSIFY_PROVIDER_PRIORITY.find(
+          name => providersCfg[name] && process.env[providersCfg[name].env],
+        );
+        const providerEntry = providerKeyPicked ? [providerKeyPicked, providersCfg[providerKeyPicked]] : null;
+        if (providerEntry && category) {
+          const [providerKey, providerCfg] = providerEntry;
+          const providerCall = PROVIDERS[providerKey]?.call;
+          if (providerCall) {
+            reportRows.add('outreach', `Drafting outreach emails for top-${Math.min(3, latest.topDomains.length)} domains`);
+            try {
+              const { templates, costInfo } = await generateOutreachTemplates({
+                brand: latest.brand, domain: latest.domain, category,
+                topDomains: latest.topDomains,
+                // fail-branch #10: never draft an email pitching a competitor's
+                // own site to add the user alongside a rival.
+                competitorHosts: competitorOwnedHosts(latest),
+                providerName: providerKey,
+                providerCall,
+                apiKey: process.env[providerCfg.env],
+                // Outreach = structured generation → flagship model (user decision).
+                model: providerCfg.model,
+              });
+              if (templates.length > 0) {
+                latest.outreachTemplates = templates;
+                if (!latest.costByModel) latest.costByModel = [];
+                if (costInfo) latest.costByModel.push(costInfo);
+                await persistSnapshot(latest);
+                reportRows.finish('outreach', { status: 'done', detail: `${templates.length} outreach template${templates.length !== 1 ? 's' : ''} generated` });
+              } else {
+                reportRows.finish('outreach', { status: 'done', detail: '0 templates generated' });
+              }
+            } catch (err) {
+              reportRows.finish('outreach', { status: 'error', detail: errMsg(err) });
+            }
+          }
+        }
+      } else if (latest.outreachTemplates) {
+        reportRows.add('outreach', 'Outreach templates');
+        reportRows.finish('outreach', { status: 'done', detail: 'loaded from cache' });
       }
     })(),
   ]);
-
-  // ─── Wave 2: Authority presence — depends on pageSignals from Wave 1 ───
-  // Off-page signals AI engines weight heavily. APIs are free public
-  // endpoints with no auth — we run once per report and cache.
-  if (!latest.authorityPresence && latest.brand && !args.noAuthority) {
-    console.log(`  ${c.dim}Checking authority signals for ${latest.brand}...${c.reset}`);
-    try {
-      // Pass domain + category + pageSignals so getAuthorityProfile() can
-      // promote a dev-tool brand to also check GitHub (alongside wiki+reddit).
-      // pageSignals.homepage.headings is the strongest signal when init
-      // didn't fill category — it's brand-authored text.
-      // GITHUB_TOKEN env var is read directly when present (60→5000 req/h).
-      latest.authorityPresence = await checkAuthorityPresence(latest.brand, {
-        domain: latest.domain,
-        category: latest.category,
-        pageSignals: latest.pageSignals,
-      });
-      await persistSnapshot(latest);
-      const ap = latest.authorityPresence;
-      const wiki = ap.wikipedia.found ? `${c.green}wiki${SYM.ok}${c.reset}` : `${c.yellow}wiki${SYM.err}${c.reset}`;
-      const red = ap.reddit.found ? `${c.green}reddit${SYM.ok}${c.reset} (${ap.reddit.mentionCount})` : `${c.yellow}reddit${SYM.err}${c.reset}`;
-      const gh = ap.github
-        ? (ap.github.found ? `${c.green}gh${SYM.ok}${c.reset}` : `${c.yellow}gh${SYM.err}${c.reset}`)
-        : '';
-      console.log(`  ${wiki} · ${red}${gh ? ' · ' + gh : ''}`);
-    } catch (err) {
-      console.log(`  ${c.yellow}${SYM.warn} Authority check skipped: ${errMsg(err)}${c.reset}`);
-    }
-  } else if (latest.authorityPresence) {
-    console.log(`  ${c.dim}Authority presence loaded from cache${c.reset}`);
-  } else if (args.noAuthority) {
-    console.log(`  ${c.dim}Authority check skipped (--no-authority)${c.reset}`);
-  }
 
   // ─── v1.1: Region context (per-engine geo signals, derived) ───
   // Pure derivation from existing results — no fetch. Always recompute.
@@ -4068,10 +4201,12 @@ async function cmdReport(args = {}) {
     await persistSnapshot(latest);
     const rc = latest.regionContext.aggregate;
     if (rc.dominantRegion) {
-      console.log(`  ${c.green}${SYM.ok}${c.reset} dominant region: ${rc.dominantRegion} (${rc.confidence})`);
+      reportRows.add('region', 'Region context');
+      reportRows.finish('region', { status: 'done', detail: `dominant region: ${rc.dominantRegion} (${rc.confidence})` });
     }
   } catch (err) {
-    console.log(`  ${c.yellow}${SYM.warn} Region context skipped: ${errMsg(err)}${c.reset}`);
+    reportRows.add('region', 'Region context');
+    reportRows.finish('region', { status: 'error', detail: errMsg(err) });
   }
 
   // ─── v1.1: Response freshness (training cutoff inference, derived) ───
@@ -4080,68 +4215,18 @@ async function cmdReport(args = {}) {
     latest.responseFreshness = checkResponseFreshness(latest);
     await persistSnapshot(latest);
     const rf = latest.responseFreshness.aggregate;
-    console.log(`  ${c.green}${SYM.ok}${c.reset} freshness: ${rf.overall} (fresh:${rf.counts.fresh} stale:${rf.counts.stale} unknown:${rf.counts.unknown})`);
+    reportRows.add('freshness', 'Response freshness');
+    reportRows.finish('freshness', { status: 'done', detail: `${rf.overall} (fresh:${rf.counts.fresh} stale:${rf.counts.stale} unknown:${rf.counts.unknown})` });
   } catch (err) {
-    console.log(`  ${c.yellow}${SYM.warn} Response freshness skipped: ${errMsg(err)}${c.reset}`);
+    reportRows.add('freshness', 'Response freshness');
+    reportRows.finish('freshness', { status: 'error', detail: errMsg(err) });
   }
 
-  // ─── Outreach email templates for top-3 cited domains (cached) ───
-  // Skipped under --white-label (client snapshots are statistics-only; see the
-  // llmActions skip above for the skip-don't-strip rationale).
-  if (args.whiteLabel) {
-    // no-op: outreach drafts are not part of a white-label deliverable
-  } else if (!latest.outreachTemplates && Array.isArray(latest.topDomains) && latest.topDomains.length > 0) {
-    let cfg = {};
-    try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
-    const category = cfg.category || '';
-    const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
-    // One-model classify task — CLASSIFY_PROVIDER_PRIORITY order (Gemini first).
-    const providerKeyPicked = CLASSIFY_PROVIDER_PRIORITY.find(
-      name => providersCfg[name] && process.env[providersCfg[name].env],
-    );
-    const providerEntry = providerKeyPicked ? [providerKeyPicked, providersCfg[providerKeyPicked]] : null;
-    if (providerEntry && category) {
-      const [providerKey, providerCfg] = providerEntry;
-      const providerCall = PROVIDERS[providerKey]?.call;
-      if (providerCall) {
-        console.log(`  ${c.dim}Drafting outreach emails for top-${Math.min(3, latest.topDomains.length)} domains...${c.reset}`);
-        // `report` is its own process — no state shared with `run`'s discovery
-        // loop, so a fresh (small, quick) classify discovery call here is the
-        // only way this tier isn't permanently pinned to a stale config value.
-        const { models: liveClassifyModels } = await discoverClassifyModel(
-          providerKey, process.env[providerCfg.env], providerCfg.baseURL, { quiet: true },
-        );
-        const outreachModel = (liveClassifyModels && liveClassifyModels[0])
-          || providerCfg.classifyModel
-          || providerCfg.model;
-        try {
-          const { templates, costInfo } = await generateOutreachTemplates({
-            brand: latest.brand, domain: latest.domain, category,
-            topDomains: latest.topDomains,
-            // fail-branch #10: never draft an email pitching a competitor's
-            // own site to add the user alongside a rival.
-            competitorHosts: competitorOwnedHosts(latest),
-            providerName: providerKey,
-            providerCall,
-            apiKey: process.env[providerCfg.env],
-            // Outreach templates = structured generation; classify-tier is enough.
-            model: outreachModel,
-          });
-          if (templates.length > 0) {
-            latest.outreachTemplates = templates;
-            if (!latest.costByModel) latest.costByModel = [];
-            if (costInfo) latest.costByModel.push(costInfo);
-            await persistSnapshot(latest);
-            console.log(`  ${c.green}${SYM.ok} ${templates.length} outreach template${templates.length !== 1 ? 's' : ''} generated${c.reset}`);
-          }
-        } catch (err) {
-          console.log(`  ${c.yellow}${SYM.warn} Outreach templates skipped: ${errMsg(err)}${c.reset}`);
-        }
-      }
-    }
-  } else if (latest.outreachTemplates) {
-    console.log(`  ${c.dim}Outreach templates loaded from cache${c.reset}`);
-  }
+  reportRows.stop();
+  // Restore the default stderr sink now the live region is done — later stages
+  // (and any other command in-process) must not keep writing into a stopped
+  // block's buffer.
+  if (reportAnimating) setRetryStatusSink(null);
 
   // v0.7 — AEO Mission Control metadata payload (privacy-stripped allow-list).
   // Skipped entirely when --no-mc-block is passed.
@@ -4201,6 +4286,19 @@ async function cmdReport(args = {}) {
   const outPath = args.output || join(outDir, 'report.md');
   await writeFile(outPath, md);
 
+  // The render/write/open tail below runs AFTER the live-rows network phase
+  // stopped (reportRows.stop() above), so it was previously silent. Two of its
+  // steps have a perceptible wait — the heavy synchronous HTML build and the
+  // (up-to-5s) async browser-open — so we bracket each with the same TTY-only
+  // createSpinner primitive the rest of the CLI uses (queriesOnlySpinner,
+  // autoSpinner, runManualSpinner). One instance, reused for both start/stop
+  // cycles; no-op in non-TTY/CI so the existing console.log record is untouched.
+  // Caveat: renderHtml() is synchronous and blocks the event loop, so the
+  // spinner can't animate during it — start() paints one reassurance frame
+  // synchronously, and the `HTML report: <path>` line below is the completion
+  // record. openInBrowser() DOES await, so its spinner animates for real.
+  const renderSpinner = createSpinner();
+
   // v0.8 — HTML bento report is the default; --no-html skips it for CI/email-only.
   // The legacy `cmdPreview` markdown→TMP-HTML path was removed in v0.8 — the
   // single-file bento HTML in `lib/report/html.js` is the canonical view.
@@ -4209,19 +4307,27 @@ async function cmdReport(args = {}) {
     htmlOutPath = args.output
       ? args.output.replace(/\.md$/, '') + '.html'
       : join(outDir, 'report.html');
-    const html = renderHtml(
-      buildHtmlSummary(snapshots, rawResponses),
-      snapshots,
-      {
-        mcMetadata, daysSinceRun, noMcBlock: skipMcBlock,
-        // White-label drops the tool fingerprint, so pass NO version / repo URL
-        // (the masthead + colophon read these — withholding them is the strip).
-        pkgVersion: whiteLabel ? null : trackerVersion,
-        repoUrl: whiteLabel ? '' : trackerRepoUrl,
-        public: publicMode, whiteLabel, reportTitle: args.reportTitle,
-      },
-    );
-    await writeFile(htmlOutPath, html);
+    renderSpinner.start('Building HTML report…');
+    // finally-guaranteed stop() (matches runManualSpinner below): renderHtml is
+    // pure, but writeFile can reject (EACCES/ENOSPC) — without finally the TTY
+    // spinner interval would leak / clobber the error line on failure.
+    try {
+      const html = renderHtml(
+        buildHtmlSummary(snapshots, rawResponses),
+        snapshots,
+        {
+          mcMetadata, daysSinceRun, noMcBlock: skipMcBlock,
+          // White-label drops the tool fingerprint, so pass NO version / repo URL
+          // (the masthead + colophon read these — withholding them is the strip).
+          pkgVersion: whiteLabel ? null : trackerVersion,
+          repoUrl: whiteLabel ? '' : trackerRepoUrl,
+          public: publicMode, whiteLabel, reportTitle: args.reportTitle,
+        },
+      );
+      await writeFile(htmlOutPath, html);
+    } finally {
+      renderSpinner.stop();
+    }
   }
 
   // v0.5 — sweep stale orphaned report.{md,html} from older date dirs so they
@@ -4263,7 +4369,15 @@ async function cmdReport(args = {}) {
     console.log(`${c.dim}(browser open skipped — pass without --no-open to open automatically)${c.reset}\n`);
   } else if (htmlOutPath) {
     const { openInBrowser } = await import('../lib/util/open-browser.js');
-    const ok = await openInBrowser(htmlOutPath);
+    // Genuinely async (spawns powershell.exe to resolve the default browser via
+    // the registry on Windows, timeout 5s) — the spinner animates for real here.
+    renderSpinner.start('Opening report in browser…');
+    let ok;
+    try {
+      ok = await openInBrowser(htmlOutPath);
+    } finally {
+      renderSpinner.stop();
+    }
     if (ok) {
       console.log(`${c.green}Opened in browser: ${htmlOutPath}${c.reset}\n`);
     } else {
@@ -4893,9 +5007,10 @@ ${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only
   ${c.bold}--anthropic-model=<id>${c.reset}  Override providers.anthropic.model
   ${c.bold}--perplexity-model=<id>${c.reset} Override providers.perplexity.model
 
-  When you hit rate limits, switch from a search-capable model (e.g. gpt-5-search-api,
-  6k TPM on OpenAI tier 1) to its base counterpart (gpt-5, 90k TPM). Tradeoff: no live
-  web search, only training-corpus signal. See --depth=full for both passes side-by-side.
+  OpenAI's default main (gpt-5-mini) does live web search via the Responses web_search
+  tool at the general 500k-TPM bucket — NOT the legacy gpt-5-search-api SKU (its own tiny
+  ~6k-TPM bucket that cools down fast). Avoid overriding to a -search SKU. See --depth=full
+  for the training-corpus (no-search) pass alongside the live-search pass.
   --replay caveat: cached raw responses are filename-keyed by (query index, provider, model)
   within the active domain's namespace. An override that doesn't match the recorded model — or a
   query list reordered since capture — will miss the file and hit live API.

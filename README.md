@@ -7,14 +7,103 @@
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](./package.json)
 [![GitHub stars](https://img.shields.io/github/stars/webappski/aeo-platform?style=social)](https://github.com/webappski/aeo-platform)
 
+## How to run it — init → run → report
+
+**1. Set your API keys.** Two keys are strongly recommended — **any two** of OpenAI, Gemini,
+or Anthropic let the tool cross-verify competitor mentions across two models (the pair below
+is just an example — use whichever two you have). One key is enough to start (any of the
+three) — competitor names just won't be cross-verified.
+
+> **Perplexity is the exception.** Its API is search-tuned, not a general classifier, so it
+> can't power query validation or the competitor cross-check. A `PERPLEXITY_API_KEY` only
+> adds a 4th answer-engine column at `run` time — it doesn't count as one of your two keys,
+> and it can't be your only key.
+
+macOS / Linux (bash / zsh):
+
+```bash
+export OPENAI_API_KEY="sk-proj-..."   # platform.openai.com/api-keys
+export GEMINI_API_KEY="AIza..."       # aistudio.google.com/apikey
+```
+
+Windows (PowerShell):
+
+```powershell
+$env:OPENAI_API_KEY = "sk-proj-..."   # platform.openai.com/api-keys
+$env:GEMINI_API_KEY = "AIza..."       # aistudio.google.com/apikey
+```
+
+**2. Run the three commands** (same on every OS):
+
+```bash
+aeo-platform init            # Setup  — picks your tracking queries, writes .aeo-tracker.json
+aeo-platform run             # Audit  — asks each AI engine your queries, records the answers
+aeo-platform report --html   # Report — builds report.html (+ report.md) and opens it in your browser
+```
+
+That's the whole loop — three commands, once a week. **Not sure what each step is actually
+doing?** [How the loop works](#how-the-loop-works), just below the flags, walks through
+`init` → `run` → `report` in plain English.
+
+Persistent keys (that survive a restart), Windows CMD, extra engines, and no-install `npx`
+→ see the [full quickstart](#full-quickstart-for-first-time-terminal-users) below.
+
+## Flags — what each one gives you
+
+Short version; the full reference is further down. Every command runs fine with no flags —
+reach for these when you need them.
+
+**`init`**
+
+- `--yes --brand=X --domain=x.com --auto` — non-interactive setup (CI / scripts); still auto-suggests the queries.
+- `--keywords="q1,q2,q3"` — skip the AI suggester and bring your own 3 queries (zero LLM cost).
+- `--queries-only` — re-pick queries without touching brand / domain / keys.
+
+**`run`**
+
+- `--json` — machine-readable output for CI. Exit code says what happened: `0` stable · `1` regressed · `2` invisible · `3` API errors.
+- `--regions=us,de,fr` — run every query under each region (multiplies cost by region count).
+- `--replay` — rebuild a summary from cached answers, zero API cost (offline).
+- `--force` — proceed even if the query-validation gate flags something.
+
+**`report`**
+
+- `--no-html` — write Markdown only, skip the HTML + browser.
+- `--no-open` — write both files but don't auto-open the browser.
+- `--public` — strip internal cost figures + source paths for a shareable report.
+
+## How the loop works
+
+`aeo-platform` answers one question: **when someone asks ChatGPT, Claude, Gemini, or
+Perplexity to recommend tools in your space, does your brand come up?** It sends your
+queries to each engine through their official APIs, checks whether you're mentioned (and
+who's mentioned instead), and turns the result into a browser report with a visibility
+score and a prioritized to-do list.
+
+The three commands above, in plain English — no AEO background needed. Read this once and you
+know everything the tool does for you.
+
+- **`init`** (run once) — reads your site, detects your API keys, and **auto-picks 3 tracking
+  queries**: *unbranded, buyer-intent* phrases, the way a real customer searches when
+  comparing vendors — e.g. *"best voice form filler software"*, *"top X tools for Y"* — not
+  your brand name and not "what is X" questions. Everything lands in `.aeo-tracker.json`.
+- **`run`** (run weekly) — sends each query to every engine you have a key for and records, per
+  answer: were you mentioned, roughly where, who was mentioned instead, and which sources
+  got cited. Raw answers + a summary go under `aeo-responses/`.
+- **`report`** — turns the latest run into a self-contained `report.html` (auto-opens in
+  your browser) plus `report.md`: visibility score, per-engine breakdown, top competitors,
+  cited sources, and 3–5 prioritized fixes. Compare weeks with `aeo-platform diff`.
+
+**Run it to** — find out whether AI recommends you today · track that number week over
+week · get a concrete list of what to fix to get cited more often.
+
+---
+
 > **`aeo-platform` is the open-source CLI for answer-engine optimization (AEO / GEO).** It measures your brand across **ChatGPT, Claude, Gemini, and Perplexity**, audits AI-bot crawlability + authority signals, and exports a JSON brand-context you paste into any AI for a personalised **30-mission AEO plan**. MIT-licensed. Runs locally. Zero runtime dependencies. Free alternative to Otterly, Profound, Peec, and Bluefish.
 
 **macOS / Linux (bash / zsh)** — `npx …@latest` always runs the newest release, nothing to keep updated:
 
 ```bash
-export OPENAI_API_KEY="sk-proj-..."     # recommended pair
-export GEMINI_API_KEY="AIzaSy..."        # (any ONE research key is enough to start)
-
 npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto \
   && npx aeo-platform@latest run \
   && npx aeo-platform@latest report
@@ -25,9 +114,6 @@ Prefer a global install for a weekly rhythm? `npm install -g aeo-platform` and u
 **Windows (PowerShell)**
 
 ```powershell
-$env:OPENAI_API_KEY = "sk-proj-..."     # recommended pair (current session only)
-$env:GEMINI_API_KEY = "AIzaSy..."        # (any ONE research key is enough to start)
-
 npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto
 if ($LASTEXITCODE -eq 0) { npx aeo-platform@latest run }
 if ($LASTEXITCODE -eq 0) { npx aeo-platform@latest report }
@@ -52,8 +138,6 @@ aeo-platform init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM \
 ```
 
 Use category-based phrasing («best X for Y» / «top X 2026») the way real users search — the strict commercial-only validator blocks brand-comparison archetypes like «brand vs alternatives» that LLMs auto-correct away for new brands.
-
-The HTML report opens in your browser. Weekly cadence after that: `aeo-platform run && aeo-platform report` (or the PowerShell `if ($LASTEXITCODE -eq 0)` equivalent on PS 5.1).
 
 > Renamed from `@webappski/aeo-tracker` in `1.0.0` (2026-05-13). The `aeo-tracker` CLI command stays as a built-in alias — existing scripts keep working. Migration: `npm i -g aeo-platform`.
 

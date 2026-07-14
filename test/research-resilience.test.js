@@ -85,12 +85,14 @@ test('TypeError (code bug) → other + NOT retryable', () => {
   assert.equal(c.retryable, false);
 });
 
-test('Generic 500 without quota keyword → other + NOT retryable', () => {
-  // 500 errors that aren't quota-related should bubble up — provider modules
-  // already have transient-retry for real server-side hiccups.
+test('Generic 500 without quota keyword → server-error + NOT retryable (cross-provider)', () => {
+  // A bare 500 is a transient server-side hiccup: withRetry gives it a SMALL
+  // bounded IN-LOOP retry (not the old 30× storm, not 0), but it stays
+  // retryable:false so the init fallback loop does NOT switch providers on it —
+  // retrying the same request elsewhere won't reliably help.
   const err = new Error('500 Internal Server Error');
   const c = classifyProviderError(err);
-  assert.equal(c.category, 'other');
+  assert.equal(c.category, 'server-error');
   assert.equal(c.retryable, false);
 });
 

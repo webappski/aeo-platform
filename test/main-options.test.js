@@ -18,8 +18,8 @@ function test(name, fn) {
 
 console.log('\nMAIN_OPTIONS_BY_PROVIDER per-provider invariants');
 
-test('openai: reasoning_effort=high (mid+thinking policy)', () => {
-  assert.deepStrictEqual(MAIN_OPTIONS_BY_PROVIDER.openai, { reasoning_effort: 'high' });
+test('openai: {} — omit reasoning_effort → model-default adaptive effort (no forced high; decision Alex 2026-07-14)', () => {
+  assert.deepStrictEqual(MAIN_OPTIONS_BY_PROVIDER.openai, {});
 });
 
 test('anthropic: extended thinking enabled, budget=16k', () => {
@@ -112,12 +112,9 @@ test('perplexity plain sonar → thinking NOT active', () => {
   assert.equal(detectThinkingActive('perplexity', 'sonar'), false);
 });
 
-test('openai gpt-5-search-api → thinking active (reasoning_effort always merged into mainCall)', () => {
-  assert.equal(detectThinkingActive('openai', 'gpt-5-search-api'), true);
-});
-
-test('openai gpt-5-mini-search-api → thinking active', () => {
-  assert.equal(detectThinkingActive('openai', 'gpt-5-mini-search-api'), true);
+test('openai → thinking NOT active (main omits reasoning_effort; model uses its adaptive default, not forced high)', () => {
+  assert.equal(detectThinkingActive('openai', 'gpt-5-mini'), false);
+  assert.equal(detectThinkingActive('openai', 'gpt-5.4-mini'), false);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -34,5 +34,41 @@ test('estimateWeeklyCost flags unknown model with ~$?? rather than $0', () => {
 // the first assertion (=== null) would fail — i.e. the honesty contract is
 // load-bearing, not cosmetic.
 
+console.log('\nweb_search tool fee (calcCost opts.webSearchCalls)');
+
+test('general model + 1 web_search call → adds one flat $0.01 tool fee', () => {
+  const base     = calcCost('gpt-5-mini', { inputTokens: 1_000_000, outputTokens: 0 });                            // 0.25
+  const searched = calcCost('gpt-5-mini', { inputTokens: 1_000_000, outputTokens: 0 }, { webSearchCalls: 1 });     // 0.26
+  assert.equal(base.costUsd, 0.25);
+  assert.equal(searched.costUsd, 0.26);
+});
+
+test('general model + N web_search calls → fee scales with the real count', () => {
+  const two = calcCost('gpt-5-mini', { inputTokens: 1_000_000, outputTokens: 0 }, { webSearchCalls: 2 });  // 0.25 + 0.02
+  assert.equal(two.costUsd, 0.27);
+});
+
+test('general model with 0 / no calls → NO tool fee (training/classify calls)', () => {
+  const noopt = calcCost('gpt-5-mini', { inputTokens: 1_000_000, outputTokens: 0 });
+  const zero  = calcCost('gpt-5-mini', { inputTokens: 1_000_000, outputTokens: 0 }, { webSearchCalls: 0 });
+  assert.equal(noopt.costUsd, 0.25);
+  assert.equal(zero.costUsd, 0.25);
+});
+
+test('search-SKU model → row perRequest only, NOT double-charged by the tool-call count', () => {
+  // gpt-5-search-api row already carries perRequest:0.01 → 1.25 token + 0.01 = 1.26,
+  // regardless of any webSearchCalls passed.
+  const searched = calcCost('gpt-5-search-api', { inputTokens: 1_000_000, outputTokens: 0 }, { webSearchCalls: 3 });
+  const noopt    = calcCost('gpt-5-search-api', { inputTokens: 1_000_000, outputTokens: 0 });
+  assert.equal(searched.costUsd, 1.26);
+  assert.equal(noopt.costUsd, 1.26);  // identical — the count must not add a second fee
+});
+
+test('estimateWeeklyCost includes the tool fee for a general OpenAI main (3 web cells × $0.01)', () => {
+  // gpt-5-mini token-only ≈ $0.009/run; + 3×$0.01 tool fee → ~$0.039/run.
+  const hint = estimateWeeklyCost('gpt-5-mini');
+  assert.match(hint, /0\.039/, `expected the $0.03 tool fee reflected, got: ${hint}`);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
