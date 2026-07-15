@@ -6,6 +6,8 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ### Changed
 
+- **"Webappski plan" bridge card repriced to €129 (founder decision 2026-07-15), currency unified to EUR, honest SLA, single canonical description.** The report bridge card (`lib/report/mc-bridge.js`) previously defaulted to `$29 per plan` — a lone USD figure in a EUR-first product, priced at a competitor's cheapest *monthly* tier. Defaults are now `€129 per plan` / `€129 per plan · 30 missions`, and the promo line's hardcoded `$29 after that` → `€129 after that`. The "first 10 waitlist customers free, €129 after that" mechanic, the 30-mission naming, and the pre-release/waitlist framing are unchanged. The same change collapses the plan's DOUBLE description — the hover tooltip and the always-visible Route B "diptych" card previously stated the offer with different bullets — to ONE canonical five-bullet set (Pre-flight account audit · route around the minefields · Trap-aware sequencing · Hand-reviewed · Delivered), and aligns the delivery promise to the honest beta turnaround **"1–3 business days"** (the card said "Delivered in 24h"; `lib/report/sections.js` already said 1–3 business days). Copy-only — no score math, schema, or SVG geometry changed. **A republish is required** before newly generated report cards show €129; already-generated report HTML is not regenerated.
+
 - **AEO Model Performance & Throttling:** Replaced the expensive `gpt-5-search-api` with mid-tier models (Gemini/OpenAI) for automated reasoning and web searching to reduce operational costs. Recalibrated CLI throttling limits to improve execution stability. Updated corresponding tests.
 
 ### Added
