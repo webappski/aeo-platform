@@ -126,5 +126,15 @@ test('P0-13 — run-manual perplexity --from-dir reads pasted text + writes summ
       summary.results.filter(r => r.provider === 'perplexity').every(r => r.source === 'manual-paste'),
       'every newly merged run-manual result should carry source="manual-paste"',
     );
+    // Manual-paste cells must carry the pasted text as responseExcerpt — the same
+    // truncation the live run loop applies. Without it the cell vanishes from every
+    // "what the engine said" surface (report + MC payload). Regression guard for the
+    // cmdRunManual responseExcerpt fix.
+    assert.ok(
+      summary.results
+        .filter(r => r.provider === 'perplexity')
+        .every(r => typeof r.responseExcerpt === 'string' && r.responseExcerpt.length > 0),
+      'every run-manual result must carry a non-empty responseExcerpt (the pasted text)',
+    );
   });
 });

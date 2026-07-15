@@ -129,7 +129,7 @@ test('perEngine block agrees with computeComponents per provider', () => {
   assert.equal(gem.rank,      gemSub.rank);      // null — no position data
 });
 
-test('scores.uvi falls back to computeUVI when summary.score is missing', () => {
+test('scores.uvi is computeUVI output even when summary.score is missing', () => {
   const summary = {
     date: '2026-05-13', brand: 'X', domain: 'x.com',
     results: [
@@ -141,6 +141,46 @@ test('scores.uvi falls back to computeUVI when summary.score is missing', () => 
   const md = buildMcMetadata(summary, [summary]);
   const expected = computeUVI(computeComponents(summary));
   assert.equal(md.scores.uvi, expected);
+});
+
+test('scores.uvi is the composite UVI, NOT the headline mention-rate score (92-vs-100 bug, 2026-07-13)', () => {
+  // Regression: `scores.uvi` used `numOr(summary.score, computeUVI(...))` —
+  // and `summary.score` (the headline mention-rate, mentions/total × 100) is
+  // ALWAYS a finite number on real runs, so the computed UVI was dead code.
+  // Real case: typelessform 2026-07-11 — 9/9 mentions → headline 100, but
+  // the report's own UVI block showed 92 (sentiment 89 / rank 74 drag the
+  // composite). The payload must carry the SAME UVI the report renders.
+  //
+  // Fixture: every cell mentioned (headline = 100) with mixed sentiment,
+  // imperfect rank and a citation miss so the composite lands below 100.
+  const summary = {
+    date: '2026-07-11', brand: 'X', domain: 'x.com', score: 100,
+    mentions: 3, total: 3,
+    results: [
+      { provider: 'openai', query: 'q1', mention: 'yes', position: 1,
+        sentiment: { label: 'positive', confidence: 'high' },
+        canonicalCitations: ['https://x.com/a'] },
+      { provider: 'gemini', query: 'q1', mention: 'yes', position: 3,
+        sentiment: { label: 'neutral', confidence: 'high' },
+        canonicalCitations: ['https://x.com/b'] },
+      { provider: 'anthropic', query: 'q1', mention: 'src', position: null,
+        sentiment: { label: 'positive', confidence: 'high' },
+        canonicalCitations: [] },
+    ],
+  };
+  const md = buildMcMetadata(summary, [summary]);
+  const expected = computeUVI(computeComponents(summary));
+
+  // Guard the fixture itself: the test is only meaningful when the composite
+  // actually differs from the headline (presence 100, sentiment 83, rank 85,
+  // citation 67 → UVI 86 ≠ 100).
+  assert.notEqual(expected, summary.score,
+    'fixture invalid — UVI must differ from the headline score for this regression to bite');
+
+  assert.equal(md.scores.uvi, expected,
+    `scores.uvi must be the computed UVI (${expected}), not summary.score (${summary.score})`);
+  assert.equal(md.aggregates.score, summary.score,
+    'the headline mention-rate still belongs in aggregates.score');
 });
 
 // ─── Portal report mirror: un-denied client-own data + leak guard + bug fixes ───

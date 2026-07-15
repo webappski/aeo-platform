@@ -4616,6 +4616,9 @@ async function cmdRunManual(argv) {
       // Registrable-domain (eTLD+1) match — not raw substring — so a look-alike
       // citation host never counts as a brand citation (lib/report/own-domain.js).
       hasBrandInCitations: citations.some(u => isOwnDomain(u, domain)),
+      // Same truncation as the live run loop — without this the manual-paste
+      // cells vanish from every "what the engine said" surface (report + MC).
+      responseExcerpt: String(text || '').slice(0, 1500),
       elapsedMs: null,
     });
 
