@@ -323,7 +323,7 @@ Rules:
 - Be specific. Name the exact query, source, or competitor — not generic advice.
 - Each action must be completable this week by one person.
 - Prioritise gaps (brand invisible) over polish.
-- If a canonical source appears ≥2×, recommend pitching it specifically.
+- Outreach is OUT OF SCOPE. Never recommend pitching editors, cold outreach, or guest posts. For canonical sources, recommend self-service actions (directories, profile optimization) or own-content improvements instead.
 - If a competitor dominates, explain exactly where and how to displace them.
 
 Return STRICT JSON only:
