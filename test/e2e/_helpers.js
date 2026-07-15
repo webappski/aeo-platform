@@ -23,12 +23,24 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { sanitizeForFilename } from '../../lib/util/safe-filename.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { domainStorageSlug } from '../../lib/util/domain-storage.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const BIN = join(REPO_ROOT, 'bin', 'aeo-tracker.js');
 export const FIXTURE_ROOT = join(REPO_ROOT, 'test', 'fixtures');
+
+// When this test helper is loaded as a subprocess preload, fail provider HTTP
+// immediately and deterministically. Product code has no test branch/hook.
+if (process.env.AEO_E2E_OFFLINE_FETCH === '1') {
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 401,
+    headers: { get: () => null },
+    json: async () => ({ error: { message: 'offline E2E fixture' } }),
+    text: async () => JSON.stringify({ error: { message: 'offline E2E fixture' } }),
+  });
+}
 
 // ─── Domain-scoped storage paths ───
 // Storage is namespaced by domain: aeo-responses/<slug>/<date>/ and
@@ -36,13 +48,27 @@ export const FIXTURE_ROOT = join(REPO_ROOT, 'test', 'fixtures');
 // helpers (never `join(dir, 'aeo-responses', date)`) so the layout has a single
 // source of truth shared with bin/aeo-tracker.js's domainSlug().
 export function responsesDateDir(projectDir, domain, date) {
-  return join(projectDir, 'aeo-responses', sanitizeForFilename(domain), date);
+  return join(projectDir, 'aeo-responses', domainStorageSlug(domain), date);
+}
+export function legacyResponsesDateDir(projectDir, date) {
+  return join(projectDir, 'aeo-responses', date);
 }
 export function reportsDateDir(projectDir, domain, date) {
-  return join(projectDir, 'aeo-reports', sanitizeForFilename(domain), date);
+  return join(projectDir, 'aeo-reports', domainStorageSlug(domain), date);
 }
 export const FIXTURE_REPLAY_DATE = '2026-05-13';
 export { REPO_ROOT };
+
+export function offlineFetchEnv(extra = {}) {
+  const preloadUrl = pathToFileURL(fileURLToPath(import.meta.url)).href;
+  const nodeOptions = [process.env.NODE_OPTIONS, `--import=${preloadUrl}`].filter(Boolean).join(' ');
+  return {
+    ...extra,
+    NODE_OPTIONS: nodeOptions,
+    AEO_NO_RETRY: '1',
+    AEO_E2E_OFFLINE_FETCH: '1',
+  };
+}
 
 /**
  * Create an isolated temp project directory, run `fn(tmpDir)`, and always
@@ -171,7 +197,9 @@ export function seedReplayProject(tmpDir, opts = {}) {
   const srcDir = join(FIXTURE_ROOT, 'aeo-responses', variant);
   // Domain-namespaced: fixtures land under aeo-responses/<slug>/<date>/ exactly
   // where the domain-scoped replay reader in bin/aeo-tracker.js looks.
-  const destDir = responsesDateDir(tmpDir, domain, replayDate);
+  const destDir = opts.legacyLayout
+    ? legacyResponsesDateDir(tmpDir, replayDate)
+    : responsesDateDir(tmpDir, domain, replayDate);
   mkdirSync(destDir, { recursive: true });
 
   // Copy every fixture file EXCEPT `_summary.json`. The summary file in the
@@ -194,6 +222,23 @@ export function seedReplayProject(tmpDir, opts = {}) {
       destName = name.replace('-search-api.json', '.json');
     }
     cpSync(src, join(destDir, destName));
+  }
+
+  // Flat legacy reads require a recorded domain so commands can reject
+  // cross-brand snapshots deterministically. Keep the source summary minimal:
+  // raw replay files remain the behavior under test, not historical score data.
+  if (opts.legacyLayout) {
+    writeFileSync(join(destDir, '_summary.json'), JSON.stringify({
+      date: replayDate,
+      brand: 'TestBrand',
+      domain,
+      score: 0,
+      mentions: 0,
+      total: 0,
+      errors: 0,
+      results: [],
+      ...(opts.lastFullRun ? { lastFullRun: opts.lastFullRun } : {}),
+    }, null, 2));
   }
 
   // Minimal config. One openai provider on a no-pacing model. validationCache

@@ -58,6 +58,7 @@ const RESPONSES_OK = () => ({
   }),
 });
 
+try {
 console.log('\ncallOpenAI routing (webSearch flag decides the API surface)');
 
 await test('webSearch default (true) → /v1/responses with web_search tool', async () => {
@@ -68,6 +69,7 @@ await test('webSearch default (true) → /v1/responses with web_search tool', as
   assert.equal(body.input, 'hi');
   assert.deepStrictEqual(body.tools, [{ type: 'web_search' }]);
   assert.deepStrictEqual(body.tool_choice, { type: 'web_search' }, 'search is FORCED, not auto');
+  assert.equal(body.store, false, 'Responses application state must not be stored');
   assert.equal(body.messages, undefined, 'responses path uses input, not messages');
 });
 
@@ -80,6 +82,7 @@ await test('webSearch:false → /v1/chat/completions, no tool, no web_search_opt
   assert.equal(body.tools, undefined);
   assert.equal(body.input, undefined);
   assert.equal(body.web_search_options, undefined);
+  assert.equal(body.store, undefined, 'plain Chat Completions behavior is unchanged');
 });
 
 await test('legacy search SKU + webSearch → Chat Completions + web_search_options (not Responses)', async () => {
@@ -90,6 +93,7 @@ await test('legacy search SKU + webSearch → Chat Completions + web_search_opti
   assert.deepStrictEqual(body.web_search_options, {});
   assert.deepStrictEqual(body.messages, [{ role: 'user', content: 'hi' }]);
   assert.equal(body.tools, undefined);
+  assert.equal(body.store, undefined, 'legacy search-SKU Chat requests do not gain a store field');
 });
 
 console.log('\nreasoning gate — Responses path (reasoning.effort)');
@@ -193,7 +197,9 @@ await test('Chat path → text + annotations from choices', async () => {
   assert.deepStrictEqual(citations, ['https://x.io']);
 });
 
-restoreFetch();
+} finally {
+  restoreFetch();
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -4,7 +4,7 @@
 // than implying free). Real module, no mocks.
 
 import assert from 'node:assert/strict';
-import { calcCost, estimateWeeklyCost } from '../lib/providers/pricing.js';
+import { calcCost, estimateWeeklyCost, extractUsage } from '../lib/providers/pricing.js';
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -28,6 +28,27 @@ test('calcCost returns a real number for a known model (regression guard)', () =
 
 test('estimateWeeklyCost flags unknown model with ~$?? rather than $0', () => {
   assert.equal(estimateWeeklyCost('totally-made-up-model-9000'), '~$??/run');
+});
+
+test('Gemini output usage includes candidate + thought tokens and bills both on 3.5 Flash', () => {
+  const usage = extractUsage('gemini', {
+    usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, thoughtsTokenCount: 30 },
+  });
+  assert.deepStrictEqual(usage, { inputTokens: 100, outputTokens: 50 });
+  const priced = calcCost('gemini-3.5-flash', usage);
+  assert.equal(priced.costUsd, 0.0006, '100×$1.50/M input + 50×$9/M output');
+});
+
+test('Gemini missing candidate/thought counters safely contribute zero', () => {
+  assert.deepStrictEqual(
+    extractUsage('gemini', { usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 4 } }),
+    { inputTokens: 7, outputTokens: 4 },
+  );
+  assert.deepStrictEqual(
+    extractUsage('gemini', { usageMetadata: { promptTokenCount: 7, thoughtsTokenCount: 6 } }),
+    { inputTokens: 7, outputTokens: 6 },
+  );
+  assert.deepStrictEqual(extractUsage('gemini', {}), { inputTokens: 0, outputTokens: 0 });
 });
 
 // Mutation-sanity: if calcCost regressed to returning {costUsd:0} for unknowns,

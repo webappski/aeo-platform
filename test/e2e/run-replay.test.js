@@ -43,6 +43,8 @@ import {
   seedReplayProject,
   todayDateString,
   responsesDateDir,
+  legacyResponsesDateDir,
+  offlineFetchEnv,
 } from './_helpers.js';
 
 // seedReplayProject seeds the default domain unless overridden.
@@ -52,11 +54,11 @@ const DOMAIN = 'testbrand.com';
 // Both fakes are fine: extractWithTwoModels catches per-provider 401s
 // internally and returns empty verified/unverified — the cell's `mention`
 // has already been set by detectMention() before extraction runs.
-const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real' };
+const KEYS = offlineFetchEnv({ GEMINI_API_KEY: 'test-key-do-not-use-real' });
 
 test('P0-5 — stable replay run exits 0 and writes _summary.json', async () => {
   await withTmpProject('aeo-e2e-replay-stable-', (dir) => {
-    seedReplayProject(dir, { variant: 'stable' });
+    seedReplayProject(dir, { variant: 'stable', legacyLayout: true });
     const r = spawnCli(
       ['run', '--replay', '--replay-from=2026-05-13'],
       { cwd: dir, env: KEYS },
@@ -95,14 +97,20 @@ test('P0-6 — stable replay --json prints final JSON blob to stdout, exits 0', 
   });
 });
 
-test('P0-7 — all-invisible fixtures (zero mentions) → exit 2', async () => {
+test('P0-7 — flat latest replay + recent full baseline → exit 2 without auto-depth prompt', async () => {
   await withTmpProject('aeo-e2e-replay-invisible-', (dir) => {
-    seedReplayProject(dir, { variant: 'all-invisible' });
+    seedReplayProject(dir, {
+      variant: 'all-invisible',
+      legacyLayout: true,
+      lastFullRun: todayDateString(),
+    });
     const r = spawnCli(
-      ['run', '--replay', '--replay-from=2026-05-13'],
+      ['run', '--replay', '--depth=auto'],
       { cwd: dir, env: KEYS },
     );
-    assertExitCode(r, 2, 'all-invisible should exit 2 (zero mentions)');
+    assertExitCode(r, 2, 'flat latest all-invisible replay should exit 2 (not live-fallback exit 3)');
+    assert.doesNotMatch(`${r.stdout}\n${r.stderr}`, /Last training-data baseline/,
+      'recent lastFullRun in a flat summary must suppress the depth=auto refresh prompt');
   });
 });
 
@@ -123,7 +131,7 @@ test('P0-8 — score regresses by > threshold vs pre-staged previous run → exi
       return d.toISOString().slice(0, 10);
     }
     const prevDate = dayBefore(todayDateString());
-    const fakePrevDir = responsesDateDir(dir, DOMAIN, prevDate);
+    const fakePrevDir = legacyResponsesDateDir(dir, prevDate);
     mkdirSync(fakePrevDir, { recursive: true });
     writeFileSync(
       join(fakePrevDir, '_summary.json'),

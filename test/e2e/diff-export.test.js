@@ -21,7 +21,7 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
-  responsesDateDir,
+  legacyResponsesDateDir,
   FIXTURE_ROOT,
 } from './_helpers.js';
 
@@ -30,7 +30,7 @@ const DOMAIN = 'testbrand.com';
 function seedDiffPair(dir) {
   const src = join(FIXTURE_ROOT, 'diff-pair');
   for (const [date, file] of [['2026-01-14', 'yesterday-summary.json'], ['2026-01-15', 'today-summary.json']]) {
-    const destDir = responsesDateDir(dir, DOMAIN, date);
+    const destDir = legacyResponsesDateDir(dir, date);
     mkdirSync(destDir, { recursive: true });
     cpSync(join(src, file), join(destDir, '_summary.json'));
   }
@@ -43,7 +43,7 @@ test('P0-15 — diff between two pre-staged runs prints score delta + cell chang
     assertExitCode(r, 0, 'diff between two existing snapshots should exit 0');
     assert.match(r.stdout, /Score delta:/, 'diff stdout must include "Score delta:" header');
     assert.match(r.stdout, /Cell changes:|No cell changes/, 'diff stdout must report cell changes');
-    assert.ok(existsSync(join(responsesDateDir(dir, DOMAIN, '2026-01-14'), '_summary.json')));
+    assert.ok(existsSync(join(legacyResponsesDateDir(dir, '2026-01-14'), '_summary.json')));
   });
 });
 

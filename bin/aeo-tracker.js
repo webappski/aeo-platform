@@ -8,7 +8,7 @@
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -87,6 +87,7 @@ import { formatAllEnginesFailedPanel } from '../lib/errors/all-engines-failed-pa
 import { formatUnexpectedErrorPanel } from '../lib/errors/unexpected-error-panel.js';
 import { createSpinner } from '../lib/util/spinner.js';
 import { sanitizeForFilename } from '../lib/util/safe-filename.js';
+import { canonicalDomainIdentity, domainStorageSlug } from '../lib/util/domain-storage.js';
 import { aggregateCellTrials, resolveSamples, MAX_SAMPLES } from '../lib/sampling.js';
 
 /**
@@ -131,16 +132,16 @@ const SYM = USE_COLOR
 // inherited A's cached cells, trends, and enrichment. The domain slug in the
 // path makes that class of bleed structurally impossible.
 //
-// `sanitizeForFilename` already yields a cross-platform-safe component
-// ("typelessform.com" → "typelessform.com", reserved names prefixed). Reusing
-// it keeps the raw-file naming and the directory naming on one sanitiser.
+// Domain identity is canonicalised to ASCII (Punycode for IDNs) before a
+// cross-platform-safe path component is built. Display-string sanitising is
+// intentionally not used as identity: distinct Unicode domains can otherwise
+// collapse to the same dash-replaced directory.
 const RESPONSES_ROOT = 'aeo-responses';
 const REPORTS_ROOT = 'aeo-reports';
 
 /** Absolute-safe slug for a domain; empty/unknown degrades to '_unknown'. */
 function domainSlug(domain) {
-  const raw = String(domain || '').trim();
-  return raw ? sanitizeForFilename(raw) : '_unknown';
+  return domainStorageSlug(domain);
 }
 
 /** `aeo-responses/<slug>` — the per-domain responses root. */
@@ -151,6 +152,73 @@ function responsesDirFor(domain) {
 /** `aeo-reports/<slug>` — the per-domain reports root. */
 function reportsDirFor(domain) {
   return join(REPORTS_ROOT, domainSlug(domain));
+}
+
+const DATE_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function dateDirectoriesUnder(dir) {
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && DATE_DIR_RE.test(entry.name))
+      .map(entry => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+function recordedLegacyDomain(date) {
+  const summaryPath = join(RESPONSES_ROOT, date, '_summary.json');
+  if (!existsSync(summaryPath)) return null;
+  try {
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
+    return typeof summary.domain === 'string' && summary.domain.trim()
+      ? summary.domain.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function legacyDateBelongsToDomain(date, domain) {
+  const recorded = recordedLegacyDomain(date);
+  const recordedIdentity = canonicalDomainIdentity(recorded);
+  const activeIdentity = canonicalDomainIdentity(domain);
+  return !!recordedIdentity && !!activeIdentity && recordedIdentity === activeIdentity;
+}
+
+/** Namespaced-first read resolver with a domain-verified flat fallback. */
+function responseDateDirForRead(domain, date) {
+  const namespaced = join(responsesDirFor(domain), date);
+  if (existsSync(namespaced)) return namespaced;
+  const legacy = join(RESPONSES_ROOT, date);
+  return existsSync(legacy) && legacyDateBelongsToDomain(date, domain) ? legacy : null;
+}
+
+/** Continue a compatible same-day legacy run in place; fresh dates namespace. */
+function responseDateDirForWrite(domain, date) {
+  return responseDateDirForRead(domain, date) || join(responsesDirFor(domain), date);
+}
+
+function responseDatesForRead(domain) {
+  const dates = new Set(dateDirectoriesUnder(responsesDirFor(domain)));
+  for (const date of dateDirectoriesUnder(RESPONSES_ROOT)) {
+    if (legacyDateBelongsToDomain(date, domain)) dates.add(date);
+  }
+  return [...dates].sort();
+}
+
+async function readPreviousScore(domain, beforeDate) {
+  const dates = responseDatesForRead(domain).filter(date => date < beforeDate).reverse();
+  for (const date of dates) {
+    const dir = responseDateDirForRead(domain, date);
+    if (!dir) continue;
+    try {
+      const summary = JSON.parse(await readFile(join(dir, '_summary.json'), 'utf-8'));
+      if (typeof summary.score === 'number') return summary.score;
+    } catch { /* malformed/absent summary — keep scanning */ }
+  }
+  return null;
 }
 
 /**
@@ -177,20 +245,38 @@ async function resolveActiveDomain() {
 
   // No usable config domain — autodetect from the responses tree.
   if (!existsSync(RESPONSES_ROOT)) return null;
-  const { readdirSync } = await import('node:fs');
-  let dirs = [];
+  let entries = [];
   try {
-    dirs = readdirSync(RESPONSES_ROOT, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      // Ignore legacy flat date-named dirs (pre-namespacing) — they are not
-      // domain namespaces and must not be mistaken for one.
-      .filter(e => !/^\d{4}-\d{2}-\d{2}$/.test(e.name))
-      .map(e => e.name);
+    entries = readdirSync(RESPONSES_ROOT, { withFileTypes: true })
+      .filter(entry => entry.isDirectory());
   } catch { /* unreadable — treat as none */ }
-  if (dirs.length === 1) return dirs[0];
-  if (dirs.length === 0) return null;
+  const candidates = new Map();
+  for (const entry of entries) {
+    if (!DATE_DIR_RE.test(entry.name)) {
+      const identity = canonicalDomainIdentity(entry.name);
+      candidates.set(identity || entry.name, entry.name);
+    }
+  }
+  for (const entry of entries) {
+    if (!DATE_DIR_RE.test(entry.name)) continue;
+    const recorded = recordedLegacyDomain(entry.name);
+    if (recorded) candidates.set(canonicalDomainIdentity(recorded) || recorded, recorded);
+  }
+  const domains = [...candidates.values()];
+  if (domains.length === 1) return domains[0];
+  if (domains.length === 0) {
+    if (entries.some(entry => DATE_DIR_RE.test(entry.name))) {
+      const err = new Error(
+        `Legacy runs under ${RESPONSES_ROOT}/ do not contain one readable domain. ` +
+        `Add a valid "domain" to ${CONFIG_FILE} (or run \`aeo-platform init\`) to select a project safely.`,
+      );
+      err.isDomainAmbiguity = true;
+      throw err;
+    }
+    return null;
+  }
   const err = new Error(
-    `Multiple domains found under ${RESPONSES_ROOT}/ (${dirs.join(', ')}) and no ` +
+    `Multiple domains found under ${RESPONSES_ROOT}/ (${domains.join(', ')}) and no ` +
     `${CONFIG_FILE} to disambiguate. Run \`aeo-platform init\` for the domain you ` +
     `want to report on, or add a "domain" to ${CONFIG_FILE}.`,
   );
@@ -244,7 +330,7 @@ async function cleanupStaleReportArtifacts(latestDate, domain) {
 // here so the random suffix is unique across pid+ms+random (avoids collisions on
 // double-press) and the helper is one line to call.
 async function persistSnapshot(latest) {
-  const summaryPath = join(responsesDirFor(latest.domain), latest.date, '_summary.json');
+  const summaryPath = join(responseDateDirForWrite(latest.domain, latest.date), '_summary.json');
   await atomicWriteJson(summaryPath, latest);
 }
 
@@ -433,7 +519,9 @@ async function _tryReplay(qi, provider, srcDate, trialSuffix = '', domain = '') 
   // `trialSuffix` is '' for single-shot (byte-identical legacy path) and
   // `.t{trial}` for sampled cells. See rawFile construction in the run loop.
   // Domain-scoped: replay only ever reads THIS domain's prior raw files.
-  const replayPath = join(responsesDirFor(domain), srcDate, `q${qi}-${provider.name}-${safeModel}${trialSuffix}.json`);
+  const replayDir = responseDateDirForRead(domain, srcDate);
+  if (!replayDir) return null;
+  const replayPath = join(replayDir, `q${qi}-${provider.name}-${safeModel}${trialSuffix}.json`);
   if (!existsSync(replayPath)) return null;
   // Malformed cache → treat as miss; caller falls back to live call (or fails
   // through replaySrcDate gate). Prevents an uncaught SyntaxError from crashing
@@ -457,15 +545,11 @@ async function _tryReplay(qi, provider, srcDate, trialSuffix = '', domain = '') 
  * baseline is due for a refresh.
  */
 async function _readLastFullRunStaleness(domain) {
-  const responsesDir = responsesDirFor(domain);
-  if (!existsSync(responsesDir)) return null;
-  const { readdirSync } = await import('node:fs');
-  const dates = readdirSync(responsesDir)
-    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort()
-    .reverse();
+  const dates = responseDatesForRead(domain).reverse();
   for (const date of dates) {
-    const summaryPath = join(responsesDir, date, '_summary.json');
+    const dateDir = responseDateDirForRead(domain, date);
+    if (!dateDir) continue;
+    const summaryPath = join(dateDir, '_summary.json');
     if (!existsSync(summaryPath)) continue;
     try {
       const summary = JSON.parse(await readFile(summaryPath, 'utf-8'));
@@ -478,13 +562,8 @@ async function _readLastFullRunStaleness(domain) {
 }
 
 async function _resolveReplaySource(explicitDate, domain) {
-  if (explicitDate) return explicitDate;
-  const { readdirSync } = await import('node:fs');
-  const responsesDir = responsesDirFor(domain);
-  if (!existsSync(responsesDir)) return null;
-  const dates = readdirSync(responsesDir)
-    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort();
+  if (explicitDate) return responseDateDirForRead(domain, explicitDate) ? explicitDate : null;
+  const dates = responseDatesForRead(domain);
   return dates[dates.length - 1] || null;
 }
 
@@ -2239,10 +2318,10 @@ async function cmdRun(options = {}) {
   if (options.replay) {
     replaySrcDate = await _resolveReplaySource(options.replayFrom, domain);
     if (!replaySrcDate) {
-      console.error(`${c.red}--replay: no prior ${responsesDirFor(domain)}/YYYY-MM-DD folder found${c.reset}`);
+      console.error(`${c.red}--replay: no compatible prior run found for ${domain}${c.reset}`);
       process.exit(1);
     }
-    console.log(`${c.yellow}  [replay] serving cached responses from ${responsesDirFor(domain)}/${replaySrcDate}/${c.reset}\n`);
+    console.log(`${c.yellow}  [replay] serving cached responses from ${responseDateDirForRead(domain, replaySrcDate)}/${c.reset}\n`);
   }
 
   const activeProviders = [];
@@ -2454,7 +2533,7 @@ async function cmdRun(options = {}) {
   }
 
   const date = new Date().toISOString().split('T')[0];
-  const responseDir = join(responsesDirFor(domain), date);
+  const responseDir = responseDateDirForWrite(domain, date);
   await mkdir(responseDir, { recursive: true });
 
   // AP-RATELIMIT-UX: seed the TPM ledger with limits learned in prior runs so
@@ -3340,21 +3419,7 @@ async function cmdRun(options = {}) {
   // 1 = score dropped more than regressionThreshold (default 10pp)
   // 2 = all checks returned zero mentions
   // 3 = all providers errored
-  let previousScore = null;
-  try {
-    const { readdirSync } = await import('node:fs');
-    const domainResponsesDir = responsesDirFor(domain);
-    const allDates = readdirSync(domainResponsesDir)
-      .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && d < date)
-      .sort();
-    const prevDate = allDates[allDates.length - 1];
-    if (prevDate) {
-      const prev = JSON.parse(await readFile(join(domainResponsesDir, prevDate, '_summary.json'), 'utf-8'));
-      if (typeof prev.score === 'number') previousScore = prev.score;
-    }
-  } catch {
-    // no previous data — first run
-  }
+  const previousScore = await readPreviousScore(domain, date);
 
   let exitCode;
   if (results.length > 0 && errors === results.length) {
@@ -3683,24 +3748,22 @@ async function cmdReport(args = {}) {
     console.error(`${c.red}${errMsg(err)}${c.reset}`);
     process.exit(1);
   }
-  const responsesDir = responsesDirFor(activeDomain);
-  if (!existsSync(responsesDir)) {
-    console.error(`${c.red}No runs found for ${activeDomain || 'this project'} under ${responsesDir}/. Run: aeo-platform run${c.reset}`);
+  const dates = responseDatesForRead(activeDomain);
+  if (dates.length === 0) {
+    console.error(`${c.red}No compatible runs found for ${activeDomain || 'this project'}. Check ${CONFIG_FILE}'s domain or run: aeo-platform run${c.reset}`);
     process.exit(1);
   }
 
-  const dates = readdirSync(responsesDir)
-    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort();
-
   const snapshots = [];
   for (const date of dates) {
-    const p = join(responsesDir, date, '_summary.json');
+    const dateDir = responseDateDirForRead(activeDomain, date);
+    if (!dateDir) continue;
+    const p = join(dateDir, '_summary.json');
     if (existsSync(p)) snapshots.push(JSON.parse(await readFile(p, 'utf-8')));
   }
 
   if (snapshots.length === 0) {
-    console.error(`${c.red}No _summary.json files found in ${responsesDir}/. Run: aeo-platform run${c.reset}`);
+    console.error(`${c.red}No readable _summary.json files found for ${activeDomain || 'this project'}. Run: aeo-platform run${c.reset}`);
     process.exit(1);
   }
 
@@ -3778,6 +3841,7 @@ async function cmdReport(args = {}) {
   }
 
   const rawResponses = {};
+  const latestDateDir = responseDateDirForRead(activeDomain, latest.date);
   // Directory listing — used to resolve the model-suffixed raw filenames the
   // run writer produces (`q{N}-{provider}-{safeModel}.json`, see _tryReplay /
   // the run loop). The historical loader looked for the bare `q{N}-{provider}
@@ -3788,14 +3852,14 @@ async function cmdReport(args = {}) {
   let dateDirEntries = [];
   try {
     const { readdirSync } = await import('node:fs');
-    dateDirEntries = readdirSync(join(responsesDir, latest.date));
+    dateDirEntries = readdirSync(latestDateDir);
   } catch { /* dir unreadable — graceful: per-result existsSync probes still run */ }
   for (const r of latest.results) {
     const qi = String(r.query).replace(/^Q/, '');
     const key = `${r.query}|${r.provider}`;
     try {
       if (r.source === 'manual-paste') {
-        const txtPath = join(responsesDir, latest.date, `q${qi}-${r.provider}-manual.txt`);
+        const txtPath = join(latestDateDir, `q${qi}-${r.provider}-manual.txt`);
         if (existsSync(txtPath)) rawResponses[key] = await readFile(txtPath, 'utf-8');
       } else {
         // Resolve the JSON raw file. Preference order:
@@ -3817,7 +3881,7 @@ async function cmdReport(args = {}) {
             .sort((a, b) => (/\.t\d+\.json$/.test(a) ? 1 : 0) - (/\.t\d+\.json$/.test(b) ? 1 : 0));
           jsonName = candidates[0] || `q${qi}-${r.provider}.json`;
         }
-        const jsonPath = join(responsesDir, latest.date, jsonName);
+        const jsonPath = join(latestDateDir, jsonName);
         if (existsSync(jsonPath)) {
           const raw = JSON.parse(await readFile(jsonPath, 'utf-8'));
           rawResponses[key] = parseRawResponse(r.provider, raw);
@@ -4278,7 +4342,7 @@ async function cmdReport(args = {}) {
 
   const md = renderMarkdown(snapshots, rawResponses, {
     mcMetadata, noMcBlock: skipMcBlock, public: publicMode,
-    whiteLabel, reportTitle: args.reportTitle,
+    whiteLabel, reportTitle: args.reportTitle, responsesPath: latestDateDir,
   });
 
   const outDir = join(reportsDirFor(latest.domain), latest.date);
@@ -4448,7 +4512,7 @@ async function cmdRunManual(argv) {
   }
 
   const date = new Date().toISOString().split('T')[0];
-  const responseDir = join(responsesDirFor(domain), date);
+  const responseDir = responseDateDirForWrite(domain, date);
   await mkdir(responseDir, { recursive: true });
 
   console.log(`\n${c.bold}aeo-platform — run-manual${c.reset}`);
@@ -4627,19 +4691,7 @@ async function cmdRunManual(argv) {
 
   // Exit-code parity with `run` (README contract). run-manual doesn't call APIs,
   // so code 3 (all providers errored) is unreachable here.
-  let previousScore = null;
-  try {
-    const { readdirSync } = await import('node:fs');
-    const domainResponsesDir = responsesDirFor(domain);
-    const allDates = readdirSync(domainResponsesDir)
-      .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && d < date)
-      .sort();
-    const prevDate = allDates[allDates.length - 1];
-    if (prevDate) {
-      const prev = JSON.parse(await readFile(join(domainResponsesDir, prevDate, '_summary.json'), 'utf-8'));
-      if (typeof prev.score === 'number') previousScore = prev.score;
-    }
-  } catch { /* no previous run — first one */ }
+  const previousScore = await readPreviousScore(domain, date);
 
   let exitCode;
   if (mentions === 0) exitCode = 2;
@@ -4664,7 +4716,6 @@ async function cmdExport(args = {}) {
   // Lazy-load CSV / JSON serialiser only when this command runs.
   const { snapshotsToCsv, snapshotsToJson } = await import('../lib/report/csv-export.js');
 
-  const { readdirSync } = await import('node:fs');
   let activeDomain;
   try {
     activeDomain = await resolveActiveDomain();
@@ -4672,24 +4723,19 @@ async function cmdExport(args = {}) {
     console.error(`${c.red}${errMsg(err)}${c.reset}`);
     process.exit(1);
   }
-  const responsesDir = responsesDirFor(activeDomain);
-  if (!existsSync(responsesDir)) {
-    console.error(`${c.red}No runs found for ${activeDomain || 'this project'} under ${responsesDir}/. Run: aeo-platform run${c.reset}`);
-    process.exit(1);
-  }
-  const dates = readdirSync(responsesDir)
-    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort();
+  const dates = responseDatesForRead(activeDomain);
   const snapshots = [];
   for (const date of dates) {
-    const summaryPath = join(responsesDir, date, '_summary.json');
+    const dateDir = responseDateDirForRead(activeDomain, date);
+    if (!dateDir) continue;
+    const summaryPath = join(dateDir, '_summary.json');
     if (existsSync(summaryPath)) {
       try { snapshots.push(JSON.parse(await readFile(summaryPath, 'utf-8'))); }
       catch { /* skip malformed */ }
     }
   }
   if (snapshots.length === 0) {
-    console.error(`${c.red}No _summary.json files found in ${responsesDir}/.${c.reset}`);
+    console.error(`${c.red}No compatible _summary.json files found for ${activeDomain || 'this project'}.${c.reset}`);
     process.exit(1);
   }
 
@@ -4774,7 +4820,6 @@ async function cmdCrawlStats(args = {}) {
 }
 
 async function cmdDiff(argv) {
-  const { readdirSync } = await import('node:fs');
   let activeDomain;
   try {
     activeDomain = await resolveActiveDomain();
@@ -4782,16 +4827,7 @@ async function cmdDiff(argv) {
     console.error(`${c.red}${errMsg(err)}${c.reset}`);
     process.exit(1);
   }
-  const responsesDir = responsesDirFor(activeDomain);
-
-  if (!existsSync(responsesDir)) {
-    console.error(`${c.red}No runs found for ${activeDomain || 'this project'} under ${responsesDir}/. Run: aeo-platform run${c.reset}`);
-    process.exit(1);
-  }
-
-  const allDates = readdirSync(responsesDir)
-    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort();
+  const allDates = responseDatesForRead(activeDomain);
 
   // Parse args: aeo-platform diff [dateA] [dateB] | --last N | --since DATE
   const args = {};
@@ -4838,8 +4874,9 @@ async function cmdDiff(argv) {
   }
 
   const load = async (d) => {
-    const p = join(responsesDir, d, '_summary.json');
-    if (!existsSync(p)) throw new Error(`No _summary.json for ${d}`);
+    const dateDir = responseDateDirForRead(activeDomain, d);
+    const p = dateDir ? join(dateDir, '_summary.json') : null;
+    if (!p || !existsSync(p)) throw new Error(`No _summary.json for ${d}`);
     return JSON.parse(await readFile(p, 'utf-8'));
   };
 
