@@ -11,13 +11,13 @@
  *   P0-9  — malformed fixtures → _tryReplay returns null → live fallback →
  *           fake-key 401 → mention='error' for every cell → exit 3.
  *           Verified end-to-end in Phase 0 manual gate 2026-05-20.
- *   P0-10 — `--force --replay` cache-bust. A pre-staged today-summary
- *           (all-'no', model 'gpt-5') would normally populate skipKeys and
- *           skip every cell. `--force` MUST blow that cache away: existingSummary
- *           stays null, skipKeys=0, every cell is re-served from the offline
- *           replay fixtures, and _summary.json is REWRITTEN with the fresh
- *           replay pattern (Q1='yes'). The offline guarantee is structural —
- *           a COMPLETE openai fixture set (q1/q2/q3-openai-gpt-5.json) + dummy
+ *   P0-10 — same-day re-run overwrite (anti-bleed). A pre-staged today-summary
+ *           (all-'no', model 'gpt-5') must NOT be reused: the same-day skip/
+ *           resume/merge cache was removed, so a plain `run --replay` (no
+ *           --force) re-serves every cell from the offline fixtures and REWRITES
+ *           _summary.json with the fresh replay pattern (Q1='yes'), never
+ *           resurrecting the stale sentinel. The offline guarantee is structural
+ *           — a COMPLETE openai fixture set (q1/q2/q3-openai-gpt-5.json) + dummy
  *           keys — NOT seam independence: _tryReplay returns null on a missing
  *           OR malformed fixture and falls through to a LIVE provider.call, so a
  *           single absent cell would burn a real API call. We assert zero such
@@ -42,23 +42,29 @@ import {
   assertExitCode,
   seedReplayProject,
   todayDateString,
+  responsesDateDir,
+  legacyResponsesDateDir,
+  offlineFetchEnv,
 } from './_helpers.js';
+
+// seedReplayProject seeds the default domain unless overridden.
+const DOMAIN = 'testbrand.com';
 
 // Extractor needs both OPENAI + GEMINI keys for buildExtractionProviders.
 // Both fakes are fine: extractWithTwoModels catches per-provider 401s
 // internally and returns empty verified/unverified — the cell's `mention`
 // has already been set by detectMention() before extraction runs.
-const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real' };
+const KEYS = offlineFetchEnv({ GEMINI_API_KEY: 'test-key-do-not-use-real' });
 
 test('P0-5 — stable replay run exits 0 and writes _summary.json', async () => {
   await withTmpProject('aeo-e2e-replay-stable-', (dir) => {
-    seedReplayProject(dir, { variant: 'stable' });
+    seedReplayProject(dir, { variant: 'stable', legacyLayout: true });
     const r = spawnCli(
       ['run', '--replay', '--replay-from=2026-05-13'],
       { cwd: dir, env: KEYS },
     );
     assertExitCode(r, 0, 'stable replay should exit 0');
-    const summaryPath = join(dir, 'aeo-responses', todayDateString(), '_summary.json');
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
     assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
     const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
     assert.ok(Array.isArray(summary.results) && summary.results.length === 3,
@@ -91,14 +97,20 @@ test('P0-6 — stable replay --json prints final JSON blob to stdout, exits 0', 
   });
 });
 
-test('P0-7 — all-invisible fixtures (zero mentions) → exit 2', async () => {
+test('P0-7 — flat latest replay + recent full baseline → exit 2 without auto-depth prompt', async () => {
   await withTmpProject('aeo-e2e-replay-invisible-', (dir) => {
-    seedReplayProject(dir, { variant: 'all-invisible' });
+    seedReplayProject(dir, {
+      variant: 'all-invisible',
+      legacyLayout: true,
+      lastFullRun: todayDateString(),
+    });
     const r = spawnCli(
-      ['run', '--replay', '--replay-from=2026-05-13'],
+      ['run', '--replay', '--depth=auto'],
       { cwd: dir, env: KEYS },
     );
-    assertExitCode(r, 2, 'all-invisible should exit 2 (zero mentions)');
+    assertExitCode(r, 2, 'flat latest all-invisible replay should exit 2 (not live-fallback exit 3)');
+    assert.doesNotMatch(`${r.stdout}\n${r.stderr}`, /Last training-data baseline/,
+      'recent lastFullRun in a flat summary must suppress the depth=auto refresh prompt');
   });
 });
 
@@ -119,7 +131,7 @@ test('P0-8 — score regresses by > threshold vs pre-staged previous run → exi
       return d.toISOString().slice(0, 10);
     }
     const prevDate = dayBefore(todayDateString());
-    const fakePrevDir = join(dir, 'aeo-responses', prevDate);
+    const fakePrevDir = legacyResponsesDateDir(dir, prevDate);
     mkdirSync(fakePrevDir, { recursive: true });
     writeFileSync(
       join(fakePrevDir, '_summary.json'),
@@ -156,7 +168,7 @@ test('P0-9 — malformed fixtures → all cells error → exit 3 (Phase 0 gate)'
   });
 });
 
-// Force-mode offline guarantee. spawnCli injects a dummy OPENAI_API_KEY only
+// Offline guarantee. spawnCli injects a dummy OPENAI_API_KEY only
 // `if (!env.OPENAI_API_KEY)` — so we pass BOTH keys explicitly here (opts.env
 // is spread AFTER process.env, overriding it). Without this, a real
 // OPENAI_API_KEY in the runner's shell would pass through, and a hypothetical
@@ -167,20 +179,19 @@ const DUMMY_KEYS = {
   GEMINI_API_KEY: 'test-key-do-not-use-real',
 };
 
-test('P0-10 — --force --replay busts today\'s cache, rewrites _summary.json offline', async () => {
-  await withTmpProject('aeo-e2e-replay-force-', (dir) => {
-    seedReplayProject(dir, { variant: 'stable' });
+test('P0-10 — same-day re-run overwrites a stale today-summary (no skip/merge bleed)', async () => {
+  // Regression guard for the cross-domain / edited-query bleed bug: the
+  // automatic same-day skip/resume/merge cache was REMOVED. A pre-staged
+  // today-summary (all-'no', from a hypothetical earlier run) must NOT be
+  // reused — a fresh `run` re-serves every cell from replay and fully
+  // OVERWRITES the summary, surfacing Q1='yes'. If any skip/merge logic
+  // resurrected the stale summary, mentions would stay 0 (exit 2) and the
+  // sentinel would survive. This runs WITHOUT --force precisely to prove the
+  // overwrite is the DEFAULT behaviour, not something a flag has to force.
+  await withTmpProject('aeo-e2e-replay-rerun-', (dir) => {
+    const { domain } = seedReplayProject(dir, { variant: 'stable' });
 
-    // Pre-stage a today-summary that, WITHOUT --force, would populate skipKeys
-    // for all 3 openai cells and skip them. The 5-part skipKey is built as
-    // `Q{n}::openai:gpt-5:web` (bin/aeo-tracker.js:2020) — so each result must
-    // carry query='Q{n}', provider='openai', model='gpt-5' (NOT
-    // 'gpt-5-search-api'), mode='web', mention != 'error'. An all-'no' summary
-    // means: if --force is (wrongly) ignored, every cell is skipped, the merge
-    // block re-injects the 3 'no' cells → mentions=0 → exit 2. With --force
-    // honoured, the cache is bypassed, replay re-serves Q1='yes' → exit 0.
-    // That contrast is the mutation-sanity discriminator.
-    const todayDir = join(dir, 'aeo-responses', todayDateString());
+    const todayDir = responsesDateDir(dir, domain, todayDateString());
     mkdirSync(todayDir, { recursive: true });
     const sentinelResults = ['Q1', 'Q2', 'Q3'].map((q, i) => ({
       query: q,
@@ -197,36 +208,32 @@ test('P0-10 — --force --replay busts today\'s cache, rewrites _summary.json of
       join(todayDir, '_summary.json'),
       JSON.stringify({
         date: todayDateString(),
-        brand: 'TestBrand', domain: 'testbrand.com',
+        brand: 'TestBrand', domain,
         score: 0, mentions: 0, total: 3, errors: 0,
         regressionThreshold: 10,
-        _sentinel: 'stale-cache-must-be-overwritten-by-force',
+        _sentinel: 'stale-summary-must-be-overwritten',
         results: sentinelResults,
       }, null, 2),
     );
 
     const r = spawnCli(
-      ['run', '--force', '--replay', '--replay-from=2026-05-13'],
+      ['run', '--replay', '--replay-from=2026-05-13'],
       { cwd: dir, env: DUMMY_KEYS },
     );
-    assertExitCode(r, 0, '--force --replay should re-serve replay (Q1=yes) and exit 0, not skip-all → exit 2');
+    assertExitCode(r, 0, 're-run should re-serve replay (Q1=yes) and exit 0, not resurrect the all-no sentinel → exit 2');
 
-    // skipKeys must be empty under --force: the CLI must NOT print the
-    // "N checks already succeeded today" line. If it does, force was ignored
-    // and the cells were served from the stale cache, not from replay.
+    // The removed cache used to log "N checks already succeeded today". That
+    // line must never appear — there is no skip cache left to print it.
     assert.doesNotMatch(
       r.stdout + r.stderr, /already succeeded today/,
-      '--force must bypass the response cache (skipKeys=0), never reuse today\'s summary',
+      'no same-day skip cache should exist — the "already succeeded today" line must be gone',
     );
 
     const summaryPath = join(todayDir, '_summary.json');
     assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
     const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
 
-    // Sanity that the file is a freshly-built summary object (the writer never
-    // carries `_sentinel` forward in either path). NOTE: this alone does NOT
-    // discriminate force-respected from force-ignored — the discriminator is
-    // the exit-code contract above + the Q1='yes' assertion below.
+    // The freshly-built summary never carries `_sentinel` forward.
     assert.ok(!('_sentinel' in summary),
       '_summary.json must be a freshly-built object (sentinel field must not survive)');
     assert.ok(Array.isArray(summary.results) && summary.results.length === 3,
@@ -237,7 +244,7 @@ test('P0-10 — --force --replay busts today\'s cache, rewrites _summary.json of
     // complete fixture set served every cell offline.
     const errors = summary.results.filter(r => r.mention === 'error');
     assert.equal(errors.length, 0,
-      `--force --replay must serve every cell offline; ${errors.length} cell(s) fell through to a live call`);
+      `re-run must serve every cell offline; ${errors.length} cell(s) fell through to a live call`);
 
     // Proof of rewrite-from-replay (not from sentinel): Q1 is 'yes' in the
     // replay fixture but 'no' in the sentinel. Seeing 'yes' proves the summary

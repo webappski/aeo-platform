@@ -27,6 +27,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { domainStorageSlug } from '../lib/util/domain-storage.js';
 
 const PROJ = dirname(dirname(fileURLToPath(import.meta.url)));
 const BIN = join(PROJ, 'bin', 'aeo-tracker.js');
@@ -63,7 +64,7 @@ test('--replay skips live model discovery (uses cfg.model from config)', () => {
     // run REACHES the per-cell loop (not that any cell succeeds). Filename
     // suffix `gpt-5` must match `sanitizeForFilename(cfg.model)`.
     const replayDate = '2026-01-15';
-    const replayDir = join(tmpProject, 'aeo-responses', replayDate);
+    const replayDir = join(tmpProject, 'aeo-responses', domainStorageSlug(config.domain), replayDate);
     mkdirSync(replayDir, { recursive: true });
     for (const q of [1, 2, 3]) {
       writeFileSync(join(replayDir, `q${q}-openai-gpt-5.json`), 'not-json-at-all');

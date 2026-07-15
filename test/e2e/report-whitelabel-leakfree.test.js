@@ -71,10 +71,14 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
+  reportsDateDir,
   todayDateString,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
+
+const DOMAIN = 'testbrand.com';
 
 // Fingerprint denylist — tool / agency / Mission-Control identity. Must produce
 // ZERO matches in BOTH the white-label HTML and MD.
@@ -130,7 +134,7 @@ const ADVISORY_DENYLIST = [
 //   - NO "recommend" / outreach text in any responseExcerpt / sentiment.
 function seedSummary(dir) {
   const today = todayDateString();
-  const dd = join(dir, 'aeo-responses', today);
+  const dd = responsesDateDir(dir, DOMAIN, today);
   mkdirSync(dd, { recursive: true });
   const summary = {
     date: today,
@@ -195,8 +199,8 @@ function renderBoth(dir, extraArgs = []) {
   const r = spawnCli(['report', '--no-open', ...extraArgs], { cwd: dir, env: KEYS });
   assertExitCode(r, 0, `report ${extraArgs.join(' ')} should exit 0`);
   return {
-    html: readFileSync(join(dir, 'aeo-reports', today, 'report.html'), 'utf-8'),
-    md: readFileSync(join(dir, 'aeo-reports', today, 'report.md'), 'utf-8'),
+    html: readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8'),
+    md: readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.md'), 'utf-8'),
   };
 }
 
@@ -234,8 +238,8 @@ test('report --white-label (HTML + MD) produces zero fingerprint AND zero adviso
       { cwd: dir, env: KEYS },
     );
     assertExitCode(r, 0, 'report --white-label should exit 0');
-    const html = readFileSync(join(dir, 'aeo-reports', today, 'report.html'), 'utf-8');
-    const md = readFileSync(join(dir, 'aeo-reports', today, 'report.md'), 'utf-8');
+    const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
+    const md = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.md'), 'utf-8');
 
     // (1) Fingerprint denylist — ZERO matches in BOTH files.
     for (const re of FINGERPRINT_DENYLIST) {
@@ -327,7 +331,7 @@ const IDENTITY_FINGERPRINT = [
 // writer produces — and the name the fixed report loader resolves).
 function seedRevealProject(dir, { fullText, withRawFile = true } = {}) {
   const today = todayDateString();
-  const dd = join(dir, 'aeo-responses', today);
+  const dd = responsesDateDir(dir, DOMAIN, today);
   mkdirSync(dd, { recursive: true });
   // The full answer the reveal must surface verbatim. CLEAN of advisory words
   // (so the white-label advisory ban still holds) but carries a unique closing
@@ -377,7 +381,7 @@ test('reveal: default HTML carries a per-cell <details> with the FULL, HTML-esca
     const { today } = seedRevealProject(dir);
     const r = spawnCli(['report', '--no-open'], { cwd: dir, env: KEYS });
     assertExitCode(r, 0, 'report should exit 0');
-    const html = readFileSync(join(dir, 'aeo-reports', today, 'report.html'), 'utf-8');
+    const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 
     // (a) the reveal accordion exists with a non-empty answer body.
     assert.match(html, /<details class="mx-reveal">/, 'default HTML must render the reveal <details>');
@@ -405,7 +409,7 @@ test('reveal: white-label HTML embeds the FULL answer and is IDENTITY-fingerprin
     const { today } = seedRevealProject(dir);
     const r = spawnCli(['report', '--no-open', '--white-label'], { cwd: dir, env: KEYS });
     assertExitCode(r, 0, 'report --white-label should exit 0');
-    const html = readFileSync(join(dir, 'aeo-reports', today, 'report.html'), 'utf-8');
+    const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 
     // The reveal renders in white-label too (the answer is measured data).
     assert.match(html, /<details class="mx-reveal">/, 'white-label HTML must still render the reveal <details>');
@@ -434,7 +438,7 @@ test('reveal: a cell with NO raw file gracefully falls back to the excerpt and t
     const r = spawnCli(['report', '--no-open'], { cwd: dir, env: KEYS });
     // Never-fail: a cell with no captured answer must NOT break the render.
     assertExitCode(r, 0, 'report must still exit 0 when a cell has no raw file');
-    const html = readFileSync(join(dir, 'aeo-reports', today, 'report.html'), 'utf-8');
+    const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 
     // Reveal still renders, sourced from the excerpt, tagged as such.
     assert.match(html, /<details class="mx-reveal">/, 'reveal must still render from the excerpt');

@@ -43,8 +43,11 @@ import {
   spawnCli,
   assertExitCode,
   seedReplayProject,
+  responsesDateDir,
   todayDateString,
 } from './_helpers.js';
+
+const DOMAIN = 'testbrand.com';
 
 // Extractor needs OPENAI + GEMINI keys; both fakes are fine — under --replay the
 // extractor/sentiment/prose-rank classify calls are short-circuited to empty
@@ -60,7 +63,7 @@ test('run --replay --regions de --lang de tags every cell with region + German l
     );
     assertExitCode(r, 0, 'regional replay run should serve fixtures offline and exit 0');
 
-    const summaryPath = join(dir, 'aeo-responses', todayDateString(), '_summary.json');
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
     assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
     const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
 
@@ -95,7 +98,7 @@ test('byte-identity sibling — same DE region WITHOUT --lang omits the lang fie
     );
     assertExitCode(r, 0, 'regional replay run without --lang should also exit 0');
 
-    const summaryPath = join(dir, 'aeo-responses', todayDateString(), '_summary.json');
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
     assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
     const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
 

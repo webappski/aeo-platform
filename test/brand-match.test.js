@@ -120,6 +120,16 @@ test('separator-less single-word brand with no internal seam behaves like includ
   assert.equal(detectMention('I love webappski tooling.', [], 'Webappski', 'webappski.com'), 'yes');
 });
 
+test('brand as a strict prefix of a longer unrelated word does NOT match', () => {
+  // Root-cause repro (2026-07-08, init "typele" vs "TypelessForm"): a naive
+  // includes() check treats any prefix of a longer word as a match. Word-boundary
+  // anchoring must reject it — the brand simply isn't the word that's on the page.
+  assert.equal(
+    detectMention('Welcome to TypelessForm — voice-to-form filling.', [], 'typele', 'typelessform.com'),
+    'no'
+  );
+});
+
 // ─── Citations → 'src' ───
 console.log('\nbrand-match — citation matches → src');
 

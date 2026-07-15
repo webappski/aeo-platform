@@ -41,6 +41,7 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
@@ -65,7 +66,7 @@ function cell({ query, mention, canonicalCitations }) {
 }
 
 function writeSummary(dir, results) {
-  const dd = join(dir, 'aeo-responses', DATE);
+  const dd = responsesDateDir(dir, DOMAIN, DATE);
   mkdirSync(dd, { recursive: true });
   writeFileSync(join(dd, '_summary.json'), JSON.stringify({
     date: DATE, brand: 'TestBrand', domain: DOMAIN, score: 50, total: results.length, results,

@@ -20,10 +20,12 @@ import {
   spawnCli,
   assertExitCode,
   seedReplayProject,
+  reportsDateDir,
   todayDateString,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real' };
+const DOMAIN = 'testbrand.com';
 
 function runStableReplay(dir) {
   const r = spawnCli(
@@ -41,8 +43,8 @@ test('P0-10 — default report writes md+html, HTML has bento + mc-bridge anchor
     assertExitCode(r, 0, 'report --no-open should exit 0');
 
     const today = todayDateString();
-    const mdPath = join(dir, 'aeo-reports', today, 'report.md');
-    const htmlPath = join(dir, 'aeo-reports', today, 'report.html');
+    const mdPath = join(reportsDateDir(dir, DOMAIN, today), 'report.md');
+    const htmlPath = join(reportsDateDir(dir, DOMAIN, today), 'report.html');
     assert.ok(existsSync(mdPath), `report.md missing at ${mdPath}`);
     assert.ok(existsSync(htmlPath), `report.html missing at ${htmlPath}`);
     const html = readFileSync(htmlPath, 'utf-8');
@@ -62,8 +64,8 @@ test('P0-11 — report --no-html --no-mc-block → only md, MC block suppressed'
     assertExitCode(r, 0, 'report --no-html --no-mc-block --no-open should exit 0');
 
     const today = todayDateString();
-    const mdPath = join(dir, 'aeo-reports', today, 'report.md');
-    const htmlPath = join(dir, 'aeo-reports', today, 'report.html');
+    const mdPath = join(reportsDateDir(dir, DOMAIN, today), 'report.md');
+    const htmlPath = join(reportsDateDir(dir, DOMAIN, today), 'report.html');
     assert.ok(existsSync(mdPath), `report.md missing at ${mdPath}`);
     assert.ok(!existsSync(htmlPath), `report.html should be absent under --no-html`);
     const md = readFileSync(mdPath, 'utf-8');
@@ -85,8 +87,8 @@ test('P0-12 — report --no-html writes a non-empty markdown report, no HTML', a
     assertExitCode(r, 0, 'report --no-html --no-open should exit 0');
 
     const today = todayDateString();
-    const mdPath = join(dir, 'aeo-reports', today, 'report.md');
-    const htmlPath = join(dir, 'aeo-reports', today, 'report.html');
+    const mdPath = join(reportsDateDir(dir, DOMAIN, today), 'report.md');
+    const htmlPath = join(reportsDateDir(dir, DOMAIN, today), 'report.html');
     assert.ok(existsSync(mdPath), `report.md missing at ${mdPath}`);
     assert.ok(!existsSync(htmlPath), 'report.html should be absent under --no-html');
     const md = readFileSync(mdPath, 'utf-8');

@@ -41,10 +41,14 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
+  reportsDateDir,
   todayDateString,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
+
+const DOMAIN = 'testbrand.com';
 
 // Source-path regex per the leak-guard memory: matches dashed/numbered file
 // names like "visibility-index.js" that a naive /lib\/[a-z/]+\.js/ would miss.
@@ -66,7 +70,7 @@ function internalSourcePaths(html) {
 // costByModel shape emitted by `run`.
 function seedSummaryWithCost(dir) {
   const today = todayDateString();
-  const dd = join(dir, 'aeo-responses', today);
+  const dd = responsesDateDir(dir, DOMAIN, today);
   mkdirSync(dd, { recursive: true });
   const summary = {
     date: today,
@@ -96,7 +100,7 @@ function seedSummaryWithCost(dir) {
 function reportHtml(dir, today, extraArgs = []) {
   const r = spawnCli(['report', '--no-open', ...extraArgs], { cwd: dir, env: KEYS });
   assertExitCode(r, 0, `report ${extraArgs.join(' ')} should exit 0`);
-  return readFileSync(join(dir, 'aeo-reports', today, 'report.html'), 'utf-8');
+  return readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 }
 
 test('default report HTML carries the Session-cost card, $/run, tokens and a lib/ source path', async () => {

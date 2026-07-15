@@ -7,14 +7,103 @@
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](./package.json)
 [![GitHub stars](https://img.shields.io/github/stars/webappski/aeo-platform?style=social)](https://github.com/webappski/aeo-platform)
 
+## How to run it — init → run → report
+
+**1. Set your API keys.** Two keys are strongly recommended — **any two** of OpenAI, Gemini,
+or Anthropic let the tool cross-verify competitor mentions across two models (the pair below
+is just an example — use whichever two you have). One key is enough to start (any of the
+three) — competitor names just won't be cross-verified.
+
+> **Perplexity is the exception.** Its API is search-tuned, not a general classifier, so it
+> can't power query validation or the competitor cross-check. A `PERPLEXITY_API_KEY` only
+> adds a 4th answer-engine column at `run` time — it doesn't count as one of your two keys,
+> and it can't be your only key.
+
+macOS / Linux (bash / zsh):
+
+```bash
+export OPENAI_API_KEY="sk-proj-..."   # platform.openai.com/api-keys
+export GEMINI_API_KEY="AIza..."       # aistudio.google.com/apikey
+```
+
+Windows (PowerShell):
+
+```powershell
+$env:OPENAI_API_KEY = "sk-proj-..."   # platform.openai.com/api-keys
+$env:GEMINI_API_KEY = "AIza..."       # aistudio.google.com/apikey
+```
+
+**2. Run the three commands** (same on every OS):
+
+```bash
+aeo-platform init            # Setup  — picks your tracking queries, writes .aeo-tracker.json
+aeo-platform run             # Audit  — asks each AI engine your queries, records the answers
+aeo-platform report --html   # Report — builds report.html (+ report.md) and opens it in your browser
+```
+
+That's the whole loop — three commands, once a week. **Not sure what each step is actually
+doing?** [How the loop works](#how-the-loop-works), just below the flags, walks through
+`init` → `run` → `report` in plain English.
+
+Persistent keys (that survive a restart), Windows CMD, extra engines, and no-install `npx`
+→ see the [full quickstart](#full-quickstart-for-first-time-terminal-users) below.
+
+## Flags — what each one gives you
+
+Short version; the full reference is further down. Every command runs fine with no flags —
+reach for these when you need them.
+
+**`init`**
+
+- `--yes --brand=X --domain=x.com --auto` — non-interactive setup (CI / scripts); still auto-suggests the queries.
+- `--keywords="q1,q2,q3"` — skip the AI suggester and bring your own 3 queries (zero LLM cost).
+- `--queries-only` — re-pick queries without touching brand / domain / keys.
+
+**`run`**
+
+- `--json` — machine-readable output for CI. Exit code says what happened: `0` stable · `1` regressed · `2` invisible · `3` API errors.
+- `--regions=us,de,fr` — run every query under each region (multiplies cost by region count).
+- `--replay` — rebuild a summary from cached answers, zero API cost (offline).
+- `--force` — proceed even if the query-validation gate flags something.
+
+**`report`**
+
+- `--no-html` — write Markdown only, skip the HTML + browser.
+- `--no-open` — write both files but don't auto-open the browser.
+- `--public` — strip internal cost figures + source paths for a shareable report.
+
+## How the loop works
+
+`aeo-platform` answers one question: **when someone asks ChatGPT, Claude, Gemini, or
+Perplexity to recommend tools in your space, does your brand come up?** It sends your
+queries to each engine through their official APIs, checks whether you're mentioned (and
+who's mentioned instead), and turns the result into a browser report with a visibility
+score and a prioritized to-do list.
+
+The three commands above, in plain English — no AEO background needed. Read this once and you
+know everything the tool does for you.
+
+- **`init`** (run once) — reads your site, detects your API keys, and **auto-picks 3 tracking
+  queries**: *unbranded, buyer-intent* phrases, the way a real customer searches when
+  comparing vendors — e.g. *"best voice form filler software"*, *"top X tools for Y"* — not
+  your brand name and not "what is X" questions. Everything lands in `.aeo-tracker.json`.
+- **`run`** (run weekly) — sends each query to every engine you have a key for and records, per
+  answer: were you mentioned, roughly where, who was mentioned instead, and which sources
+  got cited. Raw answers + a summary go under `aeo-responses/`.
+- **`report`** — turns the latest run into a self-contained `report.html` (auto-opens in
+  your browser) plus `report.md`: visibility score, per-engine breakdown, top competitors,
+  cited sources, and 3–5 prioritized fixes. Compare weeks with `aeo-platform diff`.
+
+**Run it to** — find out whether AI recommends you today · track that number week over
+week · get a concrete list of what to fix to get cited more often.
+
+---
+
 > **`aeo-platform` is the open-source CLI for answer-engine optimization (AEO / GEO).** It measures your brand across **ChatGPT, Claude, Gemini, and Perplexity**, audits AI-bot crawlability + authority signals, and exports a JSON brand-context you paste into any AI for a personalised **30-mission AEO plan**. MIT-licensed. Runs locally. Zero runtime dependencies. Free alternative to Otterly, Profound, Peec, and Bluefish.
 
 **macOS / Linux (bash / zsh)** — `npx …@latest` always runs the newest release, nothing to keep updated:
 
 ```bash
-export OPENAI_API_KEY="sk-proj-..."     # recommended pair
-export GEMINI_API_KEY="AIzaSy..."        # (any ONE research key is enough to start)
-
 npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto \
   && npx aeo-platform@latest run \
   && npx aeo-platform@latest report
@@ -25,9 +114,6 @@ Prefer a global install for a weekly rhythm? `npm install -g aeo-platform` and u
 **Windows (PowerShell)**
 
 ```powershell
-$env:OPENAI_API_KEY = "sk-proj-..."     # recommended pair (current session only)
-$env:GEMINI_API_KEY = "AIzaSy..."        # (any ONE research key is enough to start)
-
 npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --auto
 if ($LASTEXITCODE -eq 0) { npx aeo-platform@latest run }
 if ($LASTEXITCODE -eq 0) { npx aeo-platform@latest report }
@@ -53,8 +139,6 @@ aeo-platform init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM \
 
 Use category-based phrasing («best X for Y» / «top X 2026») the way real users search — the strict commercial-only validator blocks brand-comparison archetypes like «brand vs alternatives» that LLMs auto-correct away for new brands.
 
-The HTML report opens in your browser. Weekly cadence after that: `aeo-platform run && aeo-platform report` (or the PowerShell `if ($LASTEXITCODE -eq 0)` equivalent on PS 5.1).
-
 > Renamed from `@webappski/aeo-tracker` in `1.0.0` (2026-05-13). The `aeo-tracker` CLI command stays as a built-in alias — existing scripts keep working. Migration: `npm i -g aeo-platform`.
 
 ---
@@ -63,8 +147,8 @@ The HTML report opens in your browser. Weekly cadence after that: `aeo-platform 
 
 Six concrete reasons `aeo-platform` exists, in order of how often they decide the install:
 
-- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-search-api`), Claude (`claude-sonnet-4-6`), Gemini (`gemini-2.5-flash`), Perplexity (`sonar-reasoning`). No scraping. No proprietary score.
-- **Local-first.** Raw responses stay on your disk in `aeo-responses/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
+- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-mini` + the Responses `web_search` tool), Claude (`claude-sonnet-5`), Gemini (`gemini-3.5-flash`), Perplexity (`sonar-reasoning-pro`). No scraping. No proprietary score.
+- **Local-first.** Raw responses stay on your disk in `aeo-responses/<domain>/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. OpenAI Responses web-search calls send `store:false` to disable Responses application-state storage; this is not a claim of Zero Data Retention, and provider abuse-monitoring retention remains governed by your provider account. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+. The report is a single self-contained HTML file (~390 KB — about 170 KB of that is the embedded variable fonts that let it render identically offline, with zero CDN calls).
 - **MIT.** Fork it, embed it, ship it inside a paid product — your choice.
@@ -105,7 +189,7 @@ Get keys at: [platform.openai.com/api-keys](https://platform.openai.com/api-keys
 
 ## What you get
 
-Every `aeo-platform report` writes two files in `aeo-reports/<date>/`:
+Every `aeo-platform report` writes two files in `aeo-reports/<domain>/<date>/`:
 
 - `report.md` — markdown with inline SVG charts. Renders on GitHub, Notion, VSCode preview, email. Perfect for CI logs and PR comments.
 - `report.html` — single-file editorial bento layout, ~390 KB (≈170 KB of which is embedded variable fonts), works offline from `file://`, zero CDN, zero JS dependencies, zero tracking pixels.
@@ -158,16 +242,16 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 
 ## Multi-engine coverage
 
-**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-search-api`), Gemini (`gemini-2.5-flash`), Claude (`claude-sonnet-4-6`), Perplexity (`sonar-reasoning`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
+**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-mini` + the Responses `web_search` tool), Gemini (`gemini-3.5-flash`), Claude (`claude-sonnet-5`), Perplexity (`sonar-reasoning-pro`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
 
 | Engine | Default model | API path | Web-search grounding | Required key |
 |---|---|---|---|---|
-| ChatGPT (OpenAI) | `gpt-5-search-api` | direct REST | yes (search-API) | `OPENAI_API_KEY` |
-| Gemini (Google) | `gemini-2.5-flash` | direct REST | optional (request flag) | `GEMINI_API_KEY` |
-| Claude (Anthropic) | `claude-sonnet-4-6` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
-| Perplexity | `sonar-reasoning` | direct REST | always | `PERPLEXITY_API_KEY` |
+| ChatGPT (OpenAI) | `gpt-5-mini` | direct REST | yes (Responses `web_search` tool) | `OPENAI_API_KEY` |
+| Gemini (Google) | `gemini-3.5-flash` | direct REST | optional (request flag) | `GEMINI_API_KEY` |
+| Claude (Anthropic) | `claude-sonnet-5` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
+| Perplexity | `sonar-reasoning-pro` | direct REST | always | `PERPLEXITY_API_KEY` |
 
-OpenAI + Gemini keys are **recommended** (two-model competitor extractor: GPT-5-mini + Gemini-2.5-flash cross-check filters hallucinated brand mentions). Minimum: any ONE of OpenAI / Gemini / Anthropic — single-key mode runs the extractor on one model and marks competitor mentions unverified. Perplexity is optional — adds a column.
+OpenAI + Gemini keys are **recommended** (two-model competitor extractor: GPT-5-nano + Gemini-2.5-flash cross-check filters hallucinated brand mentions). Minimum: any ONE of OpenAI / Gemini / Anthropic — single-key mode runs the extractor on one model and marks competitor mentions unverified. Perplexity is optional — adds a column.
 
 For engines whose API tier you can't access (Perplexity Pro browser, ChatGPT Pro UI personalisation, Claude.ai UI), use **manual paste mode**:
 
@@ -197,10 +281,10 @@ Each run records this in `_summary.json` under `measurement` (`{ "surface": "api
 
 | Engine measured (API) | What we call | Is NOT the same as |
 |---|---|---|
-| OpenAI `gpt-5-search-api` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
-| Perplexity `sonar-reasoning` | direct REST, always grounded | perplexity.ai Pro browser UI |
+| OpenAI `gpt-5-mini` + Responses `web_search` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
+| Perplexity `sonar-reasoning-pro` | direct REST, always grounded | perplexity.ai Pro browser UI |
 | Gemini `generateContent` + grounding | direct REST | the Gemini app |
-| Anthropic `claude-sonnet-4-6` | direct REST (optional column) | claude.ai chat |
+| Anthropic `claude-sonnet-5` | direct REST (optional column) | claude.ai chat |
 
 **Not covered at all (no first-party query API):** **Google AI Overviews / AI Mode** and **Microsoft Copilot**. A run reports zero signal for these because the tool never queries them — their absence from the score is a coverage gap, not evidence you are invisible there. For the browser-only surfaces above, use `run-manual` paste mode (previous section) to fold a real UI answer into the same `_summary.json`.
 
@@ -301,7 +385,7 @@ A handful of open-source AEO trackers exist; methodologies overlap. The closest 
 |---|---|
 | `aeo-platform init` | Set up `.aeo-tracker.json` — auto-discovers category, generates 3 commercial queries, validates them |
 | `aeo-platform init --queries-only` | Re-suggest queries without touching brand / domain / providers |
-| `aeo-platform run` | Query each AI engine with each query. Save raw responses to `aeo-responses/YYYY-MM-DD/` |
+| `aeo-platform run` | Query each AI engine with each query. Save raw responses to `aeo-responses/<domain>/YYYY-MM-DD/` |
 | `aeo-platform run --replay [--replay-from=YYYY-MM-DD]` | Rebuild today's summary from cached responses (zero API cost, fully offline — no extractor/sentiment LLM calls either; no API keys required) |
 | `aeo-platform run-manual <engine> --from-dir ./folder` | Import pasted UI answers for engines without an accessible API |
 | `aeo-platform report` | Generate `report.md` + `report.html`. HTML auto-opens in your browser |
@@ -337,7 +421,7 @@ Every flag `aeo-platform` accepts, grouped by which command consumes it.
 | `--no-html` | `report` | Markdown only — skip HTML write + browser auto-open |
 | `--no-open` | `report` | Write files but don't auto-open the browser |
 | `--no-authority` / `--no-page-signals` / `--no-entity-graph` / `--no-pricing` | `report` | Skip optional fetch-heavy checks (use behind a VPN, offline, or to dodge rate limits) |
-| `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from `gpt-5-search-api` (6k TPM) to `gpt-5` (90k TPM) under rate-limit pressure |
+| `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from the default `gpt-5-mini` to another model available to your OpenAI project |
 | `--add-queries "q1,q2,q3"` | `init` | Add queries to an existing config without re-running brainstorm; preserves prior basket history |
 | `--replace-queries "q1,q2,q3"` | `init` | Replace queries in an existing config (forks basket version); preserves prior versions in `basketHistory` |
 
@@ -459,10 +543,10 @@ jobs:
   ],
   "regressionThreshold": 10,
   "providers": {
-    "openai":     { "model": "gpt-5-search-api",  "env": "OPENAI_API_KEY" },
-    "gemini":     { "model": "gemini-2.5-flash",  "env": "GEMINI_API_KEY" },
-    "anthropic":  { "model": "claude-sonnet-4-6", "env": "ANTHROPIC_API_KEY" },
-    "perplexity": { "model": "sonar-reasoning",   "env": "PERPLEXITY_API_KEY" }
+    "openai":     { "model": "gpt-5-mini",          "classifyModel": "gpt-5-nano",       "env": "OPENAI_API_KEY" },
+    "gemini":     { "model": "gemini-3.5-flash",    "classifyModel": "gemini-2.5-flash", "env": "GEMINI_API_KEY" },
+    "anthropic":  { "model": "claude-sonnet-5",     "classifyModel": "claude-haiku-4-5", "env": "ANTHROPIC_API_KEY" },
+    "perplexity": { "model": "sonar-reasoning-pro", "classifyModel": "sonar",            "env": "PERPLEXITY_API_KEY" }
   }
 }
 ```
@@ -474,6 +558,7 @@ Fields:
 - `regressionThreshold` — exit code `1` fires when score drops by more than this many percentage points week-over-week (default 10)
 - `providers[].env` — name of the env var that holds the key (override for non-standard names like `OPENAI_API_KEY_DEV`)
 - `providers[].model` — auto-discovered at run start (newest available); override here to pin a specific model
+- `providers[].classifyModel` — cheaper model used for extraction, sentiment, validation, and other short classification calls
 
 ## FAQ
 
@@ -487,11 +572,11 @@ Traditional SEO optimises for click-through from search-result pages. AEO/GEO op
 
 ### Which AI engines does `aeo-platform` cover?
 
-Four, via official APIs: **ChatGPT** (`gpt-5-search-api`), **Claude** (`claude-sonnet-4-6`), **Gemini** (`gemini-2.5-flash`), **Perplexity** (`sonar-reasoning`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
+Four, via official APIs: **ChatGPT** (`gpt-5-mini` + the Responses `web_search` tool), **Claude** (`claude-sonnet-5`), **Gemini** (`gemini-3.5-flash`), **Perplexity** (`sonar-reasoning-pro`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
 
 ### Is my data private?
 
-Yes. Nothing leaves your machine except to the AI providers you explicitly configure (the same providers you'd query from a browser) — plus at most one version check a day against `registry.npmjs.org` (the host npm itself talks to; nothing is sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`). No telemetry. No analytics. No traffic to `webappski.com`. Raw responses stay on disk in `aeo-responses/YYYY-MM-DD/`. API keys are read from `process.env` and never written to disk.
+Yes. Nothing leaves your machine except to the AI providers you explicitly configure (the same providers you'd query from a browser) — plus at most one version check a day against `registry.npmjs.org` (the host npm itself talks to; nothing is sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`). No telemetry. No analytics. No traffic to `webappski.com`. Raw responses stay on disk in `aeo-responses/<domain>/YYYY-MM-DD/`. API keys are read from `process.env` and never written to disk. OpenAI Responses requests include `store:false`, which disables Responses application-state storage but does not eliminate separate provider abuse-monitoring retention or constitute Zero Data Retention.
 
 ### Do I need API keys for all four engines?
 
@@ -537,7 +622,9 @@ Known Windows-specific gotchas to watch for:
 
 ### Can I track multiple brands?
 
-Yes — create a separate working directory for each brand with its own `.aeo-tracker.json`. A wrapper script that loops over client directories is ~10 lines of bash (macOS / Linux) or PowerShell (Windows).
+Yes. All new on-disk artifacts are namespaced by domain — `aeo-responses/<domain>/<date>/` and `aeo-reports/<domain>/<date>/` — so two different domains can safely share one working directory: re-run `init` for the next domain (it overwrites `.aeo-tracker.json`), then `run` / `report`. Each domain keeps its own runs, trend history, and reports; they never blend. Internationalized domains use their canonical Punycode hostname as `<domain>`, so distinct Unicode domains cannot collapse to the same directory. Pre-namespacing `aeo-responses/<date>/` history remains readable when its `_summary.json` records the active domain; cache updates and same-day continuations stay in that source directory, while fresh dates use the namespaced layout. `run`/`report`/`diff`/`export` operate on the domain in the current `.aeo-tracker.json` (or, if there's no config, the single unambiguous domain present on disk).
+
+A separate working directory per brand still works and keeps each client's `.aeo-tracker.json` (queries, provider config, validation cache) fully isolated — that's the cleaner setup for many clients. A wrapper script that loops over client directories is ~10 lines of bash (macOS / Linux) or PowerShell (Windows).
 
 ### How often should I run it?
 
@@ -602,7 +689,7 @@ npm uninstall -g @webappski/aeo-tracker
 npm install -g aeo-platform
 ```
 
-The CLI command `aeo-tracker` keeps working as a built-in alias inside `aeo-platform`. Your `.aeo-tracker.json` config and `aeo-responses/` / `aeo-reports/` folders are unchanged. Project-dependency users with caret `^0.3.0` in `package.json` should manually edit it to `"aeo-platform": "^1.0.0"` (caret semantics don't cross majors). See [`CHANGELOG.md`](./CHANGELOG.md#100--2026-05-13) for the full migration note.
+The CLI command `aeo-tracker` keeps working as a built-in alias inside `aeo-platform`, and your `.aeo-tracker.json` remains compatible. Existing flat `aeo-responses/<date>/` history is read in place; new runs and reports are written under per-domain namespaces. Project-dependency users with caret `^0.3.0` in `package.json` should manually edit it to `"aeo-platform": "^1.0.0"` (caret semantics don't cross majors). See [`CHANGELOG.md`](./CHANGELOG.md#100--2026-05-13) for the full migration note.
 
 ---
 
@@ -866,7 +953,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "Which AI engines does aeo-platform cover?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5-search-api), Claude (claude-sonnet-4-6), Gemini (gemini-2.5-flash), Perplexity (sonar-reasoning). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5-mini with the Responses web_search tool), Claude (claude-sonnet-5), Gemini (gemini-3.5-flash), Perplexity (sonar-reasoning-pro). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
         },
         {
           "@type": "Question",
@@ -901,7 +988,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "What does an aeo-platform output file look like?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A run writes aeo-responses/YYYY-MM-DD/_summary.json with the canonical machine-readable shape (UVI score, per-engine mention/citation cells, topCompetitors, topCanonicalSources, entityGraph reciprocity, pageSignals, crawlability, authority blocks). The same data renders as a 6-surface editorial HTML report (Headline · Overview · Engine matrix · Citations · Actions · Diagnostics) and the bridge card exports a JSON brand-context block you paste into any AI for a 30-mission AEO plan. Worked example: examples/sample-plan-typelessform.md (UVI 42% from the 2026-05-13 run)." }
+          "acceptedAnswer": { "@type": "Answer", "text": "A run writes aeo-responses/<domain>/YYYY-MM-DD/_summary.json with the canonical machine-readable shape (UVI score, per-engine mention/citation cells, topCompetitors, topCanonicalSources, entityGraph reciprocity, pageSignals, crawlability, authority blocks). The same data renders as a 6-surface editorial HTML report (Headline · Overview · Engine matrix · Citations · Actions · Diagnostics) and the bridge card exports a JSON brand-context block you paste into any AI for a 30-mission AEO plan. Worked example: examples/sample-plan-typelessform.md (UVI 42% from the 2026-05-13 run)." }
         }
       ]
     }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   reserve, confirm, release,
   learnTpmLimit,
+  importLearnedLimits,
   forecastTokensInWindow,
   getFirstTokenTimestampInWindow,
   estimatePerRequest,
@@ -100,8 +101,52 @@ test('learnTpmLimit ignores invalid input', () => {
   learnTpmLimit(cd, 0);
   learnTpmLimit(cd, -5);
   learnTpmLimit(cd, NaN);
-  // Falls through to tier-1 table:
+  // Falls through to tier-1 table (search SKU's honest 6k bucket):
   assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-search-api'), 6000);
+});
+
+test('learnTpmLimit: header source can overwrite a stale persisted value upward', () => {
+  const cd = 'openai:gpt-5-mini';
+  // Simulate a stale low persisted value (learned during a transient throttle)
+  learnTpmLimit(cd, 100000, 'persisted');
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-mini'), 100000);
+  // Live 200 header confirms the real 500k bucket — overwrites the stale persisted value
+  learnTpmLimit(cd, 500000, 'header');
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-mini'), 500000);
+});
+
+test('learnTpmLimit: header source cannot overwrite an observed (429) value upward', () => {
+  const cd = 'openai:gpt-5-search-api';
+  // Real 429 was observed at 6000 — this is ground truth
+  learnTpmLimit(cd, 6000, 'observed');
+  // Header claims 500k — should NOT overwrite (observed beats header)
+  learnTpmLimit(cd, 500000, 'header');
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-search-api'), 6000);
+});
+
+test('importLearnedLimits: discards persisted values below static tier-1 table (stale guard)', () => {
+  // A persisted value below the current tier-1 table (e.g. gpt-5-mini captured as
+  // 6000 during a transient throttle) is stale — discard so we don't pace forever
+  // on a floor the provider has since lifted.
+  const count = importLearnedLimits({ 'openai:gpt-5-mini': { limit: 6000, source: 'persisted' } });
+  assert.equal(count, 0, 'stale persisted value below tier-1 should be discarded');
+  // Falls through to the 500k tier-1 table, not the stale 6000:
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-mini'), 500000);
+});
+
+test('importLearnedLimits: accepts persisted values above or equal to tier-1 table', () => {
+  // 500000 matches gpt-5-mini tier-1 — should be accepted
+  const count = importLearnedLimits({ 'openai:gpt-5-mini': { limit: 500000, source: 'persisted' } });
+  assert.equal(count, 1, 'valid persisted value at tier-1 level should be accepted');
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-mini'), 500000);
+});
+
+test('importLearnedLimits: a lower observed value from current run beats an equal persisted one', () => {
+  // Persisted at 500k
+  importLearnedLimits({ 'openai:gpt-5-mini': { limit: 500000, source: 'persisted' } });
+  // Current run observed a 429 at 300k (real throttle)
+  learnTpmLimit('openai:gpt-5-mini', 300000, 'observed');
+  assert.equal(getLearnedOrTierLimit('openai', 'gpt-5-mini'), 300000);
 });
 
 console.log('\nshouldWait threshold');

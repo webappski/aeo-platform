@@ -33,11 +33,13 @@ import {
   withTmpProject,
   spawnCli,
   assertExitCode,
+  responsesDateDir,
   BIN,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
 
+const DOMAIN = 'testbrand.com';
 const DATE_A = '2026-05-25';
 const DATE_B = '2026-06-11';
 
@@ -70,7 +72,7 @@ function legacySummary(date, { q1Mention }) {
 }
 
 function seedRun(dir, date, summary) {
-  const dd = join(dir, 'aeo-responses', date);
+  const dd = responsesDateDir(dir, DOMAIN, date);
   mkdirSync(dd, { recursive: true });
   writeFileSync(join(dd, '_summary.json'), JSON.stringify(summary));
   return dd;

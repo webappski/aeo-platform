@@ -22,6 +22,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { domainStorageSlug } from '../lib/util/domain-storage.js';
 
 const PROJ = dirname(dirname(fileURLToPath(import.meta.url)));
 const BIN = join(PROJ, 'bin', 'aeo-tracker.js');
@@ -43,7 +44,7 @@ test('malformed replay cache → CLI degrades gracefully, no SyntaxError', () =>
     // pattern qN-PROVIDER-MODEL.json. The filename suffix `gpt-5-search-api`
     // must match what `sanitizeForFilename(provider.model)` produces.
     const replayDate = '2026-01-01';
-    const replayDir = join(tmpProject, 'aeo-responses', replayDate);
+    const replayDir = join(tmpProject, 'aeo-responses', domainStorageSlug(config.domain), replayDate);
     mkdirSync(replayDir, { recursive: true });
     writeFileSync(join(replayDir, 'q1-openai-gpt-5-search-api.json'), 'not-json-at-all{{{');
 
