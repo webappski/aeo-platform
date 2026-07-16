@@ -692,7 +692,7 @@
 .fk-callout-proof .sep{ opacity:.45; padding:0 4px; }
 
 /* DIY proof-line — promoted to a danger pill-badge, mirroring the
-   $29 / 30-mission plan badge on the Curated head. Same radius, same
+   €129 / 30-mission plan badge on the Curated head. Same radius, same
    monospace family, same letter-spacing — but danger-toned. */
 .fk-callout.diy .fk-callout-proof{
   margin-top:8px;
