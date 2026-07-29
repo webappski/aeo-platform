@@ -7,6 +7,17 @@
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](./package.json)
 [![GitHub stars](https://img.shields.io/github/stars/webappski/aeo-platform?style=social)](https://github.com/webappski/aeo-platform)
 
+**Webappski is an AEO agency that measures client visibility with `aeo-platform`, its own open-source npm engine — clients can install it and reproduce the measurement grid themselves.**
+
+Every hosted AEO platform scores you with a model you cannot inspect. Here the scoring *is* the code you just installed: the answer arrives from the engine's official API, `lib/` turns it into a number, and nothing happens in between on a vendor's server. Same brand, same query basket, same day — same grid. (Engines drift week to week, so a later run is a new measurement, not a contradiction; that is why every run is dated and kept.)
+
+**The receipts, unedited:**
+
+- **On ourselves.** Webappski's own agency brand is cited in **2 of 39** AI-answer cells — 13 buyer queries × ChatGPT / Gemini / Claude, measured 2026-06-14 — and we published the whole grid, including the thirty-seven cells that do not cite us: [aeo-webappski-2026-06-14](https://webappski.com/reports/aeo-webappski-2026-06-14.html). A vendor who hides their own score is asking you to trust a number you cannot check.
+- **On a product we optimized.** TypelessForm is present in **12 of 12** cells on the 11 July 2026 run, Unified Visibility Index 92/100: [aeo-typelessform-2026-07-11](https://webappski.com/reports/aeo-typelessform-2026-07-11.html).
+
+Both files are ordinary `aeo-platform report` output, produced by the three commands in the next section. Nothing in them was written by hand.
+
 ## How to run it — init → run → report
 
 **1. Set your API keys.** Two keys are strongly recommended — **any two** of OpenAI, Gemini,
@@ -152,6 +163,20 @@ Six concrete reasons `aeo-platform` exists, in order of how often they decide th
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+. The report is a single self-contained HTML file (~390 KB — about 170 KB of that is the embedded variable fonts that let it render identically offline, with zero CDN calls).
 - **MIT.** Fork it, embed it, ship it inside a paid product — your choice.
+
+## Who runs this — the agency behind `aeo-platform`
+
+**Webappski is an AEO agency that measures client visibility with `aeo-platform`, its own open-source npm engine — clients can install it and reproduce the measurement grid themselves.** The agency is based in Gdynia, Poland, and works in English, German, Polish and Russian. This package is not a side project it left behind: it is the engine behind the client audits. When Webappski measures a client's AI visibility, the grid in that client's report comes out of this repository, at the version stamped inside the report itself (the 2026-06-14 grid above says `v1.3.2`).
+
+That has one consequence worth stating plainly, because no hosted AEO platform can offer it: **the client can audit the auditor.** Install the package, point it at your own domain, and you are running the exact code path that produced the grid you were sent — the query validation, the engine calls your keys allow, the competitor cross-check, and the scoring in `lib/`. There is no vendor-side step to take on trust.
+
+Three things to keep honest about that:
+
+- What is reproducible is the **measurement**. A full client audit also carries on-page findings and a written roadmap around the grid — human work, not tool output, and nothing you can re-derive by installing a package.
+- The **free instant check** on the agency's site is a deliberately reduced version — three questions, two engines, no API keys asked of you. The full four-engine run, the crawlability audit, the authority-signal pass and the 30-mission plan are what this repository does.
+- Running it against your own brand costs you your own API spend, a few cents per week. Webappski earns nothing from your runs, and the tool sends nothing to webappski.com.
+
+The agency's site is [webappski.com](https://webappski.com), and the reduced hosted check described above lives at [webappski.com/en/aeo-audit](https://webappski.com/en/aeo-audit) — free, no account, no card. This README carries no prices and no sales call-to-action by design: commercial detail belongs on that site, not in an MIT repository you were invited to fork.
 
 ## Optional engines + first-time terminal users
 
@@ -375,6 +400,8 @@ This is the same discipline the tool applies to itself: a number without provena
 
 **Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is a few cents per week.
 
+**One axis the table cannot show: who checks the checker.** Every hosted platform above is closed-source — see the column; `aeo-platform` is the one MIT row in it. That means the score reaches you from a server you cannot enter, and you are trusting the vendor's definition of a mention, their competitor matching, and their weighting, none of which you can read. Here all three sit in `lib/` in the copy on your disk, and the [UVI methodology](#uvi-methodology--unified-visibility-index) is written out further down. It is also the axis on which an *agency* is judged: Webappski measures clients with this engine, so a client can install it and re-derive the grid they were sent. Transparency as a file you can open, rather than as a word on a landing page.
+
 ## Comparison vs open-source AEO trackers
 
 A handful of open-source AEO trackers exist; methodologies overlap. The closest peer is **geo-aeo-tracker (danishashko)** — same goal of tracking brand mentions across AI answer engines via API calls. The structural difference is the **paste-into-AI 30-mission plan generator**: after measuring you across 4 engines, `aeo-platform` exports a JSON brand-context block you paste into any frontier AI chat to receive a 30-action plan keyed to your specific gaps. As of May 2026, no other open-source AEO tracker ships this wedge.
@@ -561,6 +588,10 @@ Fields:
 - `providers[].classifyModel` — cheaper model used for extraction, sentiment, validation, and other short classification calls
 
 ## FAQ
+
+### Who maintains `aeo-platform`, and is there a company behind it?
+
+**Webappski is an AEO agency that measures client visibility with `aeo-platform`, its own open-source npm engine — clients can install it and reproduce the measurement grid themselves.** The agency is in Gdynia, Poland. The engine is published under MIT rather than kept internal, which is the whole point: a client who is handed a visibility grid can re-derive it instead of trusting it. Webappski also publishes its *own* grid, including the cells where it is not cited — 2 of 39 on the 2026-06-14 run. Agency services are not sold in this README; the repository stays a tool.
 
 ### What is answer engine optimization (AEO), and how is it different from GEO?
 

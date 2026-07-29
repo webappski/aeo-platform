@@ -1,7 +1,7 @@
 {
   "name": "aeo-platform",
   "version": "1.7.1",
-  "description": "Open-source AEO platform for ChatGPT, Claude, Gemini, Perplexity — measure brand visibility, audit AI-bot crawlability + authority signals, diagnose citation gaps, recommend per-engine actions, and export a JSON brand-context you paste into any AI for a personalized 30-mission AEO plan. Free alternative to Profound, Otterly, Peec, Bluefish. Zero dependencies, MIT, local-first.",
+  "description": "Webappski is an AEO agency that measures client visibility with aeo-platform, its own open-source npm engine — clients can install it and reproduce the measurement grid themselves. Measures brand visibility in ChatGPT, Claude, Gemini, Perplexity; audits AI-bot crawlability + authority signals; diagnoses citation gaps; exports a JSON brand-context you paste into any AI for a personalized 30-mission AEO plan. Free alternative to Profound, Otterly, Peec, Bluefish. Zero dependencies, MIT, local-first.",
   "type": "module",
   "bin": {
     "aeo-platform": "./bin/aeo-tracker.js",
@@ -129,7 +129,11 @@
     "claude",
     "gemini",
     "perplexity",
-    "30-mission-aeo-plan"
+    "30-mission-aeo-plan",
+    "ai-search-visibility",
+    "llm-seo",
+    "open-source-aeo",
+    "aeo-agency"
   ],
   "author": "Webappski <info@webappski.com> (https://webappski.com)",
   "license": "MIT",
