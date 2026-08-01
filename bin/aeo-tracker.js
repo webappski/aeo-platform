@@ -39,6 +39,8 @@ import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
 import { extractProseRankWithTwoModels, proseRankField } from '../lib/report/prose-rank.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
+import { aggregateCompetitorCounts } from '../lib/report/competitor-counts.js';
+import { addCostEntry, sumCostUsd } from '../lib/report/cost-telemetry.js';
 import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
 import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
 import { computeTopDomains } from '../lib/report/top-domains.js';
@@ -330,9 +332,19 @@ async function cleanupStaleReportArtifacts(latestDate, domain) {
 // here so the random suffix is unique across pid+ms+random (avoids collisions on
 // double-press) and the helper is one line to call.
 async function persistSnapshot(latest) {
+  // `sessionCostUsd` is DERIVED from `costByModel` — never a separately-tracked
+  // number. Re-deriving at the single write chokepoint makes the invariant
+  // unbreakable by any future writer, and heals snapshots written before it held:
+  // the concurrent cache-fillers used to leave the total describing a subset of
+  // the breakdown (webappski 2026-07-31: breakdown $0.0577, stored total $0.0296),
+  // and nothing else in the codebase would ever have corrected that file. A
+  // report for an older date may therefore now show a HIGHER — correct — cost
+  // than it did before.
+  if (Array.isArray(latest.costByModel)) latest.sessionCostUsd = sumCostUsd(latest.costByModel);
   const summaryPath = join(responseDateDirForWrite(latest.domain, latest.date), '_summary.json');
   await atomicWriteJson(summaryPath, latest);
 }
+
 
 /**
  * Read + parse .aeo-tracker.json with client-grade failures (AP-FAIL-BRANCHES):
@@ -3197,25 +3209,12 @@ async function cmdRun(options = {}) {
   }
 
   // Aggregate per-cell LLM-extracted brand lists. Both models agreed → r.competitors
-  // (strong). Only one agreed → r.competitorsUnverified (weaker, dashed badge).
-  // No aggregate classifier step needed — filtering happened at extract time.
-  const verifiedCounts = {};
-  const unverifiedCounts = {};
-  for (const r of results) {
-    for (const name of r.competitors || [])            verifiedCounts[name]   = (verifiedCounts[name]   || 0) + 1;
-    for (const name of r.competitorsUnverified || [])  unverifiedCounts[name] = (unverifiedCounts[name] || 0) + 1;
-  }
-  const classifiedCompetitors = Object.entries(verifiedCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8);
-
-  // Unverified entries that were never verified in ANY cell — surfaced separately
-  // in stdout and stored in summary for audit.
-  const verifiedSet = new Set(Object.keys(verifiedCounts));
-  const unverifiedOnlyEntries = Object.entries(unverifiedCounts)
-    .filter(([name]) => !verifiedSet.has(name))
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => ({ name, count }));
+  // (strong). Only one agreed → r.competitorsUnverified (weaker, dashed badge, and
+  // surfaced separately in stdout + stored for audit). No aggregate classifier step
+  // needed — filtering happened at extract time. Shared with run-manual's merge sink
+  // (lib/report/competitor-counts.js) so the two can never drift.
+  const { verifiedCounts, classifiedCompetitors, unverifiedOnly: unverifiedOnlyEntries } =
+    aggregateCompetitorCounts(results);
 
   const classificationCostInfo = extractionCostTotal.costUsd > 0 ? {
     provider: [extractionProviders.primary.name, extractionProviders.secondary?.name].filter(Boolean).join('+'),
@@ -3297,7 +3296,7 @@ async function cmdRun(options = {}) {
   }
   const costByModel = Object.values(costMap);
   if (classificationCostInfo) costByModel.push(classificationCostInfo);
-  const sessionCostUsd = Math.round(costByModel.reduce((s, v) => s + v.costUsd, 0) * 1_000_000) / 1_000_000;
+  const sessionCostUsd = sumCostUsd(costByModel);
 
   if (sessionCostUsd > 0 || untrackedModels.size > 0) {
     console.log(`\n${c.bold}  Session cost: $${sessionCostUsd.toFixed(4)}${c.reset}`);
@@ -4041,11 +4040,7 @@ async function cmdReport(args = {}) {
                 model: providerCfg.model,
               });
               latest.llmActions = actions;
-              if (!latest.costByModel) latest.costByModel = [];
-              latest.costByModel.push(costInfo);
-              latest.sessionCostUsd = Math.round(
-                (latest.costByModel.reduce((s, v) => s + (v.costUsd || 0), 0)) * 1_000_000
-              ) / 1_000_000;
+              addCostEntry(latest, costInfo);
               await persistSnapshot(latest);
               reportRows.finish('actions', { status: 'done', detail: `${actions.length} recommendations generated` });
             } catch (err) {
@@ -4239,8 +4234,7 @@ async function cmdReport(args = {}) {
               });
               if (templates.length > 0) {
                 latest.outreachTemplates = templates;
-                if (!latest.costByModel) latest.costByModel = [];
-                if (costInfo) latest.costByModel.push(costInfo);
+                addCostEntry(latest, costInfo);
                 await persistSnapshot(latest);
                 reportRows.finish('outreach', { status: 'done', detail: `${templates.length} outreach template${templates.length !== 1 ? 's' : ''} generated` });
               } else {
@@ -4654,11 +4648,11 @@ async function cmdRunManual(argv) {
   const score = total > 0 ? Math.round((mentions / total) * 100) : 0;
   const errors = allResults.filter(r => r.mention === 'error').length;
 
-  const allCompetitors = {};
-  for (const r of allResults) {
-    for (const comp of (r.competitors || [])) allCompetitors[comp] = (allCompetitors[comp] || 0) + 1;
-  }
-  const sortedCompetitors = Object.entries(allCompetitors).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  // Same shared aggregator the live run loop uses — including the unverified-only
+  // tier, which this command previously never recomputed, so a merge left it
+  // describing the pre-merge providers.
+  const { topCompetitors: mergedTopCompetitors, unverifiedOnly: mergedUnverifiedOnly } =
+    aggregateCompetitorCounts(allResults);
 
   // #12: merge same-page citation variants under one canonical key.
   const topCanonicalSources = aggregateCanonicalSources(
@@ -4670,7 +4664,23 @@ async function cmdRunManual(argv) {
   const regressionThreshold = existing?.regressionThreshold
     ?? (typeof config.regressionThreshold === 'number' ? config.regressionThreshold : 10);
 
+  // MERGE, don't rebuild. `run-manual` ADDS one provider column to a day that a
+  // live `run` may already have measured — it must not silently drop the parts of
+  // that day it didn't measure itself. Rebuilding from a fixed field list erased
+  // every other section the API run had collected: the domain-level scans
+  // (crawlability, authorityPresence, pageSignals, entityGraph), the results-derived
+  // report sections (citationClassification, competitorPricing, llmActions,
+  // outreachTemplates), the run's own cost telemetry (sessionCostUsd / costByModel),
+  // and the `measurement` disclaimer + `unverifiedOnly` tier. A later `report`
+  // re-fetches most of that — paying for the LLM-derived sections a second time —
+  // but `measurement`, `unverifiedOnly` and the run-time cost breakdown are only
+  // ever written by `run`, so they were gone for good.
+  //
+  // So: carry `existing` forward wholesale, then override exactly the fields this
+  // command genuinely recomputes over the merged result set (below). Anything not
+  // in that override list is the earlier run's data and survives untouched.
   const summary = {
+    ...(existing || {}),
     date,
     brand,
     domain,
@@ -4682,7 +4692,8 @@ async function cmdRunManual(argv) {
     extractorMode: extractionProvidersManual.secondary ? 'dual' : 'single',
     generatedBy: `aeo-platform@${TRACKER_VERSION}`,
     results: allResults,
-    topCompetitors: sortedCompetitors.map(([name, count]) => ({ name, count })),
+    topCompetitors: mergedTopCompetitors,
+    unverifiedOnly: mergedUnverifiedOnly,
     topCanonicalSources,
     topDomains,
     adsDetected: summariseAdsAcrossResults(allResults),
@@ -4691,6 +4702,34 @@ async function cmdRunManual(argv) {
 
   console.log(`\n${c.bold}  Merged into: ${summaryPath}${c.reset}`);
   console.log(`  Score: ${c.bold}${score}%${c.reset} (${mentions}/${total} across ${new Set(allResults.map(r => r.provider)).size} providers)\n`);
+
+  // Sections that `report` CACHES (it skips regeneration when the field is already
+  // present) AND that derive from the results — the citation set for the first,
+  // `topCompetitors` for `competitorPricing`, both for the last two. Carried
+  // forward, each now describes only the providers that ran BEFORE this merge. Say
+  // so: silently serving a partial classification as if it covered the whole day is
+  // the same class of dishonesty as the rebuild that used to drop it. Refreshing
+  // costs LLM calls, so name the command instead of spending on the user's behalf.
+  //
+  // `competitorPricing` belongs here even though it looks domain-ish: it is
+  // classified FROM `topCompetitors`, which this command recomputes on every merge,
+  // and `competitorOwnedHosts()` (lib/report/sections.js) reads its `.domain` values
+  // to build the outreach host set — so leaving it out would carry a stale competitor
+  // set into a section the hint claims to fix. The domain-level scans above
+  // (crawlability, authorityPresence, pageSignals, entityGraph) genuinely do not
+  // depend on which providers ran, and are NOT listed.
+  const STALE_AFTER_MERGE = [
+    'citationClassification',
+    'competitorPricing',
+    'llmActions',
+    'outreachTemplates',
+  ];
+  const carriedStale = STALE_AFTER_MERGE.filter(f => existing?.[f] !== undefined);
+  if (carriedStale.length > 0) {
+    console.log(`  ${c.dim}Carried forward from this day's earlier run: ${carriedStale.join(', ')} —`);
+    console.log(`  derived before the ${providerName} column existed. To regenerate over the full set:`);
+    console.log(`  aeo-platform report --refresh-cache=${carriedStale.join(',')}${c.reset}\n`);
+  }
 
   // Exit-code parity with `run` (README contract). run-manual doesn't call APIs,
   // so code 3 (all providers errored) is unreachable here.

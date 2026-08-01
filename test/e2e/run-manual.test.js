@@ -138,3 +138,112 @@ test('P0-13 — run-manual perplexity --from-dir reads pasted text + writes summ
     );
   });
 });
+
+test('run-manual MERGES into the same day — it never drops sections the live run measured', async () => {
+  await withTmpProject('aeo-e2e-runmanual-merge-', (dir) => {
+    const srcPasteDir = join(FIXTURE_ROOT, 'manual-paste');
+    const destPasteDir = join(dir, 'manual-paste');
+    mkdirSync(destPasteDir, { recursive: true });
+    for (const name of readdirSync(srcPasteDir)) {
+      cpSync(join(srcPasteDir, name), join(destPasteDir, name));
+    }
+    writeFileSync(join(destPasteDir, 'q2.txt'), 'Alpha and Beta are the leading options.');
+    writeFileSync(join(destPasteDir, 'q3.txt'), 'Alpha is stronger than Beta for this use case.');
+
+    writeFileSync(join(dir, '.aeo-tracker.json'), JSON.stringify({
+      brand: 'TestBrand',
+      domain: DOMAIN,
+      queries: [
+        'best test brands 2026',
+        'top test brand alternatives',
+        'test brand vs competitor',
+      ],
+      providers: {
+        openai:     { model: 'gpt-5', classifyModel: 'gpt-5-mini', env: 'OPENAI_API_KEY' },
+        gemini:     { model: 'gemini-2.5-flash', classifyModel: 'gemini-2.5-flash-lite', env: 'GEMINI_API_KEY' },
+        perplexity: { model: 'sonar-pro', env: 'PERPLEXITY_API_KEY' },
+      },
+      validationCache: [],
+    }));
+
+    // Seed a same-day summary shaped like one a live `run` (+ a later `report`)
+    // leaves behind: one API provider column PLUS the site-level scans, the cost
+    // telemetry and the run-only `measurement` / `unverifiedOnly` fields. The
+    // rebuild-from-a-fixed-field-list bug erased every one of these; the LLM-derived
+    // ones then cost money to regenerate, and measurement/unverifiedOnly/costByModel
+    // were unrecoverable (only `run` ever writes them).
+    const today = todayDateString();
+    const todayLegacyDir = legacyResponsesDateDir(dir, today);
+    mkdirSync(todayLegacyDir, { recursive: true });
+    const SEEDED_SECTIONS = {
+      crawlability:      { summary: { hasRobotsTxt: true, bots: [] } },
+      authorityPresence: { wikipedia: { found: false } },
+      pageSignals:       { homepage: { headings: { h1: 'Seeded H1' } } },
+      entityGraph:       { sameAsCount: 2, edges: [] },
+      competitorPricing: [{ name: 'PreMergeRival', tier: 'free', domain: 'premerge.example' }],
+      citationClassification: { classified: ['seeded.example'] },
+      measurement:       { scope: 'seeded disclaimer' },
+      sessionCostUsd:    1.6,
+      costByModel:       [{ provider: 'gemini', model: 'gemini-3.6-flash', requests: 3, costUsd: 1.6 }],
+    };
+    writeFileSync(join(todayLegacyDir, '_summary.json'), JSON.stringify({
+      date: today,
+      brand: 'TestBrand',
+      domain: DOMAIN,
+      score: 100,
+      mentions: 1,
+      total: 1,
+      errors: 0,
+      results: [{
+        query: 'Q1', queryText: 'best test brands 2026', provider: 'openai',
+        label: 'ChatGPT', model: 'gpt-5', mode: 'web', mention: 'yes',
+        position: 1, citationCount: 0, canonicalCitations: [], competitors: [],
+        competitorsUnverified: ['PreMergeRival'], responseQuality: 'ok', hasBrandInCitations: false,
+      }],
+      // Deliberately WRONG relative to the row above: `unverifiedOnly` is an
+      // aggregate over results[], so the merge must re-derive it rather than carry
+      // this stale value forward.
+      unverifiedOnly: [{ name: 'StaleAggregate', count: 9 }],
+      ...SEEDED_SECTIONS,
+    }));
+
+    // No previous-date snapshot → readPreviousScore() is null → no regression exit.
+    const r = spawnCli(
+      ['run-manual', 'perplexity', '--from-dir', 'manual-paste'],
+      { cwd: dir, env: KEYS, timeout: 60_000 },
+    );
+    assertExitCode(r, 0, 'at least one pasted cell mentions the brand and there is no previous score');
+
+    const summary = JSON.parse(readFileSync(join(todayLegacyDir, '_summary.json'), 'utf-8'));
+
+    // 1. Everything the live run measured and run-manual does NOT recompute survives.
+    for (const [field, seeded] of Object.entries(SEEDED_SECTIONS)) {
+      assert.deepEqual(
+        summary[field], seeded,
+        `run-manual dropped "${field}" — it must merge into the day's summary, not rebuild it`,
+      );
+    }
+
+    // 2. …while the fields it DOES own are recomputed over the merged result set.
+    assert.equal(summary.results.length, 4, 'existing OpenAI cell + three manual cells must merge');
+    assert.equal(summary.total, 4, 'total must count the merged cells, not the pre-merge one');
+    assert.ok(summary.generatedBy.startsWith('aeo-platform@'), 'generatedBy must be re-stamped');
+    assert.deepEqual(
+      summary.unverifiedOnly, [{ name: 'PreMergeRival', count: 1 }],
+      'unverifiedOnly is an aggregate over results[] — it must be re-derived from the merged set, not carried',
+    );
+
+    // 3. Every carried-forward section that `report` CACHES *and* derives from the
+    //    results is named as pre-merge, with the refresh command — never silently
+    //    served as if it covered the whole day. competitorPricing belongs here: it
+    //    is classified from topCompetitors, which this command recomputes.
+    const out = `${r.stdout}${r.stderr}`;
+    const hint = out.match(/--refresh-cache=(\S+)/)?.[1] ?? '';
+    for (const field of ['citationClassification', 'competitorPricing']) {
+      assert.ok(
+        hint.split(',').includes(field),
+        `"${field}" was carried forward but not named in the refresh hint (hint: "${hint}")`,
+      );
+    }
+  });
+});

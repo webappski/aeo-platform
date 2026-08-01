@@ -11,7 +11,7 @@
 // and discover.js FALLBACK (main + classify), calcCost(model, …) !== null.
 
 import assert from 'node:assert/strict';
-import { calcCost, findPricingPrefix } from '../lib/providers/pricing.js';
+import { calcCost, findPricingPrefix, pricingRows } from '../lib/providers/pricing.js';
 import { DEFAULT_CONFIG } from '../lib/config.js';
 import { FALLBACK } from '../lib/providers/discover.js';
 
@@ -47,6 +47,41 @@ for (const [model, source] of entries) {
     );
   });
 }
+
+// Models the APIs actually SERVE, which is not the same set as the models we
+// configure. Gemini served `gemini-3.6-flash` for a config pinning 3.5-flash
+// (model drift) — unlisted, so calcCost returned null and every main Gemini call
+// in a real run recorded as "cost not tracked": an ~$1.60 run reported $0. The
+// loop above only covers CONFIGURED defaults and could never have caught it.
+// Add an id here when a provider starts serving one.
+const SERVED_IDS = [
+  ['gemini-3.6-flash', 'served for a config pinning gemini-3.5-flash (drift, 2026-07)'],
+];
+for (const [model, seenAs] of SERVED_IDS) {
+  test(`${model} (${seenAs}) is explicitly priced`, () => {
+    assert.notEqual(
+      calcCost(model, { inputTokens: 1000, outputTokens: 1000 }), null,
+      `"${model}" resolves to NO pricing row → real spend silently reports $0.`,
+    );
+  });
+}
+
+// Ordering invariant, stated as a rule instead of a comment: a '-flash-lite' id
+// must never fall through to its '-flash' sibling's row. It did — gemini-3.5-flash
+// shipped without a matching lite row, so `gemini-3.5-flash-lite` prefix-matched it
+// and billed $1.50/$9.00 instead of $0.30/$2.50.
+test('every -flash-lite id resolves to its own row, never the -flash sibling', () => {
+  for (const row of pricingRows()) {
+    if (!row.prefix.endsWith('-flash')) continue;
+    const liteId = `${row.prefix}-lite`;
+    const matched = findPricingPrefix(liteId);
+    if (matched === null) continue;   // unlisted → honest "not tracked", fine
+    assert.equal(
+      matched, liteId,
+      `"${liteId}" matched "${matched}" — a lite row is missing, or is ordered after its -flash sibling.`,
+    );
+  }
+});
 
 // Sanity: the guard is load-bearing — an obviously-unlisted id must be null,
 // so a regression that reintroduced a generic catch-all would fail this file too.
