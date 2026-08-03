@@ -385,31 +385,55 @@ function fallbackCardFor(provider) {
   return sectionEngineActions([buildSnapshot({ provider, citations: [], mention: 'yes' })]);
 }
 
-test('ChatGPT card no longer claims the dead "grounds answers in Bing" fact', () => {
+// REVISED 2026-08-02 (AP-DEAD-TACTIC sweep). This test used to REQUIRE the
+// string «Bing dependence ended» — i.e. it pinned a claim that OpenAI's own
+// documentation contradicts. `help.openai.com/en/articles/9237897-chatgpt-search`
+// (verified live 2026-08-01, quoted in webappski-ops/resources/aeo/bp-refresh/
+// 2026-08-01.md): «ChatGPT search partners with other search providers», and it
+// names Bing and Shopify. The retired claim in the ORIGINAL copy was the older
+// «grounds answers in Bing search results» framing (as if Bing were the whole
+// backend); that stays banned. What replaces it is the sourced version: OpenAI's
+// own crawl PLUS partner providers, one of which is Bing — which is also why a
+// Bing index check is a real lever for a small site.
+test('ChatGPT card states the sourced retrieval path: own crawl + partner providers', () => {
   const out = fallbackCardFor('openai');
   assert.ok(!/grounds answers in Bing/i.test(out),
-    'must not ship the retired Bing-grounding claim');
-  assert.ok(!/grounds answers in Bing search results/i.test(out),
-    'full dead sentence must be gone');
+    'must not ship the retired "Bing is the backend" claim');
+  assert.ok(!/Bing dependence ended/i.test(out),
+    'must not claim the Bing partnership is over — OpenAI still names Bing as a search partner');
   assert.ok(/OAI-SearchBot/.test(out),
-    'must name OpenAI’s own crawler (current ChatGPT-search lever per playbook §5)');
-  assert.ok(/Bing dependence ended/i.test(out),
-    'must record that the Bing dependence is over, not implied to be live');
+    'must name OpenAI’s own crawler (the bot whose block actually costs citations)');
+  assert.ok(/partner search providers/i.test(out) && /Bing/.test(out),
+    'must state the partner-provider path and name Bing, per OpenAI’s help page');
 });
 
-test('no engine card anywhere asserts a live Bing dependency for ChatGPT', () => {
+test('no engine card revives the retired "Bing is the backend" sentence', () => {
   // Whole-suite class guard: render every engine’s fallback, concatenate, scan.
+  // Naming Bing as one of OpenAI's PARTNER providers is correct and required by
+  // the test above; describing ChatGPT as grounding its answers IN Bing is the
+  // pre-2026 framing and stays banned.
   const all = ['openai', 'gemini', 'anthropic', 'perplexity'].map(fallbackCardFor).join('\n');
   assert.ok(!/grounds answers in Bing/i.test(all),
     'dead Bing-grounding pattern must not appear on any engine card');
 });
 
-test('Gemini card reflects FastSearch semantic retrieval, not full Search ranking', () => {
+// REVISED 2026-08-02 (AP-DEAD-TACTIC sweep). This test used to REQUIRE the
+// string «FastSearch» — a retrieval-mechanism claim with no first-party source
+// (it comes from antitrust-testimony reporting, repeated through SEO blogs).
+// Google's own documentation says its AI answers «rely on our core Search
+// ranking systems to retrieve relevant, up-to-date web pages» and issue several
+// parallel queries (query fan-out), and the Gemini API reports the queries the
+// model actually ran (`webSearchQueries`). The card now says that instead. The
+// bullet under it also stopped advising FAQ schema, so the card must not sell
+// markup as a lever anywhere.
+test('Gemini card states the sourced retrieval path and sells no markup', () => {
   const out = fallbackCardFor('gemini');
-  assert.ok(/FastSearch/.test(out),
-    'must name FastSearch (Gemini grounds on semantic retrieval per playbook §5)');
-  assert.ok(!/grounds responses in Google Search results/i.test(out),
-    'must drop the imprecise "grounds in Google Search results" claim');
+  assert.ok(!/FastSearch/i.test(out),
+    'must not ship the unsourced FastSearch mechanism claim');
+  assert.ok(/Search index/i.test(out) && /parallel queries/i.test(out),
+    'must state what Google documents: retrieval from the Search index + query fan-out');
+  assert.ok(!/(add|implement)[^.\n]{0,40}(faq|schema|structured data)/i.test(out),
+    'must not recommend schema markup as a visibility lever (Google: not required; Ahrefs N=1885: no uplift)');
 });
 
 test('Perplexity card reflects its own index + freshness, not generic web search', () => {

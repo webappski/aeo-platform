@@ -423,6 +423,11 @@ Rules:
 - Prioritise gaps (brand invisible) over polish.
 - Outreach is OUT OF SCOPE. Never recommend pitching editors, cold outreach, or guest posts. For canonical sources, recommend self-service actions (directories, profile optimization) or own-content improvements instead.
 - If a competitor dominates, explain exactly where and how to displace them.
+- DEAD TACTICS — never recommend these, they do not affect whether AI engines cite a site:
+  * /llms.txt. Google states it is not needed for AI Overviews, AI Mode or any generative AI Search feature; no provider has confirmed support; a ~300,000-domain study found no correlation with citation.
+  * FAQPage or HowTo structured data as a visibility tactic. The FAQ rich result stopped showing on 2026-05-07 and its docs were removed on 2026-06-15; HowTo has been dead since 2023. Adding schema in general shows no measured citation uplift (Ahrefs, 1,885 pages vs ~4,000 controls). Never tell the user to REMOVE markup they already have either.
+  * Unblocking GPTBot, Google-Extended, ClaudeBot, GoogleOther, CCBot or Bytespider "so AI can cite you". Those are training/other crawlers. The crawlers that actually gate citations are OAI-SearchBot, PerplexityBot, Claude-SearchBot and Googlebot (plus noindex/nosnippet).
+  Recommendations containing these are stripped from the report mechanically, so one wasted on them is a recommendation the client never sees.
 
 Return STRICT JSON only:
 {
@@ -1659,7 +1664,7 @@ async function cmdInit(opts = {}) {
               console.log(`(${html.length.toLocaleString()} bytes, via ${fetchResult.finalUrl})`);
               if (fetchResult.botBlocked) {
                 console.log(`${c.yellow}  ${SYM.warn} AEO finding #1: ${fullUrl} rejected our declared bot User-Agent but served a browser UA.${c.reset}`);
-                console.log(`${c.yellow}    AI crawlers (GPTBot, ClaudeBot, PerplexityBot) are likely blocked the same way — fix the bot rules first; they gate ALL AI visibility.${c.reset}`);
+                console.log(`${c.yellow}    The search-index crawlers that gate citations (OAI-SearchBot, PerplexityBot, Claude-SearchBot, Googlebot) are likely blocked the same way — fix those rules first. Training-only crawlers (GPTBot, ClaudeBot, Google-Extended) do not affect whether AI answers cite you.${c.reset}`);
               }
             }
           }
@@ -4120,8 +4125,9 @@ async function cmdReport(args = {}) {
     })(),
 
     // ─── AI-bot crawlability audit (cached) ───
-    // Pure HTTP fetches, no LLM cost. Surfaces robots.txt blocks and missing
-    // /llms.txt / sitemap.xml — common root causes of "AI doesn't see me".
+    // Pure HTTP fetches, no LLM cost. Surfaces robots.txt blocks and a missing
+    // sitemap.xml — common root causes of "AI doesn't see me". /llms.txt is
+    // probed too, but only ever reported as a fact (AP-DEAD-TACTIC-LLMSTXT).
     (async () => {
       if (!latest.crawlability && latest.domain) {
         reportRows.add('crawl', `Auditing AI-bot crawlability for ${latest.domain}`);
@@ -4129,8 +4135,14 @@ async function cmdReport(args = {}) {
           latest.crawlability = await auditCrawlability(latest.domain);
           await persistSnapshot(latest);
           const s = latest.crawlability.summary;
-          const flag = s.blockedCount > 0 ? `${c.red}${s.blockedCount} bot${s.blockedCount !== 1 ? 's' : ''} blocked${c.reset}` : `all bots OK`;
-          reportRows.finish('crawl', { status: 'done', detail: `robots:${s.hasRobots ? SYM.ok : SYM.err} llms.txt:${s.hasLlmsTxt ? SYM.ok : SYM.err} sitemap:${s.hasSitemap ? SYM.ok : SYM.err} — ${flag}` });
+          // Only a blocked SEARCH-INDEX crawler is red; other blocks are a
+          // policy choice with no citation effect, so they are counted plainly.
+          const flag = s.gatingBlockedCount > 0
+            ? `${c.red}${s.gatingBlockedCount} search crawler${s.gatingBlockedCount !== 1 ? 's' : ''} blocked${c.reset}`
+            : s.blockedCount > 0
+              ? `${s.blockedCount} non-search bot${s.blockedCount !== 1 ? 's' : ''} blocked (no citation effect)`
+              : `all bots OK`;
+          reportRows.finish('crawl', { status: 'done', detail: `robots:${s.hasRobots ? SYM.ok : SYM.err} sitemap:${s.hasSitemap ? SYM.ok : SYM.err} llms.txt:${s.hasLlmsTxt ? 'yes' : 'no'} — ${flag}` });
         } catch (err) {
           reportRows.finish('crawl', { status: 'error', detail: errMsg(err) });
         }

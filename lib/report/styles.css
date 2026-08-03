@@ -2399,6 +2399,9 @@ body::before {
 }
 .ready-row .ck.bad { background: var(--bad-soft); color: var(--bad); }
 .ready-row .ck.warn { background: var(--warn-soft); color: var(--warn); }
+/* Neutral marker for a row that reports a FACT with no pass/fail verdict
+   (llms.txt) — deliberately not green, amber or red. */
+.ready-row .ck.muted { background: var(--paper-2); color: var(--ink-3); }
 .ready-row .label { color: var(--ink); font-size: 13px; }
 .ready-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
 

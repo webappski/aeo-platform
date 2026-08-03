@@ -447,26 +447,36 @@ test('popover: no re-normalisation banner when all components measured', () => {
 
 console.log('\ncomputeDiscoverability');
 
-test('full readiness → 100', () => {
+// A page-signals object that PASSES the server-rendered axis, and one that
+// fails it. `checkPageSignals` nests under `.homepage`; both shapes are
+// accepted by serverRenderedAxis, and the nested one is what snapshots carry.
+const ssrPass = { homepage: { ok: true, bytes: 42000, headings: { h1: { count: 1 }, h2: { count: 6 } }, schemaOrg: { blockCount: 2 }, answerCapsules: { withCapsule: 3 } } };
+const ssrShell = { homepage: { ok: true, bytes: 900, headings: { h1: { count: 0 }, h2: { count: 0 } }, schemaOrg: { blockCount: 0 }, answerCapsules: { withCapsule: 0 } } };
+const ssrBlocked = { homepage: { ok: false, status: 403, error: 'HTTP 403' } };
+
+test('full readiness → 100 (robots + bots + sitemap + server-rendered)', () => {
   const r = computeDiscoverability({
-    summary: { totalBots: 12, blockedCount: 0, allowedCount: 12, hasRobots: true, hasLlmsTxt: true, hasSitemap: true },
-  });
+    summary: { totalBots: 12, blockedCount: 0, allowedCount: 12, hasRobots: true, hasLlmsTxt: false, hasSitemap: true },
+    sitemap: { urlCount: 40 },
+  }, ssrPass);
   assert.equal(r.score, 100);
 });
 
-test('robots missing → drops by 30%', () => {
+test('robots missing → drops by 30 points', () => {
   const r = computeDiscoverability({
     summary: { totalBots: 12, blockedCount: 0, allowedCount: 12, hasRobots: false, hasLlmsTxt: true, hasSitemap: true },
-  });
-  // 0*0.3 + 100*0.25 + 100*0.25 + 100*0.20 = 0 + 25 + 25 + 20 = 70
+    sitemap: { urlCount: 40 },
+  }, ssrPass);
+  // 0*0.30 + 100*0.25 + 100*0.25 + 100*0.20 = 70
   assert.equal(r.score, 70);
 });
 
 test('all bots blocked → bot share component is 0', () => {
   const r = computeDiscoverability({
     summary: { totalBots: 12, blockedCount: 12, allowedCount: 0, hasRobots: true, hasLlmsTxt: true, hasSitemap: true },
-  });
-  // 100*0.3 + 0*0.25 + 100*0.25 + 100*0.20 = 30 + 0 + 25 + 20 = 75
+    sitemap: { urlCount: 40 },
+  }, ssrPass);
+  // 100*0.30 + 0*0.25 + 100*0.25 + 100*0.20 = 75
   assert.equal(r.score, 75);
 });
 
@@ -475,12 +485,194 @@ test('null crawlability → null result', () => {
   assert.equal(computeDiscoverability({}), null);
 });
 
+// ─── AP-DEAD-TACTIC-LLMSTXT ───
+//
+// llms.txt no longer appears in the score at all, and the axis that took its
+// 20% is "content served in HTML". These tests pin BOTH halves: that the file's
+// presence is inert, and that the replacement behaves.
+//
+// MUTATION-SANITY: put `llmsTxtScore * 0.20` back into computeDiscoverability
+// (or give hasLlmsTxt any weight) → the inertness test below goes RED.
+
+test('llms.txt has NO axis and NO effect on the score', () => {
+  const base = { totalBots: 12, blockedCount: 0, allowedCount: 12, hasRobots: true, hasSitemap: true };
+  const withFile = computeDiscoverability({ summary: { ...base, hasLlmsTxt: true }, sitemap: { urlCount: 9 } }, ssrPass);
+  const without  = computeDiscoverability({ summary: { ...base, hasLlmsTxt: false }, sitemap: { urlCount: 9 } }, ssrPass);
+  assert.equal(withFile.score, without.score, 'llms.txt presence must not move the score');
+  assert.equal(withFile.breakdown.llmsTxt, undefined, 'no llmsTxt row may exist in the breakdown');
+  assert.equal(
+    JSON.stringify(withFile.breakdown).toLowerCase().includes('llms'), false,
+    'the breakdown must not mention llms.txt at all',
+  );
+});
+
+test('server-rendered axis: pass / JS-shell / unmeasured', () => {
+  const summary = { totalBots: 12, blockedCount: 0, allowedCount: 12, hasRobots: true, hasLlmsTxt: false, hasSitemap: true };
+  const crawl = { summary, sitemap: { urlCount: 9 } };
+
+  assert.equal(computeDiscoverability(crawl, ssrPass).score, 100);
+  // Shell → loses the whole 20-point axis, keeps the rest.
+  assert.equal(computeDiscoverability(crawl, ssrShell).score, 80);
+  // A blocked page fetch is NOT evidence of a shell: axis null, weights
+  // re-normalise over the measured 80% → 80/0.80 = 100.
+  const blocked = computeDiscoverability(crawl, ssrBlocked);
+  assert.equal(blocked.breakdown.serverRendered.value, null);
+  assert.equal(blocked.score, 100);
+  // Same for a caller that passes no page signals at all (legacy snapshots).
+  assert.equal(computeDiscoverability(crawl).breakdown.serverRendered.value, null);
+  assert.equal(computeDiscoverability(crawl).score, 100);
+  // A body that blew past the 2MB read cap and showed no headings in the part
+  // we DID read is unmeasured, not a shell — we only saw a slice of it.
+  const truncatedShell = { homepage: { ...ssrShell.homepage, bytes: 3_000_000, truncated: true } };
+  assert.equal(computeDiscoverability(crawl, truncatedShell).breakdown.serverRendered.value, null);
+});
+
+test('unmeasured axis re-normalises rather than scoring 0', () => {
+  // robots present, all bots blocked, no sitemap, no page signals:
+  // measured weight = 0.80, raw = 30 → 30/0.80 = 37.5 → 38.
+  const r = computeDiscoverability({
+    summary: { totalBots: 12, blockedCount: 12, allowedCount: 0, hasRobots: true, hasLlmsTxt: false, hasSitemap: false },
+    sitemap: {},
+  });
+  assert.equal(r.weightSum, 0.80);
+  assert.equal(r.score, 38);
+  // appliedWeight is what renderers show, so the weight column still sums to 100%.
+  const applied = Object.values(r.breakdown).map(b => b.appliedWeight).filter(w => w !== null);
+  assert.equal(Math.round(applied.reduce((a, b) => a + b, 0) * 100), 100);
+});
+
+test('sitemap axis credits a robots-declared sitemap and flags an empty one', () => {
+  const summary = { totalBots: 12, blockedCount: 0, allowedCount: 12, hasRobots: true, hasLlmsTxt: false, hasSitemap: false };
+  const declared = computeDiscoverability(
+    { summary, sitemap: { urlCount: 0, declaredInRobots: ['https://x.com/sitemap_index.xml'] } }, ssrPass);
+  assert.equal(declared.breakdown.sitemap.value, 70, 'declared-in-robots sitemap used to score a flat 0');
+  assert.ok(declared.breakdown.sitemap.note.includes('declared in robots.txt'));
+
+  const empty = computeDiscoverability(
+    { summary: { ...summary, hasSitemap: true }, sitemap: { urlCount: 0 } }, ssrPass);
+  assert.equal(empty.breakdown.sitemap.value, 100, 'an empty sitemap is flagged in the note, never docked');
+  assert.ok(empty.breakdown.sitemap.note.includes('no <loc>'));
+});
+
 test('breakdown notes are descriptive', () => {
   const r = computeDiscoverability({
     summary: { totalBots: 12, blockedCount: 3, allowedCount: 9, hasRobots: true, hasLlmsTxt: false, hasSitemap: true },
-  });
-  assert.ok(r.breakdown.llmsTxt.note.includes('missing'));
+    sitemap: { urlCount: 12 },
+  }, ssrPass);
   assert.ok(r.breakdown.bots.note.includes('9/12'));
+  assert.ok(r.breakdown.serverRendered.note.includes('served HTML'));
+});
+
+// ─── Non-regression guarantee, enumerated over every reachable state ───
+//
+// The founder constraint on the 2026-08-02 re-weighting: no client may score
+// LOWER than the old formula would have given them, other things equal. That is
+// provably impossible to satisfy for EVERY state (see the arithmetic in
+// visibility-index.js), so the guarantee is conditional — and this test pins
+// exactly which conditions hold, so nobody has to trust the changelog prose.
+//
+// MUTATION-SANITY: change any surviving weight (e.g. robots 0.30 → 0.28, or
+// serverRendered 0.20 → 0.15) and the sweep below goes RED.
+
+const OLD_WEIGHTS = { robots: 0.30, bots: 0.25, sitemap: 0.25, llmsTxt: 0.20 };
+function oldScore({ hasRobots, botShare, hasSitemap, hasLlmsTxt }) {
+  return Math.round(
+    (hasRobots ? 100 : 0) * OLD_WEIGHTS.robots
+    + botShare * 100 * OLD_WEIGHTS.bots
+    + (hasSitemap ? 100 : 0) * OLD_WEIGHTS.sitemap
+    + (hasLlmsTxt ? 100 : 0) * OLD_WEIGHTS.llmsTxt,
+  );
+}
+
+/** Every reachable input combination. `hasRobots:false` forces botShare 1:
+ *  with no robots.txt there are no rules, so every bot reads `unspecified`
+ *  and none counts as blocked — the state (robots 0, bots < 1) cannot occur.
+ *
+ *  The sitemap dimension is not a boolean in production — all four live shapes
+ *  are swept, including the two the axis treats specially (a sitemap declared
+ *  in robots.txt but not served, and a reachable sitemap with no <loc> rows),
+ *  because both of those are where the "credit only, never dock" rule could be
+ *  broken by a future edit. */
+const SITEMAP_SHAPES = [
+  ['served',       { hasSitemap: true,  sitemap: { urlCount: 20 } }],
+  ['served-empty', { hasSitemap: true,  sitemap: { urlCount: 0 } }],
+  ['declared',     { hasSitemap: false, sitemap: { urlCount: 0, declaredInRobots: ['https://x.com/sitemap_index.xml'] } }],
+  ['absent',       { hasSitemap: false, sitemap: {} }],
+];
+
+function* reachableStates() {
+  for (const hasRobots of [true, false]) {
+    for (const botShare of hasRobots ? [0, 0.5, 1] : [1]) {
+      for (const [sitemapName, sitemapShape] of SITEMAP_SHAPES) {
+        for (const hasLlmsTxt of [true, false]) {
+          for (const [ssrName, ssr] of [['pass', ssrPass], ['shell', ssrShell], ['unmeasured', undefined]]) {
+            yield {
+              hasRobots, botShare, hasLlmsTxt, ssrName, ssr,
+              sitemapName, sitemapShape,
+              // The OLD formula only knew "present or not".
+              hasSitemap: sitemapShape.hasSitemap,
+            };
+          }
+        }
+      }
+    }
+  }
+}
+
+function newScore(st) {
+  const totalBots = 12;
+  return computeDiscoverability({
+    summary: {
+      totalBots,
+      blockedCount: Math.round(totalBots * (1 - st.botShare)),
+      hasRobots: st.hasRobots,
+      hasLlmsTxt: st.hasLlmsTxt,
+      hasSitemap: st.sitemapShape.hasSitemap,
+    },
+    sitemap: st.sitemapShape.sitemap,
+  }, st.ssr).score;
+}
+
+test('GUARANTEE 1 — server-rendered content: nobody scores lower than the old formula', () => {
+  const losers = [];
+  for (const st of reachableStates()) {
+    if (st.ssrName !== 'pass') continue;
+    const before = oldScore(st);
+    const after = newScore(st);
+    if (after < before) losers.push(`${JSON.stringify(st.ssr ? { ...st, ssr: st.ssrName } : st)} ${before} → ${after}`);
+  }
+  assert.deepEqual(losers, [], `states that regressed:\n${losers.join('\n')}`);
+});
+
+test('GUARANTEE 2 — clients without llms.txt never score lower, whatever the SSR verdict', () => {
+  const losers = [];
+  for (const st of reachableStates()) {
+    if (st.hasLlmsTxt) continue;
+    const before = oldScore(st);
+    const after = newScore(st);
+    if (after < before) losers.push(`${st.ssrName} robots=${st.hasRobots} bots=${st.botShare} sitemap=${st.hasSitemap}: ${before} → ${after}`);
+  }
+  assert.deepEqual(losers, [], `states that regressed:\n${losers.join('\n')}`);
+});
+
+test('EXCEPTION SET — every regression is an llms.txt holder, bounded by 20 points', () => {
+  const regressions = [];
+  for (const st of reachableStates()) {
+    const delta = newScore(st) - oldScore(st);
+    if (delta < 0) regressions.push({ ...st, ssr: st.ssrName, delta });
+  }
+  // Only two shapes may appear, and both are documented in CHANGELOG.md.
+  for (const r of regressions) {
+    assert.equal(r.hasLlmsTxt, true, `a client WITHOUT llms.txt regressed: ${JSON.stringify(r)}`);
+    assert.ok(r.ssr === 'shell' || r.ssr === 'unmeasured', `unexpected regression shape: ${JSON.stringify(r)}`);
+    assert.ok(r.delta >= -20, `regression deeper than the documented 20-point bound: ${JSON.stringify(r)}`);
+    if (r.ssr === 'unmeasured') {
+      assert.ok(r.delta >= -14, `unmeasured-axis regression deeper than the documented 13.75: ${JSON.stringify(r)}`);
+    }
+  }
+  // And the sweep must actually exercise them — a guarantee nobody can trip is
+  // not a guarantee, it is a typo in the state generator.
+  assert.ok(regressions.length > 0, 'expected the enumerated exception cases to occur');
 });
 
 // ─── AP-MEASURE-SAMPLING-CI — presence boolean→fraction invariance ───
