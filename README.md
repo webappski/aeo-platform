@@ -14,7 +14,7 @@ Every hosted AEO platform scores you with a model you cannot inspect. Here the s
 **The receipts, unedited:**
 
 - **On ourselves.** Webappski's own agency brand is cited in **2 of 39** AI-answer cells — 13 buyer queries × ChatGPT / Gemini / Claude, measured 2026-06-14 — and we published the whole grid, including the thirty-seven cells that do not cite us: [aeo-webappski-2026-06-14](https://webappski.com/reports/aeo-webappski-2026-06-14.html). A vendor who hides their own score is asking you to trust a number you cannot check.
-- **On a product we optimized.** TypelessForm is present in **12 of 12** cells on the 11 July 2026 run, Unified Visibility Index 92/100: [aeo-typelessform-2026-07-11](https://webappski.com/reports/aeo-typelessform-2026-07-11.html).
+- **On a product we optimized.** TypelessForm is present in **11 of 12** cells on the 11 July 2026 run, Unified Visibility Index 92/100: [aeo-typelessform-2026-07-11](https://webappski.com/reports/aeo-typelessform-2026-07-11.html).
 
 Both files are ordinary `aeo-platform report` output, produced by the three commands in the next section. Nothing in them was written by hand.
 
