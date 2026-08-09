@@ -76,6 +76,7 @@ reach for these when you need them.
 - `--regions=us,de,fr` — run every query under each region (multiplies cost by region count).
 - `--replay` — rebuild a summary from cached answers, zero API cost (offline).
 - `--force` — proceed even if the query-validation gate flags something.
+- `--samples=5` — ask each cell 5 times instead of once and report a confidence interval (default is one call per cell; cost scales with N). See [How we count visibility](#how-we-count-visibility).
 
 **`report`**
 
@@ -298,6 +299,62 @@ aeo-platform run-manual perplexity --from-dir .\perplexity-responses
 
 Results merge into today's `_summary.json` alongside API runs. `diff` and `report` treat both identically.
 
+## How we count visibility
+
+**Every number in the report comes from a rule you can read in this repository. This section states the rules that decide the score: how many times each engine is asked (once per cell per run, by default), what counts as a mention, and how each axis is derived.** Two neighbouring sections stay the authority for the rest and are not repeated here — [what this measures and what it does not](#what-this-measures--and-what-it-does-not) for scope, and [UVI methodology](#uvi-methodology--unified-visibility-index) for the weights.
+
+### How many times we ask: once per cell, by default
+
+A **cell** is one combination of *query × engine × region × pass*. `aeo-platform run` makes **exactly one API call per cell**. Three queries against three engines is nine answers — one answer per cell. The tool does not ask the same question twice and average the results.
+
+Say plainly what that means for the number. Language models are non-deterministic: the same question, to the same engine, an hour later, can name a different set of tools. A default run is therefore a **point estimate with unknown spread** — not a measurement carrying an error bar. Two runs on the same day can honestly disagree, and a single cell flipping from `no` to `yes` is not a trend.
+
+If you need the error bar, ask for it:
+
+```bash
+aeo-platform run --samples 5
+```
+
+`--samples N` queries every cell N times and keeps each trial in `_summary.json` (`results[].trials[]`), with the cell's own hit rate under `results[].presence`. The report then pools the sampled cells into one Wilson confidence interval on the Presence axis — `share of cells where brand was mentioned · 12/15 trials · 95% CI [62%, 96%]`. `aeo-platform diff` uses the same statistics for its regression verdict: when **both** runs sampled a cell, a flip whose intervals overlap is classified as noise and dropped rather than reported as a change, so one jittery trial cannot trip the exit-1 regression code. When either side is single-shot there is no distribution to test, and the flip is reported as before, tagged `point-estimate`. Cost scales roughly N×, which is why the default is 1 and the flag is capped at 25. Five is a sensible starting point when a decision depends on the number.
+
+### What counts as a mention
+
+Each answer gets exactly one label (`lib/mention.js`):
+
+| Label | What it means |
+|---|---|
+| `yes` | your brand name, one of your configured aliases, or your domain appears in the answer body |
+| `src` | your brand appears **only** inside a cited source URL — not in the text a reader sees |
+| `no` | absent under every spelling checked |
+
+**`yes` and `src` both count as one for Presence.** Being cited as a source counts as being visible. That is the least obvious scoring decision in the tool, so it is stated rather than buried.
+
+Name matching is case-insensitive and separator-tolerant — `gcore` matches `Gcore`, `G-Core`, `G Core`, `(Gcore)` — and anchored on word boundaries, so it does not fire inside a longer word (`gcorehouse`) or across a seam (`a bi**g core** network`). Three limits, stated rather than hidden:
+
+- **No fuzzy matching.** An engine that misspells your name counts as an absence until you add that spelling to `brandAliases` in `.aeo-tracker.json`.
+- **The domain is matched as a plain substring**, without word anchoring — so a longer host that contains your domain string would register as a mention.
+- **A dot is significant.** A brand configured as `Node.js` needs the literal `node.js`; `nodejs` will not match it.
+
+### Where each axis of the score comes from
+
+- **Presence** — share of non-error cells labelled `yes` or `src`. A cell that errored (bad key, rate limit, provider outage) is dropped from the denominator entirely; it is not counted as an absence. Under `--samples N` a cell contributes its **fraction** of hits (0.667 for two of three trials) rather than a flat 1 or 0, while its headline label stays the most common outcome of the trials, breaking ties towards the stronger reading (`yes` over `src` over `no`).
+- **Sentiment** — two cheap classification-tier models, one per provider, resolved at run time, score each mentioning cell independently. Both agree, the label stands at high confidence; they disagree, the label degrades to neutral at low confidence; one fails, the other's label is used and marked single-model. The axis then averages the surviving cells at `positive = 100`, `neutral = 50`, `negative = 0`. **A low-confidence neutral is dropped, not averaged in as a 50** — a tie between two disagreeing models records "no signal", not "a middling opinion". Cells that never mentioned you carry no sentiment at all and never enter this axis.
+- **Rank** — an integer only when the answer is a structured list of at least three numbered or bulleted items *and* the mention sits inside one of those items. Prose answers get an ordinal from a classification-tier model instead, carried at lower confidence and multiplied by 0.7 before it enters the average, so an explicit list position always outweighs a prose one. When no cell yields a usable position, the rank axis is **excluded and the remaining weights re-normalise** — it is never filled with a zero or a 50.
+- **Citation** — cells where your own domain appears among the answer's cited sources, matched at the registered-domain level, so `blog.yourbrand.com` counts as yours.
+
+### Which model actually answered
+
+Model IDs are discovered live from each provider at run time; the values in `.aeo-tracker.json` are fallbacks, not promises. The ID that actually produced each answer is stamped into `_summary.json`, and a run prints a warning when a provider serves a different model lineage than the one requested (`--strict-model-pin` turns that warning into a failed run, for a frozen basket you want kept comparable month over month). Read the served ID, not the configured one.
+
+### What we do not measure
+
+Scope is covered in the [next section](#what-this-measures--and-what-it-does-not) — engine APIs rather than the consumer apps, and no coverage of Google AI Overviews / AI Mode or Microsoft Copilot. Four more things this tool never claims to know:
+
+- **How many real people ask these questions.** The basket is the one you chose. It carries no search-volume or demand signal.
+- **Your position in classic Google search.** Different surface, different tool.
+- **Why the number moved.** A score that rises after you shipped a page is a correlation. The tool records what changed, not what caused it.
+- **What an engine will answer tomorrow.** Every score is a reading of one moment on one surface.
+
 ## What this measures — and what it does NOT
 
 Be precise about scope: `aeo-platform` queries each engine's **API surface** with your own keys. That is a reproducible, auditable proxy you can re-run and put in CI — but it is **not** the same thing a human sees in the consumer app. The consumer apps use a different retrieval pipeline, can serve a different model version, and add personalization and locale that the API does not. Treat the score as *"how the engine's API answers your queries"*, not *"exactly what a user of chatgpt.com sees"*.
@@ -361,14 +418,14 @@ Why this matters: in Webappski's 2026 weekly audits, brands with a Wikidata enti
 
 ## UVI methodology — Unified Visibility Index
 
-**UVI (Unified Visibility Index) is a 0–100 composite of four AI-answer signals: Presence 35% (mentioned cells / total cells), Sentiment 25% (high-confidence positive cells / mentioned cells), Rank 20% (normalised average rank position), Citation 20% (cells where your domain was cited as a source). Weights are visible in `lib/report/visibility-index.js`; sub-components with insufficient data are excluded and remaining weights re-normalise — never phantom values. Sample size is published alongside the score.**
+**UVI (Unified Visibility Index) is a 0–100 composite of four AI-answer signals: Presence 35% (mentioned cells / non-error cells), Sentiment 25% (average tone of mentioning cells, positive 100 · neutral 50 · negative 0), Rank 20% (normalised average rank position), Citation 20% (cells where your domain was cited as a source). Weights are visible in `lib/report/visibility-index.js`; sub-components with insufficient data are excluded and remaining weights re-normalise — never phantom values. Sample size is published alongside the score.**
 
 `aeo-platform` rolls four AI-answer signals into a single 0-100 composite. Every weight is in the source (`lib/report/visibility-index.js`); the ⓘ popover next to the hero number shows the per-axis math on every run.
 
 | Sub-component | Weight | What it measures |
 |---|---|---|
 | **Presence** | 35% | Cells where your brand was mentioned (yes/src) out of total cells |
-| **Sentiment** | 25% | High-confidence positive cells out of cells with a mention |
+| **Sentiment** | 25% | Average tone of the cells that mention you (`positive` 100 · `neutral` 50 · `negative` 0), over cells whose label carries signal — see [how we count visibility](#how-we-count-visibility) |
 | **Rank** | 20% | Average rank position when mentioned, normalised 0-100 |
 | **Citation** | 20% | Cells where your domain was cited as a source |
 
@@ -404,7 +461,7 @@ This is the same discipline the tool applies to itself: a number without provena
 
 **Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is a few cents per week.
 
-**One axis the table cannot show: who checks the checker.** Every hosted platform above is closed-source — see the column; `aeo-platform` is the one MIT row in it. That means the score reaches you from a server you cannot enter, and you are trusting the vendor's definition of a mention, their competitor matching, and their weighting, none of which you can read. Here all three sit in `lib/` in the copy on your disk, and the [UVI methodology](#uvi-methodology--unified-visibility-index) is written out further down. It is also the axis on which an *agency* is judged: Webappski measures clients with this engine, so a client can install it and re-derive the grid they were sent. Transparency as a file you can open, rather than as a word on a landing page.
+**One axis the table cannot show: who checks the checker.** Every hosted platform above is closed-source — see the column; `aeo-platform` is the one MIT row in it. That means the score reaches you from a server you cannot enter, and you are trusting the vendor's definition of a mention, their competitor matching, and their weighting, none of which you can read. Here all three sit in `lib/` in the copy on your disk, [how we count visibility](#how-we-count-visibility) writes out the mention rule and the one-call-per-cell sampling behaviour, and the [UVI methodology](#uvi-methodology--unified-visibility-index) writes out the weights. It is also the axis on which an *agency* is judged: Webappski measures clients with this engine, so a client can install it and re-derive the grid they were sent. Transparency as a file you can open, rather than as a word on a landing page.
 
 ## Comparison vs open-source AEO trackers
 
@@ -443,6 +500,7 @@ Every flag `aeo-platform` accepts, grouped by which command consumes it.
 | `--json` | `run` | Structured JSON to stdout, ANSI suppressed (CI-friendly) |
 | `--geo=us,uk,de,...` | `run` | Run queries under multiple regional contexts. 12 codes: `us, uk, de, fr, es, it, ca, au, in, br, jp, nl`. Multiplies cost by region count |
 | `--depth=<web\|full\|auto>` | `run` | `web` (default) — single web pass. `full` — adds training-data pass (~2× cost). `auto` — prompts if last training baseline > 14 days |
+| `--samples=<N>` | `run` | Query each cell N times instead of once, so a noisy LLM flip is not read as a real change. Presence then carries a 95% Wilson confidence interval and `diff` treats overlapping intervals as noise. Default `1` (single-shot); capped at 25; cost scales ~N×. See [How we count visibility](#how-we-count-visibility) |
 | `--replay` | `run` | Rebuild summary from cached raw responses (zero API cost, fully offline — skips live model discovery AND extractor/sentiment LLM calls; no API keys required) |
 | `--replay-from=YYYY-MM-DD` | `run` | Replay a specific date instead of the most recent capture |
 | `--from-dir <path>` | `run-manual` | Directory containing `q1.txt`, `q2.txt`, `q3.txt` with pasted UI answers |
