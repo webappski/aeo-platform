@@ -19,6 +19,9 @@ docs/aeo-recommendations/
 # Tarball from `npm pack`
 *.tgz
 
+# Graphify tooling pilot (ops-owned, see webappski-ops/GRAPHIFY_PILOT.md) — local cache, never committed
+graphify-out/
+
 # Internal migration docs (not for public commit)
 MIGRATION_PLAN.md
 IDENTITY_CLEANUP_PLAN.md
