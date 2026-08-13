@@ -316,33 +316,35 @@ await test('anthropic classify: falls back to newest haiku overall when none in 
   assert.deepStrictEqual(models, ['claude-haiku-3-5']);
 });
 
-console.log('\ndiscoverClassifyModel Gemini (classify trails a gen below main — 2.5-flash, see discover.js)');
+console.log('\ndiscoverClassifyModel Gemini (classify targets the cheapest live flash-lite tier — gemini-3.1-flash-lite, see discover.js. 2.5 generation retired by Google 2026-08-13.)');
 
-await test('gemini classify: pins gemini-2.5-flash while main picks the newest flash', async () => {
+await test('gemini classify: pins gemini-3.1-flash-lite while main picks the newest flash', async () => {
   const catalogue = () => ok({ models: [
-    { name: 'models/gemini-3.5-flash',      supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-3.1-flash',      supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-2.5-flash',      supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-2.5-pro',        supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.5-flash',           supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.5-flash-lite',      supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.1-flash',           supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.1-flash-lite',      supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.1-flash-lite-preview', supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-2.5-flash',           supportedGenerationMethods: ['generateContent'] },
   ]});
   stub(catalogue);
   const main = await discoverModels('gemini', 'AIzaSy');
   stub(catalogue);
   const classify = await discoverClassifyModel('gemini', 'AIzaSy');
-  assert.deepStrictEqual(main.models, ['gemini-3.5-flash']);       // newest flash (answer tier)
-  assert.deepStrictEqual(classify.models, ['gemini-2.5-flash']);   // one gen below, dynamic-thinking tier
+  assert.deepStrictEqual(main.models, ['gemini-3.5-flash']);            // newest flash (answer tier)
+  assert.deepStrictEqual(classify.models, ['gemini-3.1-flash-lite']);   // cheapest live flash-lite tier
   assert.notDeepStrictEqual(classify.models, main.models);
 });
 
-await test('gemini classify: excludes 2.5 lite/pro — returns null when no plain 2.5 flash exists', async () => {
+await test('gemini classify: excludes preview/image/tts — returns null when no plain 3.1-flash-lite exists', async () => {
   stub(() => ok({ models: [
-    { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-2.5-pro',        supportedGenerationMethods: ['generateContent'] },
-    { name: 'models/gemini-3.5-flash',      supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.1-flash-lite-preview', supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.1-flash-lite-image',   supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-2.5-flash',              supportedGenerationMethods: ['generateContent'] },
+    { name: 'models/gemini-3.5-flash',              supportedGenerationMethods: ['generateContent'] },
   ]}));
   const classify = await discoverClassifyModel('gemini', 'AIzaSy');
-  assert.deepStrictEqual(classify.models, null);  // → falls through to cfg/FALLBACK ('gemini-2.5-flash')
+  assert.deepStrictEqual(classify.models, null);  // → falls through to cfg/FALLBACK ('gemini-3.1-flash-lite')
 });
 
 console.log('\ndiscoverClassifyModel Perplexity');
