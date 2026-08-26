@@ -56,6 +56,47 @@ test('a status tile names the thing and states the status in words', () => {
   assert.match(html, />Unreachable</);
 });
 
+test('a status tile keeps a long, prefix-sharing host name intact — the component itself never slices it', () => {
+  // typelessform.com / typelessity.com share a long prefix; a JS-side
+  // truncation (e.g. a future `.slice(0, N) + '…'`) would make both read
+  // identically. statusTile() must always emit the full string — clipping,
+  // if any, is a CSS-only, purely visual concern (next two tests).
+  const a = statusTile({ name: 'typelessform.com', status: 'Reciprocates', tone: 'good' });
+  const b = statusTile({ name: 'typelessity.com', status: 'Reciprocates', tone: 'good' });
+  assert.match(a, />typelessform\.com</, 'host name truncated or altered in the markup itself');
+  assert.match(b, />typelessity\.com</, 'host name truncated or altered in the markup itself');
+});
+
+test('.lr-tile-name never truncates with an ellipsis — a long host name must stay fully readable, not clip', () => {
+  // Regression guard: a prior fix (reverted per founder correction) made
+  // .lr-tile-name `overflow: hidden; text-overflow: ellipsis; white-space:
+  // nowrap`, which silently clipped host names — "typelessform.com" and
+  // "typelessity.com" both rendered as "typele…", indistinguishable. The
+  // name must always render in full; the pill shrinks/wraps instead (next
+  // two tests), never the name.
+  const rule = CSS.match(/\.lr-tile-name\s*\{[^}]*\}/s);
+  assert.ok(rule, '.lr-tile-name has no rule at all');
+  assert.doesNotMatch(rule[0], /text-overflow/, '.lr-tile-name must never truncate — the host name is the load-bearing fact in that row');
+  assert.doesNotMatch(rule[0], /white-space:\s*nowrap/, '.lr-tile-name must be allowed to wrap, not forced onto one clipped line');
+});
+
+test('.lr-tile wraps instead of letting a long name and its pill collide', () => {
+  // The tile's grid minimum (260px) plus a long host name can still leave no
+  // room for the pill on one line — flex-wrap is the safety net that drops
+  // the pill to its own line rather than overlapping/clipping either side.
+  const rule = CSS.match(/\.lr-tile\s*\{[^}]*\}/s);
+  assert.ok(rule, '.lr-tile has no rule at all');
+  assert.match(rule[0], /flex-wrap:\s*wrap/, '.lr-tile must wrap — without it a long name + pill can only overflow or overlap');
+});
+
+test('the status pill shrinks inside a tile, so it never crowds out a long host name', () => {
+  const scoped = CSS.match(/\.lr-tile \.lr-pill\s*\{[^}]*\}/s);
+  assert.ok(scoped, 'no .lr-tile .lr-pill scoped rule — the pill renders at full base size next to the name');
+  assert.match(scoped[0], /font-size:\s*1[0-3]px/, 'the in-tile pill should read smaller than the base pill (var(--t-body), 16px)');
+  const base = CSS.match(/\.lr-pill\s*\{[^}]*\}/s);
+  assert.doesNotMatch(base[0], /flex-shrink|font-size:\s*1[0-3]px/, 'the base .lr-pill (used outside tiles too) must stay unshrunk — only the tile-scoped rule shrinks it');
+});
+
 console.log('\nloud — contrast contract');
 
 test('white text never sits on the decorative red or the accent orange', () => {
