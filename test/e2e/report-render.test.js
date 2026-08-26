@@ -48,7 +48,11 @@ test('P0-10 — default report writes md+html, HTML has bento + mc-bridge anchor
     assert.ok(existsSync(mdPath), `report.md missing at ${mdPath}`);
     assert.ok(existsSync(htmlPath), `report.html missing at ${htmlPath}`);
     const html = readFileSync(htmlPath, 'utf-8');
-    assert.match(html, /<section[^>]*class="bento"/, 'HTML must use bento layout');
+    // 2026-08 loud redesign: a report section is now `<section class="lr-section">`
+    // carrying a loud lead block plus, where it has supporting cells, an inner
+    // `<div class="bento">` grid. The grid itself is unchanged.
+    assert.match(html, /<section[^>]*class="lr-section"/, 'HTML must render loud report sections');
+    assert.match(html, /<div class="bento">/, 'HTML must still use the bento grid for supporting cells');
     assert.match(html, /<article[^>]*\bid="mc-bridge"/, 'HTML must contain mc-bridge anchor');
   });
 });

@@ -60,6 +60,9 @@
  *     the top 3 first» / «concentrate outreach» / «lift compounds» return.
  *   - html.js CSS strip: drop the `.outreach-*` strip → «.outreach-…» dead CSS
  *     returns to the white-label <style>.
+ *   - sections.js sectionRunVerdict: drop the `whiteLabel ? stat : stat+advisory`
+ *     branch on the lift note → «the shortest lift on this report …» returns to
+ *     the white-label MD run verdict (verified RED 2026-08-26).
  *
  * Pure file-write + subprocess; no network, no live API.
  */
@@ -118,6 +121,7 @@ const ADVISORY_DENYLIST = [
   /Where to get mentioned/i,
   /consideration set/i,
   /closing the gap/i,
+  /shortest lift/i,
 ];
 
 // Seed designed to FORCE every advisory branch to render in the DEFAULT report:
@@ -219,6 +223,11 @@ test('default report (HTML + MD) carries the tool fingerprint, the MC bridge, th
     assert.match(html, /Pitch the top 3 first/, 'default HTML domain-SOV title should be the advisory "Pitch the top 3 first"');
     assert.match(html, /concentrate outreach/, 'default HTML category sub should carry "concentrate outreach"');
     assert.match(html, /\.outreach-item/, 'default HTML <style> should carry the .outreach-* CSS rules');
+    // The lift CTA renders on BOTH surfaces in the default report (seed is
+    // 1 yes + 1 src → kind 'lift'): the HTML hero KPI and the markdown run
+    // verdict compose it from the same run-metrics.buildLiftNarrative halves.
+    assert.match(html, /shortest lift/, 'default HTML hero should carry the lift CTA');
+    assert.match(md, /shortest lift/, 'default MD run verdict should carry the lift CTA');
     // MD citation sections:
     assert.match(md, /Outreach templates/, 'default MD domain-SOV sub should reference "Outreach templates"');
     assert.match(md, /Outreach move/, 'default MD category table should carry the "Outreach move" column');

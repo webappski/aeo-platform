@@ -11,12 +11,12 @@
   --rule:       var(--ink);
   --rule-soft:  var(--line);
   --accent-wash:color-mix(in srgb, var(--accent) 8%, transparent);
-  --safe:       var(--good);
-  --safe-tint:  var(--good-soft);
-  --safe-wash:  color-mix(in srgb, var(--good) 8%, transparent);
-  --danger:     var(--bad);
-  --danger-tint:var(--bad-soft);
-  --danger-wash:color-mix(in srgb, var(--bad) 8%, transparent);
+  --safe:       var(--success-color);
+  --safe-tint:  var(--success-soft);
+  --safe-wash:  color-mix(in srgb, var(--success-color) 8%, transparent);
+  --danger:     var(--error-color-strong);
+  --danger-tint:var(--error-soft);
+  --danger-wash:color-mix(in srgb, var(--error-color-strong) 8%, transparent);
 
   /* Type aliases — bridge CSS uses --serif/--sans/--mono. Report uses
      --display/--sans/--mono (sans/mono share names so they pass through).
@@ -1860,7 +1860,7 @@
   letter-spacing:.04em;
   margin-bottom:4px;
 }
-.diff-table .dt-cell.cur .flag.warn{ color:var(--warn, #A66A1F); }
+.diff-table .dt-cell.cur .flag.warn{ color:var(--orange-600); }
 .diff-table .dt-cell.cur .flag.danger{ color:var(--danger); }
 .diff-table .dt-cell.cur .cap{
   display:block;

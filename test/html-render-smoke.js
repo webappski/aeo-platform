@@ -119,9 +119,23 @@ test('embeds variable woff2 fonts as base64', () => {
   assert.equal((html.match(/@font-face/g) || []).length, 3);
 });
 
-test('renders hero number element with id="heroNum"', () => {
+// 2026-08 loud redesign: the animated «heroNum» counter was replaced by the
+// verdict hero — a conclusion sentence first, the index as one of three KPI
+// cards second. What must not regress is that the headline number is present
+// and that a sentence states the finding before any figure.
+test('renders the verdict hero with a headline sentence and the index KPI', () => {
   const html = renderHtml(baseSummary, [baseSnapshot]);
-  assert.ok(/id="heroNum"/.test(html), 'hero number id missing');
+  assert.ok(/class="lr-hero-title"/.test(html), 'verdict headline missing');
+  assert.ok(/class="lr-kpi-num"/.test(html), 'headline KPI number missing');
+  assert.ok(/Visibility index/.test(html), 'index KPI label missing');
+});
+
+test('the verdict headline is a sentence, not a bare number', () => {
+  const html = renderHtml(baseSummary, [baseSnapshot]);
+  const title = /<h1 class="lr-hero-title">([\s\S]*?)<\/h1>/.exec(html);
+  assert.ok(title, 'hero title element missing');
+  const text = title[1].replace(/<[^>]+>/g, '').trim();
+  assert.ok(text.split(/\s+/).length >= 4, `hero headline too terse to be a verdict: "${text}"`);
 });
 
 test('renders bento sections with section ids', () => {
@@ -171,97 +185,229 @@ test('without snapshots — bento renders gracefully (no crash)', () => {
   assert.ok(html.startsWith('<!doctype html>'));
 });
 
-test('top competitor in hero filters out accent (YOU) row', () => {
+test('top competitor never resolves to the accent (YOU) row', () => {
   const html = renderHtml(baseSummary, [baseSnapshot]);
-  // Top competitor should be "Competitor A" (count 2), not "testbrand.com" (accent: true).
-  assert.ok(/Competitor A/.test(html), 'top competitor missing');
-  // Verify accent row name is not surfaced as the top competitor in hero KPI.
-  // (testbrand.com appears in masthead — that's expected; check the hero KPI block specifically.)
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  assert.ok(/Competitor A/.test(heroBlock), 'hero should name a real competitor');
+  // Top competitor should be "Competitor A" (count 2), not "testbrand.com"
+  // (accent: true). Scoped to the Competitors section since the 2026-08
+  // redesign moved rival names out of the hero.
+  const section = html.split('id="competitors"')[1] || '';
+  assert.ok(/Competitor A/.test(section), 'competitors section should name a real competitor');
+  assert.ok(!/>testbrand\.com<\/span><span class="lr-tag">new/.test(section),
+    'the accent (YOU) row leaked into the rival list');
 });
 
-// ─── Bug fix v0.6: UVI «How is this calculated?» popover lives in the hero ──
-test('hero renders ⓘ How is this calculated popover anchored to the UVI number', () => {
+// ─── UVI breakdown popover ───────────────────────────────────────────────
+// The hero variant of the popover retired with the 2026-08 redesign: the
+// axis breakdown now has a section of its own («What moved the index»), which
+// shows the same four weighted axes permanently rather than behind a click —
+// a popover is invisible in Save-as-PDF, which is the delivery path.
+test('the four weighted axes render as a permanent block, not behind a click', () => {
   const html = renderHtml(baseSummary, [baseSnapshot]);
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  // The hero variant uses the shorter «How is this calculated?» label
-  // (no parenthetical «click to expand») so it fits the dense header.
-  assert.ok(/uvi-breakdown--hero/.test(heroBlock), 'hero variant of UVI popover not anchored to hero');
-  assert.ok(/How is this calculated\?/.test(heroBlock), 'hero popover summary text missing');
-  // The ⓘ icon is U+24D8, encoded as &#9432; in the markup
-  assert.ok(/&#9432;/.test(heroBlock), 'hero popover ⓘ icon missing');
-  // Same breakdown table content as the md-section copy — single source of truth.
-  assert.ok(/uvi-breakdown-table/.test(heroBlock), 'hero popover breakdown table missing');
+  assert.ok(/What moved the index/.test(html), 'axis breakdown block missing');
+  assert.ok(/class="lr-axis-row"/.test(html), 'axis rows missing');
+  assert.ok(/Four axes, fixed weights/.test(html), 'axis block eyebrow missing');
 });
 
-test('full report contains «How is this calculated?» twice — hero + markdown section', () => {
+test('the UVI breakdown table still renders once, from the markdown section', () => {
   const html = renderHtml(baseSummary, [baseSnapshot]);
   const matches = html.match(/How is this calculated\?/g) || [];
-  // ≥ 2 = hero popover + markdown popover land in the rendered HTML.
-  // Hard-audit checklist: not a double-render of the same anchor.
-  assert.ok(matches.length >= 2, `expected ≥ 2 popovers, got ${matches.length}`);
+  assert.ok(matches.length >= 1, `expected the breakdown popover, got ${matches.length}`);
 });
 
-test('hero subtitle does NOT contain the BANNED phrase «cited X times»', () => {
+test('the BANNED phrase «cited X times» appears nowhere in the report', () => {
   const html = renderHtml(baseSummary, [baseSnapshot]);
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  // The literal pattern «cited N times» (number-of-citations bare assertion)
-  // is banned — it conflates totalCitations (URL hits) with coverage.src
-  // (cited-but-not-named cells). Both old hero copies («cited 0 times» and
-  // «cited 5 times») must be gone.
-  assert.ok(!/cited <b>\d+ times<\/b>/.test(heroBlock), 'banned phrase «cited N times» found in hero');
-  assert.ok(!/cited \d+ times/.test(heroBlock), 'banned bare phrase «cited N times» found in hero');
+  // «cited N times» conflates totalCitations (URL hits) with coverage.src
+  // (cited-but-not-named answers). The guard is document-wide since the
+  // 2026-08 redesign — the copy it protected moved out of the hero.
+  assert.ok(!/cited <b>\d+ times<\/b>/.test(html), 'banned phrase «cited N times» found');
 });
 
-test('hero subtitle uses the new lift-opportunity wording when coverage.src === 0', () => {
+test('never recommends the robots.txt allowlist fix for a naming problem', () => {
   const html = renderHtml(baseSummary, [baseSnapshot]);
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  // baseSummary has coverage.yes=1, src=0, total=2 → trailing-but-named branch.
-  // The new copy ends with the success-state «citation without naming» line.
-  assert.ok(/citation without naming/.test(heroBlock),
-    'hero copy does not mention «citation without naming» success-state for src=0');
+  // Old copy said «No citations yet — make sure your domain is in robots.txt
+  // allowlist» when coverage.src === 0. That advice is wrong when every cited
+  // answer ALSO named the brand (a success state).
+  assert.ok(!/robots\.txt allowlist/.test(html), 'wrong robots.txt advice present');
 });
 
-test('hero subtitle uses the new lift-opportunity wording when coverage.src > 0', () => {
-  const summary = {
-    ...baseSummary,
-    coverage: { yes: 2, src: 3, no: 1, error: 0, total: 6 },
+// ─── Lift opportunities: the aggregate KPI ───────────────────────────────
+// The per-answer rows each carry their own "Cited, not named" pill. The pills
+// state the CONDITION; only an aggregate states its SIZE and what to do about
+// it, which is the client-visible KPI the 2026-08 redesign dropped and this
+// suite exists to keep. The figure is derived from the snapshot's `results`
+// (run-metrics.js buildLiftOpportunity), so these fixtures drive the branch by
+// setting cell `mention` values — mutating `summary.coverage` alone would leave
+// the assertions inert.
+const srcSnapshot = {
+  ...baseSnapshot,
+  results: [
+    baseSnapshot.results[0],
+    { ...baseSnapshot.results[1], mention: 'src' },
+    { ...baseSnapshot.results[1], query: 'Q3', queryText: 'voice form tools', mention: 'src' },
+  ],
+};
+const srcSummary = {
+  ...baseSummary,
+  coverage: { yes: 1, src: 2, no: 0, error: 0, total: 3 },
+};
+
+test('hero states the lift aggregate when answers cite you without naming you', () => {
+  const html = renderHtml(srcSummary, [srcSnapshot]);
+  const hero = html.split('class="lr-hero-kpis"')[1].split('</section>')[0];
+  assert.ok(/Lift opportunities/.test(hero), 'aggregate lift KPI missing from the hero');
+  assert.ok(/<span class="lr-kpi-num">2<\/span>/.test(hero),
+    'the KPI must count the cited-not-named answers (2 of 3), not restate a pill');
+  assert.ok(/class="lr-kpi-denom">\/ 3</.test(hero), 'the KPI must carry its denominator');
+  assert.ok(/2 of 3 answers cite your domain as a source without naming you/.test(hero),
+    'the KPI must say what the number counts');
+  assert.ok(/shortest lift/.test(hero), 'the KPI must carry the actionable next step, not just a figure');
+});
+
+test('the lift KPI reads as a success state, not a gap, when nothing is cited-only', () => {
+  const html = renderHtml(baseSummary, [baseSnapshot]);
+  const hero = html.split('class="lr-hero-kpis"')[1].split('</section>')[0];
+  assert.ok(/Lift opportunities/.test(hero), 'the KPI must render on every run, not only when it is non-zero');
+  assert.ok(/success state/.test(hero),
+    'zero cited-not-named answers with a named answer present is a success state, not a gap');
+});
+
+test('the retired «Citations earned» label never comes back', () => {
+  const html = renderHtml(srcSummary, [srcSnapshot]);
+  // The old label mixed domain-URL hits across all cells with the cited-only
+  // answer count, so the number never meant what the label said.
+  assert.ok(!/Citations earned/.test(html), 'old «Citations earned» label is back');
+});
+
+test('every hero KPI that counts answers uses the SAME denominator, errors included', () => {
+  // The presence KPI counts out of `history.cells.length`; the lift KPI counts
+  // out of `results.length`. They agree today because a failed cell is still a
+  // cell in both. Two adjacent KPIs printing "of 3" and "of 2" for the same run
+  // would make the reader arbitrate between them, so the agreement is pinned
+  // here rather than left as a coincidence.
+  const errSnapshot = {
+    ...baseSnapshot,
+    results: [
+      baseSnapshot.results[0],
+      { ...baseSnapshot.results[1], mention: 'src' },
+      { ...baseSnapshot.results[1], query: 'Q3', queryText: 'third question', mention: 'error' },
+    ],
   };
-  const html = renderHtml(summary, [baseSnapshot]);
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  // When src > 0 the copy explicitly calls out the lift opportunity.
-  assert.ok(/lift opportunity/i.test(heroBlock),
-    'hero copy does not mention «lift opportunity» when coverage.src > 0');
+  const html = renderHtml(
+    { ...baseSummary, coverage: { yes: 1, src: 1, no: 0, error: 1, total: 3 } },
+    [errSnapshot],
+  );
+  const hero = html.split('class="lr-hero-kpis"')[1].split('</section>')[0];
+  // Only the KPIs whose unit is ANSWERS. "Engines naming you everywhere"
+  // counts engines and legitimately carries a different denominator.
+  const denomOf = (label) => {
+    const m = new RegExp(`lr-eyebrow">${label}</span>[\\s\\S]*?lr-kpi-denom">/ (\\d+)<`).exec(hero);
+    assert.ok(m, `KPI «${label}» not found in the hero`);
+    return m[1];
+  };
+  assert.equal(denomOf('Answers naming or citing you'), '3',
+    'the presence KPI dropped the errored answer from its denominator');
+  assert.equal(denomOf('Lift opportunities'), denomOf('Answers naming or citing you'),
+    'two adjacent KPIs disagree about how many answers this run has');
 });
 
-test('KPI card renamed from «Citations earned» to «Lift opportunities»', () => {
-  const html = renderHtml(baseSummary, [baseSnapshot]);
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  // The old label is misleading because the underlying counter mixed
-  // domain-URL-hits across all cells, so we ban it from the hero KPI strip.
-  assert.ok(!/Citations earned/.test(heroBlock),
-    'old «Citations earned» label still in hero KPI strip');
-  assert.ok(/Lift opportunities/.test(heroBlock),
-    'new «Lift opportunities» label missing from hero KPI strip');
+test('the lift KPI and its advice are withheld from a white-label snapshot', () => {
+  const html = renderHtml(srcSummary, [srcSnapshot], { whiteLabel: true });
+  assert.ok(!/Lift opportunities/.test(html),
+    'the advisory KPI leaked into the statistics-only client deliverable');
+  assert.ok(!/shortest lift/.test(html), 'the advisory sentence leaked into white-label');
+  assert.ok(/class="lr-hero-kpis" data-count="3"/.test(html),
+    'white-label must still render the three statistical KPIs');
 });
 
-test('KPI card subtitle does NOT recommend the wrong robots.txt fix when coverage.src === 0', () => {
-  const html = renderHtml(baseSummary, [baseSnapshot]);
-  const heroBlock = html.split('class="hero"')[1].split('class="promote"')[0];
-  // Old subtitle said «No citations yet — make sure your domain is in
-  // robots.txt allowlist» when coverage.src === 0. That advice is wrong
-  // when every cited cell ALSO named the brand (a success state).
-  assert.ok(!/robots\.txt allowlist/.test(heroBlock),
-    'wrong robots.txt advice still appears in hero KPI card');
-  assert.ok(/success state/.test(heroBlock),
-    'success-state wording missing from KPI card when coverage.src === 0');
+// ─── Competitor alias disclosure ─────────────────────────────────────────
+// The grouping rule is deliberately narrow: it matches on the first six
+// characters of a WHOLE name, so it never fuses two companies that merely
+// share a category word. The disclosure prose has to be honest about both
+// sides of that trade — what the rule grouped, and what it could not reach.
+function aliasFixture(topCompetitors, topDomains) {
+  const snapshot = { ...baseSnapshot, topCompetitors };
+  const summary = { ...baseSummary, topDomains };
+  return renderHtml(summary, [snapshot]);
+}
+
+const ALIAS_COMPETITORS = [
+  // The multi-word name arrives FIRST on purpose: taking names[0] and cutting
+  // it at the first space is the bug this fixture exists to catch.
+  { name: 'Anve Voice Forms', count: 1 },
+  { name: 'AnveVoice', count: 3 },
+  { name: 'RivalCo', count: 2 },
+];
+const ALIAS_DOMAINS = [
+  { host: 'anvevoice.app', count: 13, share: 0.6 },
+  { host: 'anveforms.com', count: 7, share: 0.3 },
+  { host: 'g2.com', count: 1, share: 0.1 },
+];
+
+test('an alias group is named by its shortest name, not by a truncated first arrival', () => {
+  const html = aliasFixture(ALIAS_COMPETITORS, ALIAS_DOMAINS);
+  const section = html.split('id="competitors"')[1].split('id="citations"')[0];
+  assert.ok(/AnveVoice, which the engines name under 2 different names/.test(section),
+    'the group must be named by a name that exists, not by a fragment of one');
+  assert.ok(!/>Anve, which the engines name/.test(section),
+    'a multi-word name was cut at its first word and now names nothing');
 });
 
-test('trend panel copy uses window delta (first vs last run), not last-step delta', () => {
-  // Real-data regression: 33→42→42→58→100→83 is up 50 across the window, but
-  // the last step is −17. The panel says «across N runs», so it must read the
-  // window — it used to print «Score slipping · Down 17 points across 6 runs».
+test('the alias card names the cited host the grouping rule could not reach', () => {
+  const html = aliasFixture(ALIAS_COMPETITORS, ALIAS_DOMAINS);
+  const section = html.split('id="competitors"')[1].split('id="citations"')[0];
+  // The stem rule reaches anvevoice.app and, correctly, not anveforms.com —
+  // but a host absent from the prose entirely reads as a host that was never
+  // cited, which is the opposite of true.
+  assert.ok(/anvevoice\.app \(13 citations\)/.test(section), 'the grouped host is missing');
+  assert.ok(/anveforms\.com \(7 citations\)/.test(section),
+    'a partial-stem host is cited 7 times and never appears in the disclosure');
+  assert.ok(/shares only the leading “anve”/.test(section),
+    'the disclosure must say WHY the host was not grouped');
+  assert.ok(/worth one manual check/.test(section),
+    'the claim must stay a manual check, never an assertion of shared ownership');
+  assert.ok(/deliberately does <b class="lr-strong">not<\/b> merge/.test(section),
+    'the counts must still not be merged on a shared stem');
+});
+
+test('the partial-stem sentence is withheld when the shared word is a category word', () => {
+  // "Voice" also opens a rival OUTSIDE the group, so it is a category word
+  // rather than this operation's brand word. Flagging every voice-* host as
+  // possibly the same company would be worse than saying nothing.
+  const html = aliasFixture(
+    [
+      { name: 'VoiceFlow', count: 3 },
+      { name: 'Voice Flow Pro', count: 1 },
+      { name: 'VoiceB', count: 2 },
+    ],
+    [
+      { host: 'voiceflow.com', count: 9, share: 0.6 },
+      { host: 'voicebot.io', count: 5, share: 0.4 },
+    ],
+  );
+  const section = html.split('id="competitors"')[1].split('id="citations"')[0];
+  assert.ok(/One competitor may be counted as 2/.test(section), 'the alias card should still render');
+  assert.ok(!/shares only the leading/.test(section),
+    'a category word shared with an ungrouped rival must not seed a partial-stem claim');
+  assert.ok(!/voicebot\.io \(5 citations\), shares only/.test(section),
+    'an unrelated host was flagged as possibly the same company');
+});
+
+test('no alias group, no alias card — the check renders because it tripped', () => {
+  const html = aliasFixture(
+    [{ name: 'Competitor A', count: 2 }, { name: 'Formidable', count: 1 }],
+    baseSnapshot.topDomains,
+  );
+  const section = html.split('id="competitors"')[1].split('id="citations"')[0];
+  assert.ok(!/One competitor may be counted as/.test(section),
+    'the counting-artefact card fired on rivals that share nothing');
+});
+
+// ─── Score over time: the two deltas must not be confused ────────────────
+// Real-data regression: 33→42→42→58→100→83 is up 50 across the window, but
+// the last step is −17. The design gives each delta its own slot — a bold
+// run-to-run chip and a quiet since-day-1 caption — so neither can be
+// printed as the other.
+test('since-day-1 caption reports the window delta, not the last step', () => {
   const summary = {
     ...baseSummary,
     score: 83, scorePrev: 100,
@@ -269,15 +415,13 @@ test('trend panel copy uses window delta (first vs last run), not last-step delt
     trendDates: ['2026-04-23', '2026-05-13', '2026-05-18', '2026-05-25', '2026-06-10', '2026-06-11'],
   };
   const html = renderHtml(summary, [baseSnapshot]);
-  assert.ok(/Score is climbing/.test(html),
-    'trend title must reflect the window (up 50), not the last step (−17)');
-  assert.ok(/Up 50 points across 6 runs\./.test(html),
-    'trend subtitle must report first-vs-last window delta');
-  assert.ok(!/Down 17 points across 6 runs/.test(html),
-    'last-step delta must not be mislabeled as the multi-run trend');
+  assert.ok(/Up <b class="lr-verdict-good">50 points<\/b> since day 1/.test(html),
+    'baseline caption must report first-vs-last window delta (33→83 = +50)');
+  assert.ok(!/17 points<\/b> since day 1/.test(html),
+    'last-step delta must not be printed as the since-day-1 caption');
 });
 
-test('trend panel reads slipping when the window is down even if the last step is up', () => {
+test('a down window is reported as down even when the last step is up', () => {
   const summary = {
     ...baseSummary,
     score: 55, scorePrev: 40,
@@ -285,9 +429,21 @@ test('trend panel reads slipping when the window is down even if the last step i
     trendDates: ['2026-05-01', '2026-05-08', '2026-05-15', '2026-05-22', '2026-05-29'],
   };
   const html = renderHtml(summary, [baseSnapshot]);
-  assert.ok(/Score slipping/.test(html), 'window-down trend must title as slipping');
-  assert.ok(/Down 25 points across 5 runs\./.test(html),
-    'subtitle must report the window delta (80→55), not the last step (+15)');
+  assert.ok(/Down <b class="lr-verdict-bad">25 points<\/b> since day 1/.test(html),
+    'baseline caption must report the window delta (80→55 = −25), not the last step (+15)');
+});
+
+test('the index chart is dated and marks partial runs', () => {
+  const summary = {
+    ...baseSummary,
+    trend: [33, 42, 58, 100, 92],
+    trendDates: ['2026-04-23', '2026-05-13', '2026-05-25', '2026-06-10', '2026-08-13'],
+  };
+  const html = renderHtml(summary, [baseSnapshot]);
+  assert.ok(/class="lr-chart"/.test(html), 'index chart missing');
+  assert.ok(!/preserveAspectRatio="none"/.test(html.split('class="lr-chart"')[1] || ''),
+    'chart must not stretch — preserveAspectRatio="none" distorts the labels');
+  assert.ok(/lr-chart-axis/.test(html), 'chart date labels missing');
 });
 
 // ─── review #3: measurement-surface disclaimer in the report header ──────────
