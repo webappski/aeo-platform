@@ -229,8 +229,8 @@ The HTML report has:
 | `02 Visibility` | Per-engine cards · query × engine matrix (Mention / Position / Sentiment lenses) · region breakdown when `--geo` is used · verbatim quotes |
 | `03 Competitors` | Most-named brands · 4-axis radar (presence / sentiment / rank / mentions) vs top-3 competitors |
 | `04 Citations` | Domain share-of-voice (own-domain marker) · category breakdown · top-cited publishers |
-| `05 Actions` | 5 ordered moves (badges: FIX GAP / LOCK IN WIN / COMPETE / DEFEND) with specific competitors to displace and URLs to pitch |
-| `06 Diagnostics` | AI-Bot Crawl Readiness · authority presence (Wikipedia / Reddit / GitHub) · per-engine session cost · region indicator · UTM citations · AI-ad detector |
+| `05 Diagnostics` | AI-Bot Crawl Readiness · authority presence (Wikipedia / Reddit / GitHub) · per-engine session cost · region indicator · UTM citations · AI-ad detector |
+| `06 Actions` | 5 ordered moves (badges: FIX GAP / LOCK IN WIN / COMPETE / DEFEND) with specific competitors to displace and URLs to pitch |
 | Bridge card | Copy-prompt button → 30-mission paste-into-AI plan |
 
 Each surface is grounded in actual run data: specific competitors named by this run, specific URLs cited by AI, specific gaps you can act on this week.
