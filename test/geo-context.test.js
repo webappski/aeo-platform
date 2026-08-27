@@ -131,7 +131,10 @@ test('no langs → English', () => {
 
 test('single lang applies to every region', () => {
   assert.equal(resolveRegionLang(REGIONS.de, ['de']), 'de');
-  assert.equal(resolveRegionLang(REGIONS.at ?? REGIONS.us, ['de']), 'de');
+  // Was `REGIONS.at ?? REGIONS.us` — a fossil from when `at` did not exist,
+  // which silently tested Germany-or-USA. `at` ships since 2026-08-27, so the
+  // assertion is now unconditional and actually about Austria.
+  assert.equal(resolveRegionLang(REGIONS.at, ['de']), 'de');
 });
 
 test('multiple langs → region matched to its native language', () => {
@@ -142,6 +145,57 @@ test('multiple langs → region matched to its native language', () => {
 test('multiple langs, region has no native match → first listed', () => {
   // US is natively 'en'; 'en' not in [de, pl] → first listed (de)
   assert.equal(resolveRegionLang(REGIONS.us, ['de', 'pl']), 'de');
+});
+
+// ── PL + DACH beachhead (2026-08-27) ──────────────────────────────────────
+// The bug this locks: `LANG_MARKET` shipped localised names for pl/at/ch long
+// before REGIONS did, so `--regions pl,at,ch` was rejected outright and the
+// translations were unreachable. Adding them to REGIONS alone is NOT enough —
+// REGION_NATIVE_LANG must grow too, or a MULTI-language run silently asks the
+// Austrian and Swiss cells in whatever language sorts first in `--lang`.
+
+test('pl/at/ch are real regions with their own market instruction', () => {
+  for (const [code, label] of [['pl', 'Poland'], ['at', 'Austria'], ['ch', 'Switzerland']]) {
+    const r = parseGeoFlag(code);
+    assert.equal(r.regions.length, 1, `--regions ${code} must parse`);
+    assert.deepEqual(r.invalid, [], `--regions ${code} must not land in the invalid bucket`);
+    assert.equal(r.regions[0].label, label);
+  }
+});
+
+test('multi-lang run asks AT and CH in German, PL in Polish (not langs[0])', () => {
+  // The discriminating case. With --lang pl,de listed in THAT order, a region
+  // missing from REGION_NATIVE_LANG falls through to langs[0] = 'pl' — i.e.
+  // the Austrian and Swiss cells would be asked in Polish.
+  assert.equal(resolveRegionLang(REGIONS.pl, ['pl', 'de']), 'pl');
+  assert.equal(resolveRegionLang(REGIONS.at, ['pl', 'de']), 'de', 'Austria must be asked in German');
+  assert.equal(resolveRegionLang(REGIONS.ch, ['pl', 'de']), 'de', 'Switzerland must be asked in German');
+});
+
+test('GUARD — every REGIONS code has a REGION_NATIVE_LANG entry', () => {
+  // REGION_NATIVE_LANG is module-private, so this probes it behaviourally: a
+  // region that HAS a native entry resolves to that entry regardless of the
+  // ORDER of the --lang list; a region MISSING from the map resolves to
+  // langs[0] and therefore changes answer when the list is rotated.
+  const all = [...SUPPORTED_LANGS];
+  const rotated = [...all.slice(1), all[0]];
+  for (const code of Object.keys(REGIONS)) {
+    const a = resolveRegionLang(REGIONS[code], all);
+    const b = resolveRegionLang(REGIONS[code], rotated);
+    assert.equal(
+      a, b,
+      `region "${code}" resolves to a different language depending on --lang ORDER ` +
+      `(${a} vs ${b}) — it is missing from REGION_NATIVE_LANG and falls through to langs[0]`,
+    );
+  }
+});
+
+test('localised market names — PL native, CH in each of its three languages', () => {
+  assert.ok(wrapQueryForRegion('najlepsze CRM', REGIONS.pl, 'pl').includes('rynku polskiego'));
+  assert.ok(wrapQueryForRegion('beste CRM', REGIONS.at, 'de').includes('dem österreichischen Markt'));
+  assert.ok(wrapQueryForRegion('beste CRM', REGIONS.ch, 'de').includes('dem Schweizer Markt'));
+  assert.ok(wrapQueryForRegion('meilleur CRM', REGIONS.ch, 'fr').includes('du marché suisse'));
+  assert.ok(wrapQueryForRegion('miglior CRM', REGIONS.ch, 'it').includes('del mercato svizzero'));
 });
 
 console.log('\nlistLangCodes / SUPPORTED_LANGS');

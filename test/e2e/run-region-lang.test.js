@@ -115,3 +115,89 @@ test('byte-identity sibling — same DE region WITHOUT --lang omits the lang fie
     }
   });
 });
+
+/**
+ * ── MULTI-language branch (added 2026-08-27 with the pl/at/ch region axis) ──
+ *
+ * Everything above drives the `langs.length === 1` path, which short-circuits
+ * in `resolveRegionLang` BEFORE `REGION_NATIVE_LANG` is ever consulted. So the
+ * whole per-region native-language map was uncovered at CLI level, and the two
+ * tests above would stay green even if it were empty.
+ *
+ * This is the shape the PL/DACH beachhead actually runs: several markets, more
+ * than one language, each cell expected in the language its market speaks.
+ * `--lang pl,de` in THAT order is the discriminating choice — a region missing
+ * from `REGION_NATIVE_LANG` falls through to `langs[0]` = 'pl', so a broken
+ * build asks the AUSTRIAN and SWISS cells in Polish while still exiting 0 and
+ * still tagging the regions correctly. Nothing but the `lang` field shows it.
+ *
+ * MUTATION-SANITY (proven 2026-08-27, out-of-tree — the repo file was restored
+ * and `git diff` re-checked): deleting `at: 'de', ch: 'de'` from
+ * REGION_NATIVE_LANG makes the AT/CH assertions below fail with
+ * `'pl' !== 'de'`, and the sibling unit guard in test/geo-context.test.js goes
+ * RED too (25 passed / 2 failed).
+ */
+test('multi-lang --regions pl,de,at,ch --lang pl,de asks AT + CH in German, not langs[0]', async () => {
+  await withTmpProject('aeo-e2e-region-multilang-', (dir) => {
+    seedReplayProject(dir, { variant: 'stable' });
+    const r = spawnCli(
+      ['run', '--replay', '--replay-from=2026-05-13', '--regions', 'pl,de,at,ch', '--lang', 'pl,de'],
+      { cwd: dir, env: KEYS, timeout: 120000 },
+    );
+    assertExitCode(r, 0, 'multi-region multi-lang replay run should serve fixtures offline and exit 0');
+
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
+    assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
+
+    // 3 queries × 4 regions — the region axis multiplies cells, the language
+    // axis does NOT (it is a parameter of the region, by design).
+    assert.equal(summary.results.length, 12,
+      `expected 3 queries × 4 regions = 12 cells, got ${summary.results?.length}`);
+
+    // market → the language that market is actually asked in.
+    const EXPECTED = { pl: 'pl', de: 'de', at: 'de', ch: 'de' };
+    const EXPECTED_LABEL = { pl: 'Poland', de: 'Germany', at: 'Austria', ch: 'Switzerland' };
+    const seen = new Set();
+    for (const cell of summary.results) {
+      assert.ok(EXPECTED[cell.region], `unexpected region tag "${cell.region}"`);
+      seen.add(cell.region);
+      assert.equal(cell.regionLabel, EXPECTED_LABEL[cell.region],
+        `region ${cell.region} must carry its own market label`);
+      assert.equal(
+        cell.lang, EXPECTED[cell.region],
+        `region "${cell.region}" was asked in "${cell.lang}" but its market speaks ` +
+        `"${EXPECTED[cell.region]}" — a region missing from REGION_NATIVE_LANG falls ` +
+        `through to the FIRST --lang entry ('pl' here)`,
+      );
+    }
+    assert.deepEqual([...seen].sort(), ['at', 'ch', 'de', 'pl'],
+      'all four requested markets must produce cells');
+  });
+});
+
+/**
+ * R39 / GAP-0 acceptance criterion, made explicit rather than assumed: growing
+ * the REGIONS map must not change a run that never asked for regions. A default
+ * replay carries NEITHER `region` NOR `lang` on any cell — the region axis is
+ * entirely opt-in and leaves no trace when unused.
+ */
+test('default run (no --regions) is untouched by the region axis — no region, no lang', async () => {
+  await withTmpProject('aeo-e2e-region-default-', (dir) => {
+    seedReplayProject(dir, { variant: 'stable' });
+    const r = spawnCli(
+      ['run', '--replay', '--replay-from=2026-05-13'],
+      { cwd: dir, env: KEYS },
+    );
+    assertExitCode(r, 0, 'plain replay run should exit 0');
+
+    const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
+    assert.equal(summary.results.length, 3, 'a no-region run stays at 3 cells (1 per query)');
+    for (const cell of summary.results) {
+      assert.ok(!('region' in cell), 'a no-region run must not tag cells with a region');
+      assert.ok(!('regionLabel' in cell), 'a no-region run must not tag cells with a region label');
+      assert.ok(!('lang' in cell), 'a no-region run must not tag cells with a language');
+    }
+  });
+});

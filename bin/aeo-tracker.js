@@ -4768,7 +4768,7 @@ async function cmdRunManual(argv) {
  */
 async function cmdExport(args = {}) {
   // Lazy-load CSV / JSON serialiser only when this command runs.
-  const { snapshotsToCsv, snapshotsToJson } = await import('../lib/report/csv-export.js');
+  const { snapshotsToCsv, snapshotsToJson, flattenSummary } = await import('../lib/report/csv-export.js');
 
   let activeDomain;
   try {
@@ -4803,7 +4803,13 @@ async function cmdExport(args = {}) {
 
   if (args.output) {
     await writeFile(args.output, output);
-    const rows = output.split('\n').length - 1;
+    // Count rows from the DATA, never from newlines in the serialised text.
+    // The old `output.split('\n').length - 1` counted the CSV header as a data
+    // row (off by one on every CSV export) and, on `--format=json`, counted
+    // the ~19 pretty-printed lines each row object occupies — so a 18-row JSON
+    // export reported "343 rows". `flattenSummary` is the same function both
+    // serialisers use, so this count cannot drift from the file's contents.
+    const rows = snapshots.reduce((n, s) => n + flattenSummary(s).length, 0);
     console.log(`${c.green}${SYM.ok} Exported ${snapshots.length} run${snapshots.length !== 1 ? 's' : ''} (${rows} rows) → ${args.output}${c.reset}`);
   } else {
     process.stdout.write(output);
@@ -5081,12 +5087,12 @@ ${c.bold}Query validation:${c.reset}
   ${c.bold}--strict-validation${c.reset}    Cross-check query validation with 2 LLM providers (unanimous approve OR flag as split).
                          2× validation cost. Use when reliability > latency (e.g. CI pipelines).
   ${c.bold}--regions=us,de,pl${c.reset}     Run each query under multiple regional contexts (multiplies cost by region count).
-                         Valid codes: us, uk, de, fr, es, it, ca, au, in, br, jp, nl. Adds "Visibility by Region" section.
+                         Valid codes: ${listRegionCodes()}. Adds "Visibility by Region" section.
                          (--geo is the original name and still works as an alias.)
   ${c.bold}--lang=de,pl${c.reset}           With --regions: ask each region's query IN the locale language (localised prompt),
                          so the model reaches locale-native sources — the signal a PL/DACH searcher actually sees.
                          Soft geo only: provider APIs expose no per-request geo/IP signal, so this changes the
-                         prompt language, not the request origin. Valid: en, de, pl, fr, es, it, nl, pt, ja.
+                         prompt language, not the request origin. Valid: ${listLangCodes()}.
   ${c.bold}--depth=<mode>${c.reset}         web (default) — single web-search pass per cell.
                          full — adds a training-data pass (no web search) where supported. Cost ~2×.
                          auto — defaults to web; prompts you if last training-data baseline is stale (>14 days).
