@@ -444,7 +444,7 @@ This is the same discipline the tool applies to itself: a number without provena
 
 | Tool | Pricing model | Open source | Raw data stays local | Paste-into-AI 30-mission plan |
 |---|---|---|---|---|
-| **`aeo-platform`** | **Free + your own API spend** | **MIT** | **Yes** | **Yes — no tracked vendor ships this as of May 2026** |
+| **`aeo-platform`** | **Free + your own API spend** | **MIT** | **Yes** | **Yes — no tracked vendor shipped this in our July 2026 review of 23 AEO tools** |
 | Otterly | Paid subscription | No | No | No |
 | Profound | Paid subscription | No | No | No |
 | Peec.ai | Paid subscription | No | No | No |
@@ -465,7 +465,7 @@ This is the same discipline the tool applies to itself: a number without provena
 
 ## Comparison vs open-source AEO trackers
 
-A handful of open-source AEO trackers exist; methodologies overlap. The closest peer is **geo-aeo-tracker (danishashko)** — same goal of tracking brand mentions across AI answer engines via API calls. The structural difference is the **paste-into-AI 30-mission plan generator**: after measuring you across 4 engines, `aeo-platform` exports a JSON brand-context block you paste into any frontier AI chat to receive a 30-action plan keyed to your specific gaps. As of May 2026, no other open-source AEO tracker ships this wedge.
+A handful of open-source AEO trackers exist; methodologies overlap. The closest peer is **geo-aeo-tracker (danishashko)** — same goal of tracking brand mentions across AI answer engines via API calls. The structural difference is the **paste-into-AI 30-mission plan generator**: after measuring you across 4 engines, `aeo-platform` exports a JSON brand-context block you paste into any frontier AI chat to receive a 30-action plan keyed to your specific gaps. In our July 2026 review of 23 tracked AEO tools, no other open-source AEO tracker shipped this wedge.
 
 ## Commands
 
@@ -677,11 +677,11 @@ No. One is enough to start: any of `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHRO
 
 ### What is the 30-mission AEO plan?
 
-A personalised action plan you get by pasting `aeo-platform`'s JSON brand-context block (visibility index, per-engine deltas, top competitors, citation gaps, crawl matrix, authority signals) into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, specific URLs to pitch, weakest-engine fortification, citation-gap closure. As of May 2026, no other tracked AEO tool ships this paste-into-AI plan generator. Detailed flow above in [The 30-mission AEO plan](#the-30-mission-aeo-plan-the-wedge-no-commercial-vendor-ships).
+A personalised action plan you get by pasting `aeo-platform`'s JSON brand-context block (visibility index, per-engine deltas, top competitors, citation gaps, crawl matrix, authority signals) into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, specific URLs to pitch, weakest-engine fortification, citation-gap closure. In our July 2026 review of 23 tracked AEO tools, no other one shipped this paste-into-AI plan generator. Detailed flow above in [The 30-mission AEO plan](#the-30-mission-aeo-plan-the-wedge-no-commercial-vendor-ships).
 
 ### How is this different from Otterly, Profound, Peec, Bluefish?
 
-Otterly, Profound, Peec, Bluefish, AthenaHQ, and Goodie are paid hosted dashboards — monitoring-only. They tell you the problem inside their UI and stop there. `aeo-platform` is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and — as of May 2026 — is the only tracked AEO tool that ships a paste-into-AI 30-mission plan generator. See [Comparison vs hosted AEO platforms](#comparison-vs-hosted-aeo-platforms) for the full table.
+Otterly, Profound, Peec, Bluefish, AthenaHQ, and Goodie are paid hosted dashboards — monitoring-only. They tell you the problem inside their UI and stop there. `aeo-platform` is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and — in our July 2026 review of 23 tracked AEO tools — was the only one shipping a paste-into-AI 30-mission plan generator. See [Comparison vs hosted AEO platforms](#comparison-vs-hosted-aeo-platforms) for the full table.
 
 ### Is `aeo-platform` CI-friendly?
 
@@ -961,8 +961,23 @@ MIT — do whatever you want with it.
   Google AI Overviews, Bing Copilot). Embedded in the README so npmjs.com, GitHub, and
   mirror surfaces all expose the same canonical entity graph.
 
-  When the landing page at webappski.com/aeo-platform deploys, the same @id values
-  resolve there — `sameAs` chain is fully reciprocal.
+  Entity-graph state, verified live 2026-08-27 (curl of the rendered pages, not assumed):
+
+    - The publisher node uses the @id the CANONICAL page publishes for itself —
+      https://webappski.com/#webappski-org — so the two descriptions merge into one
+      organisation instead of forking into two. Its `sameAs` set is copied from that
+      same canonical node rather than invented here; webappski.com is the authority
+      for its own identity links, this README is a mirror of them.
+    - The landing page at webappski.com/en/aeo-platform IS deployed (HTTP 200), and it
+      declares its own SoftwareApplication under a page-scoped @id. This README keeps
+      the repo-scoped @id (github.com/webappski/aeo-platform#software) because the
+      artifact it describes is the published package, and links the two nodes through
+      `sameAs` instead. That is a deliberate two-node-one-chain arrangement, NOT a
+      claim that both @ids are the same string.
+
+  Do not restate "the chain is fully reciprocal" here. Reciprocity is a live property
+  of two independently deployed surfaces; `aeo-platform report` measures it (see
+  lib/report/entity-graph.js) rather than asserting it in a comment.
 -->
 
 ```json
@@ -977,8 +992,9 @@ MIT — do whatever you want with it.
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Answer Engine Optimization, Generative Engine Optimization, Brand Visibility Monitoring",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "1.1.4",
+      "softwareVersion": "1.8.0",
       "datePublished": "2026-06-06",
+      "dateModified": "2026-08-27",
       "license": "https://opensource.org/licenses/MIT",
       "downloadUrl": "https://www.npmjs.com/package/aeo-platform",
       "codeRepository": "https://github.com/webappski/aeo-platform",
@@ -991,7 +1007,7 @@ MIT — do whatever you want with it.
         "Authority signals: Wikipedia, Reddit, GitHub, Wikidata",
         "Unified Visibility Index (UVI) — 4 sub-components with re-norm",
         "Two-model hallucination filter (GPT-5 + Gemini cross-check)",
-        "Region context (--geo) across 12 locales",
+        "Region context (--geo) across 15 locales",
         "Editorial bento HTML report (offline, embedded fonts, zero CDN)",
         "CSV / JSON export for Looker, Sheets, BI",
         "CI-friendly exit codes 0/1/2/3 + --json stdout",
@@ -1001,9 +1017,9 @@ MIT — do whatever you want with it.
       "sameAs": [
         "https://www.npmjs.com/package/aeo-platform",
         "https://github.com/webappski/aeo-platform",
-        "https://webappski.com"
+        "https://webappski.com/en/aeo-platform"
       ],
-      "publisher": { "@id": "https://webappski.com/#org" },
+      "publisher": { "@id": "https://webappski.com/#webappski-org" },
       "exampleOfWork": [
         {
           "@type": "CreativeWork",
@@ -1021,13 +1037,18 @@ MIT — do whatever you want with it.
     },
     {
       "@type": "Organization",
-      "@id": "https://webappski.com/#org",
+      "@id": "https://webappski.com/#webappski-org",
       "name": "Webappski",
       "url": "https://webappski.com",
       "description": "Answer Engine Optimization (AEO / GEO) studio. Maintains aeo-platform — the open-source AEO platform for ChatGPT, Claude, Gemini, and Perplexity.",
       "sameAs": [
+        "https://www.linkedin.com/company/web-appski/",
+        "https://www.youtube.com/channel/UCeanerJjnwmznlRA1Mzf5pA",
         "https://github.com/webappski",
-        "https://www.npmjs.com/~webappski"
+        "https://www.g2.com/sellers/webappski",
+        "https://www.npmjs.com/package/aeo-platform",
+        "https://typelessform.com",
+        "https://typelessity.com"
       ]
     },
     {
@@ -1061,12 +1082,12 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "What is the 30-mission AEO plan?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A personalised AEO action plan you get by pasting aeo-platform's JSON brand-context block into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, URLs to pitch, weakest-engine fortification. The only paste-into-AI plan generator on the AEO-tool market as of May 2026." }
+          "acceptedAnswer": { "@type": "Answer", "text": "A personalised AEO action plan you get by pasting aeo-platform's JSON brand-context block into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, URLs to pitch, weakest-engine fortification. The only paste-into-AI plan generator among the 23 AEO tools we reviewed in July 2026." }
         },
         {
           "@type": "Question",
           "name": "How is aeo-platform different from Otterly, Profound, Peec, Bluefish?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Otterly, Profound, Peec, Bluefish, AthenaHQ, Goodie are paid hosted dashboards — monitoring-only. aeo-platform is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and — as of May 2026 — is the only tracked AEO tool with a paste-into-AI 30-mission plan generator." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Otterly, Profound, Peec, Bluefish, AthenaHQ, Goodie are paid hosted dashboards — monitoring-only. aeo-platform is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and — in our July 2026 review of 23 tracked AEO tools — was the only one with a paste-into-AI 30-mission plan generator." }
         },
         {
           "@type": "Question",
