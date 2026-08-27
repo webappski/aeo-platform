@@ -41,8 +41,8 @@ const PKG = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'));
 /** Pull the Schema.org `@graph` out of the README's fenced json block. There is
  *  exactly one such block; selecting it by CONTENT (`@context` + `@graph`)
  *  rather than by position keeps this stable if fenced json is added elsewhere. */
-function schemaGraph() {
-  const fences = [...README.matchAll(/```json\n([\s\S]*?)\n```/g)].map(m => m[1]);
+function graphFromText(text) {
+  const fences = [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map(m => m[1]);
   const parsed = [];
   for (const body of fences) {
     try { parsed.push(JSON.parse(body)); } catch { /* not every json fence is the entity block */ }
@@ -50,6 +50,10 @@ function schemaGraph() {
   const doc = parsed.find(d => d && d['@context'] === 'https://schema.org' && Array.isArray(d['@graph']));
   assert.ok(doc, 'README must carry exactly one parseable Schema.org @graph block');
   return doc['@graph'];
+}
+
+function schemaGraph() {
+  return graphFromText(README);
 }
 
 function nodeOfType(graph, type) {
@@ -110,4 +114,78 @@ test('the publisher reference resolves to the Organization node in the same grap
     `publisher @id "${app.publisher['@id']}" does not match the Organization node ` +
     `@id "${org['@id']}" — the reference dangles and the two nodes never merge`,
   );
+});
+
+/**
+ * ── The pin must not become a release trap ────────────────────────────────
+ *
+ * The `softwareVersion` pin above plus `.githooks/pre-commit` (full suite, no
+ * bypass) means a plain `npm version minor` would fail: npm bumps package.json
+ * and then makes its own git commit, at which moment README is one version
+ * behind and the hook rejects the release. Confirmed by simulation before the
+ * fix — bumping package.json to 1.9.0 with README at 1.8.0 turns the pin RED,
+ * which is exactly what the founder would hit mid-release.
+ *
+ * `scripts/sync-readme-version.mjs`, wired as the npm `version` lifecycle
+ * script, closes that: npm runs it AFTER the bump and BEFORE the commit, and
+ * commits what it stages. The pin keeps its teeth (a hand-edited README that
+ * disagrees still goes red) while the release path heals itself.
+ *
+ * These tests drive the real script in a temp directory — no repo file is
+ * touched — because a guard that has never been executed is a guess.
+ */
+import { mkdtempSync, rmSync, cpSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+
+const SYNC_SCRIPT = join(REPO_ROOT, 'scripts', 'sync-readme-version.mjs');
+
+/** Stage a minimal package root (package.json + README.md) at `version`. */
+function stageRoot(version) {
+  const dir = mkdtempSync(join(tmpdir(), 'aeo-e2e-readme-sync-'));
+  cpSync(join(REPO_ROOT, 'README.md'), join(dir, 'README.md'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ ...PKG, version }, null, 2));
+  return dir;
+}
+
+test('the npm version lifecycle script heals README so a release cannot be blocked by its own pin', () => {
+  const dir = stageRoot('9.9.9');
+  try {
+    const r = spawnSync(process.execPath, [SYNC_SCRIPT], { cwd: dir, encoding: 'utf-8' });
+    assert.equal(r.status, 0, `sync script must exit 0.\nstdout: ${r.stdout}\nstderr: ${r.stderr}`);
+
+    const readme = readFileSync(join(dir, 'README.md'), 'utf-8');
+    assert.match(readme, /"softwareVersion":\s*"9\.9\.9"/,
+      'the version being released must reach the README schema block');
+    const today = new Date().toISOString().slice(0, 10);
+    assert.ok(
+      readme.includes(`"dateModified": "${today}"`),
+      `dateModified must be refreshed to the release date (${today})`,
+    );
+
+    // The whole point: after the script runs, the pin that would have blocked
+    // the release now passes against the bumped version.
+    const app = nodeOfType(graphFromText(readme), 'SoftwareApplication');
+    assert.equal(app.softwareVersion, '9.9.9', 'the healed README satisfies the softwareVersion pin');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the sync script refuses to guess when the README is not in the shape it knows', () => {
+  const dir = stageRoot('9.9.9');
+  try {
+    // Remove the field entirely — a silent partial edit to a published entity
+    // is the failure mode worth being paranoid about, so this must FAIL, not
+    // quietly do nothing.
+    const stripped = readFileSync(join(dir, 'README.md'), 'utf-8')
+      .replace(/\s*"softwareVersion":\s*"[^"]*",/, '');
+    writeFileSync(join(dir, 'README.md'), stripped);
+
+    const r = spawnSync(process.execPath, [SYNC_SCRIPT], { cwd: dir, encoding: 'utf-8' });
+    assert.notEqual(r.status, 0, 'a README missing the field must fail loudly, not silently pass');
+    assert.match(r.stderr, /softwareVersion/, 'the error must name the field it could not find');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
