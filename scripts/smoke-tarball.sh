@@ -20,8 +20,14 @@ cd "$REPO_ROOT"
 
 PKG_NAME="$(node -p "require('./package.json').name")"
 PKG_VERSION="$(node -p "require('./package.json').version")"
-BIN_NAME="$(node -p "Object.keys(require('./package.json').bin || {})[0] || ''")"
-[ -n "$BIN_NAME" ] || { echo "smoke FAIL: no bin declared in package.json"; exit 1; }
+# EVERY declared alias, not just the first. `bin` maps two names at the
+# package's own choosing — `aeo-platform` (current) and `aeo-tracker` (the
+# legacy name, which every install predating the rename still invokes). This
+# used to read `Object.keys(...)[0]`, so the legacy alias was never exercised
+# and a broken mapping on it would have published clean. Install is the
+# never-fail surface: an alias that does not run is a dead install.
+BIN_NAMES="$(node -p "Object.keys(require('./package.json').bin || {}).join('\n')")"
+[ -n "$BIN_NAMES" ] || { echo "smoke FAIL: no bin declared in package.json"; exit 1; }
 
 SMOKE_DIR="${TMPDIR:-/tmp}/aeo-smoke-$$"
 TARBALL=""
@@ -44,14 +50,24 @@ echo "smoke: installing tarball into clean $SMOKE_DIR ..."
 npm init -y >/dev/null 2>&1
 npm install --silent "./$TARBALL" >/dev/null 2>&1 || { echo "smoke FAIL: npm install of tarball failed"; exit 1; }
 
-BIN_PATH="./node_modules/.bin/$BIN_NAME"
-[ -x "$BIN_PATH" ] || { echo "smoke FAIL: bin '$BIN_NAME' missing/non-executable after install"; exit 1; }
+BIN_COUNT=0
+while IFS= read -r BIN_NAME; do
+  [ -n "$BIN_NAME" ] || continue
+  BIN_COUNT=$((BIN_COUNT + 1))
 
-echo "smoke: $BIN_NAME --version"
-OUT="$("$BIN_PATH" --version 2>&1)" || { echo "smoke FAIL: --version exited non-zero: $OUT"; exit 1; }
-echo "$OUT" | grep -qF "$PKG_VERSION" || { echo "smoke FAIL: --version '$OUT' != package.json $PKG_VERSION"; exit 1; }
+  BIN_PATH="./node_modules/.bin/$BIN_NAME"
+  [ -x "$BIN_PATH" ] || { echo "smoke FAIL: bin '$BIN_NAME' missing/non-executable after install"; exit 1; }
 
-echo "smoke: $BIN_NAME --help"
-"$BIN_PATH" --help >/dev/null 2>&1 || { echo "smoke FAIL: --help exited non-zero"; exit 1; }
+  echo "smoke: $BIN_NAME --version"
+  OUT="$("$BIN_PATH" --version 2>&1)" || { echo "smoke FAIL: $BIN_NAME --version exited non-zero: $OUT"; exit 1; }
+  echo "$OUT" | grep -qF "$PKG_VERSION" || { echo "smoke FAIL: $BIN_NAME --version '$OUT' != package.json $PKG_VERSION"; exit 1; }
 
-echo "smoke OK: $PKG_NAME@$PKG_VERSION installs clean from tarball and bin runs."
+  echo "smoke: $BIN_NAME --help"
+  "$BIN_PATH" --help >/dev/null 2>&1 || { echo "smoke FAIL: $BIN_NAME --help exited non-zero"; exit 1; }
+done <<EOF
+$BIN_NAMES
+EOF
+
+[ "$BIN_COUNT" -gt 0 ] || { echo "smoke FAIL: no bin alias was exercised"; exit 1; }
+
+echo "smoke OK: $PKG_NAME@$PKG_VERSION installs clean from tarball; all $BIN_COUNT bin alias(es) run."
