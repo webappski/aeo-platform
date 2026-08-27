@@ -4,7 +4,7 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ## [Unreleased]
 
-> **Maintainer note (2026-08-27), surfaced rather than silently resolved.** This section has grown across several published releases: npm currently serves **1.8.0**, but the newest version header below is `## [1.1.4] — 2026-06-06`, so everything shipped in 1.2.x–1.8.0 is still sitting in `[Unreleased]`. An agent cannot tell from here which entry belongs to which published version, and promoting the block wholesale would relabel other people's work. Splitting it is a founder call. New entries are appended here in the meantime — deliberately, not by oversight.
+> **Maintainer note (2026-08-27), surfaced rather than silently resolved.** This section has grown across several published releases: npm serves **1.8.0** [verified live 2026-08-27 · `curl -s https://registry.npmjs.org/aeo-platform/latest`], but the newest version header below is `## [1.1.4] — 2026-06-06`, so everything shipped in 1.2.x–1.8.0 is still sitting in `[Unreleased]`. An agent cannot tell from here which entry belongs to which published version, and promoting the block wholesale would relabel other people's work. Splitting it is a founder call. New entries are appended here in the meantime — deliberately, not by oversight.
 
 ### Changed
 
