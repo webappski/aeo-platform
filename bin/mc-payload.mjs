@@ -10,15 +10,12 @@
  * privacy allow-list holds identically: cost/tokens/paths/outreach stay stripped —
  * this is the safe-to-paste client projection, not the raw dump.
  *
- * ⚠️ WIP — KNOWN BUG (tracked: pending-review/2026-07-11/aeo-tracker-mc-payload-fix.md,
- * for Платонович / director-aeo-platform to fix under /morning gates). `snapshots` is
- * passed as `[]` at the buildMcMetadata call below, so for the common config shape
- * (`basketHistory: null` — every current client) `basket.trendCutoff` /
- * `queriesAddedSince` DIVERGE from the real report path (they read the latest run
- * instead of the earliest). Output is therefore NOT yet byte-identical to the report
- * on those two date fields — do not rely on basket dates from this helper until fixed.
- * Fix = scan every dated run folder for snapshots (like the `report` command) + add an
- * E2E test.
+ * The full snapshot history is loaded from the sibling dated run folders, the
+ * same way `aeo-platform report` does — the helper used to pass `[]` here,
+ * which put `basket.trendCutoff` / `queriesAddedSince` on the latest run
+ * instead of the earliest. Since v1.2 of the payload the stakes are higher:
+ * `comparison` is derived FROM that history, so an empty array would emit a
+ * first-run payload for a client on their tenth run.
  *
  * Usage:
  *   node bin/mc-payload.mjs <run-folder | _summary.json path> [lang]
@@ -69,9 +66,57 @@ const trackerVersion = JSON.parse(
   fs.readFileSync(path.join(here, '../package.json'), 'utf8'),
 ).version;
 const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
-// ⚠️ KNOWN BUG (see file header): `[]` must become the full array of dated-run
-// snapshots — else basket.trendCutoff/queriesAddedSince are wrong for basketHistory:null.
-const payload = buildMcMetadata(summary, [], { trackerVersion, lang, config });
+
+/**
+ * Every dated sibling run of this one, oldest first, up to and INCLUDING it.
+ *
+ * Runs newer than the target are dropped for the same reason `report
+ * --for-date` truncates: a payload rebuilt for an April run must not compare
+ * against data that did not exist yet. Sorting is by the snapshot's own `date`
+ * field, not by folder name, so a legacy flat layout and the current
+ * `<domain>/<date>/` layout order identically.
+ */
+function loadSnapshotHistory(targetDir, targetSummary) {
+  const responsesRoot = (() => {
+    let d = path.dirname(targetDir);
+    for (let i = 0; i < 3; i++) {
+      if (path.basename(d) === 'aeo-responses') return d;
+      d = path.dirname(d);
+    }
+    return null;
+  })();
+  if (!responsesRoot) return [targetSummary];
+
+  const found = [];
+  const walk = (dir, depth) => {
+    if (depth > 2) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, depth + 1);
+      else if (entry.name === '_summary.json') {
+        try { found.push(JSON.parse(fs.readFileSync(full, 'utf8'))); }
+        catch { /* an unreadable sibling must not sink the payload */ }
+      }
+    }
+  };
+  walk(responsesRoot, 0);
+
+  const domain = String(targetSummary.domain || '');
+  const cutoff = String(targetSummary.date || '');
+  const history = found
+    // Never blend another brand's runs into this one's trend.
+    .filter((s) => !domain || String(s.domain || '') === domain)
+    .filter((s) => !cutoff || String(s.date || '') <= cutoff)
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+
+  // The target itself must be the last element even if a sibling folder holds
+  // a same-dated copy — the caller asked for THIS file.
+  const withoutTarget = history.filter((s) => String(s.date || '') !== cutoff);
+  return [...withoutTarget, targetSummary];
+}
+
+const snapshots = loadSnapshotHistory(runDir, summary);
+const payload = buildMcMetadata(summary, snapshots, { trackerVersion, lang, config });
 
 const outPath = path.join(runDir, 'mc-payload.json');
 fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
@@ -79,5 +124,7 @@ fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
 const kb = (fs.statSync(outPath).size / 1024).toFixed(1);
 console.log(
   `✅ wrote ${outPath} (${kb} KB) — brand=${payload.identity?.brand} ` +
-  `domain=${payload.identity?.domain} lang=${lang}`,
+  `domain=${payload.identity?.domain} lang=${lang} ` +
+  `runs=${payload.comparison?.runCount ?? 0}` +
+  `${payload.comparison?.pair ? ` (compared with ${payload.comparison.pair.prevDate})` : ' (first run — no comparison)'}`,
 );
