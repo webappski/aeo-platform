@@ -319,6 +319,18 @@ test('the lift KPI and its advice are withheld from a white-label snapshot', () 
     'white-label must still render the three statistical KPIs');
 });
 
+test('the actions section ships by default and its empty-state copy stays client-safe', () => {
+  // Founder ruling 2026-08-29: Actions ships in the default (non-white-label)
+  // client deliverable. Regression guard for both directions of that flip —
+  // the section must render, and an empty action plan must not surface the
+  // operator-facing CLI syntax that used to be safe only because white-label
+  // dropped the whole section before anyone could see the placeholder.
+  const html = renderHtml({ ...baseSummary, actions: [] }, [baseSnapshot]);
+  assert.ok(/id="actions"/.test(html), 'Actions section must render by default');
+  assert.ok(!/lr-internal-flag/.test(html), 'no internal-only banner on the default client deliverable');
+  assert.ok(!/report --html/.test(html), 'empty-state copy must not name an internal CLI flag');
+});
+
 // ─── Competitor alias disclosure ─────────────────────────────────────────
 // The grouping rule is deliberately narrow: it matches on the first six
 // characters of a WHOLE name, so it never fuses two companies that merely

@@ -94,6 +94,21 @@ test('answers join back to perCell on queryId + provider, and never repeat its p
   assert.deepEqual(a.states, ['named', 'named']);
 });
 
+test('counts.never is CELL-level, counts.neverQueries is QUERY-level — they must never be compared directly', () => {
+  // Q3 is blank across BOTH engines, both runs: 2 blank CELLS, 1 blank QUERY.
+  const p = buildComparisonPayload([
+    run('2026-01-01', 10, [
+      cell('Q1', 'openai', 'yes'), cell('Q3', 'openai', 'no'), cell('Q3', 'gemini', 'no'),
+    ]),
+    run('2026-02-01', 10, [
+      cell('Q1', 'openai', 'yes'), cell('Q3', 'openai', 'no'), cell('Q3', 'gemini', 'no'),
+    ]),
+  ]);
+  assert.equal(p.counts.never, 2, 'cell-level: two blank query×engine cells');
+  assert.equal(p.counts.neverQueries, 1, 'query-level: one blank query, regardless of engine count');
+  assert.equal(p.neverHeld.length, 1);
+});
+
 console.log('\nbuildComparisonPayload — the two hard rules');
 
 test('carries no deny-listed result-row internals anywhere', () => {
