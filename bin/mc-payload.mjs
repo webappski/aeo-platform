@@ -17,6 +17,19 @@
  * `comparison` is derived FROM that history, so an empty array would emit a
  * first-run payload for a client on their tenth run.
  *
+ * `lang` resolution (fixed 2026-08-30 — this exact gap was flagged
+ * 2026-07-11 and never closed): explicit CLI arg > `.aeo-tracker.json`'s
+ * own `"lang"` field > bare `'en'`. The bare fallback is a LAST resort, not
+ * a normal path — it silently produces a payload whose `identity.lang` can
+ * disagree with whatever `planV1.lang` a plan-generation pass lands on next,
+ * and the portal's paste-form rejects that mismatch with no partial credit
+ * ("Plan lang 'X' does not match snapshot lang 'Y'"). Set `"lang"` once in
+ * the project's `.aeo-tracker.json` and every future run resolves correctly
+ * without anyone having to remember a CLI flag. A multi-locale basket (own
+ * queries in several languages, like webappski's) still needs exactly one
+ * `"lang"` value — it is not "the basket's language", it is "the language
+ * this project's MC content/plan is authored in".
+ *
  * Usage:
  *   node bin/mc-payload.mjs <run-folder | _summary.json path> [lang]
  * Examples:
@@ -30,7 +43,7 @@ import { fileURLToPath } from 'url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = process.argv[2];
-const lang = process.argv[3] || 'en';
+const langArg = process.argv[3];
 
 if (!arg) {
   console.error('usage: node bin/mc-payload.mjs <run-folder | _summary.json> [lang]');
@@ -60,6 +73,19 @@ for (let i = 0; i < 6 && dir !== path.dirname(dir); i++) {
     break;
   }
   dir = path.dirname(dir);
+}
+
+const lang = langArg || config?.lang || 'en';
+if (!langArg && !config?.lang) {
+  console.error(
+    `⚠️  lang defaulted to 'en' — no [lang] arg given and no "lang" field in ` +
+    `${config ? '.aeo-tracker.json' : '(no .aeo-tracker.json found)'}. ` +
+    `If this project has a real content/audience language, this is very likely ` +
+    `wrong. Fix once: add "lang": "xx" to .aeo-tracker.json — every future run ` +
+    `then resolves correctly with no flag. A wrong lang here is exactly what ` +
+    `makes the MC paste-form reject the plan later with "Plan lang does not ` +
+    `match snapshot lang".`,
+  );
 }
 
 const trackerVersion = JSON.parse(

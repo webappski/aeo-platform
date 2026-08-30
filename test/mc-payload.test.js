@@ -59,6 +59,15 @@ function runCli(runDir, lang = 'en') {
   return r;
 }
 
+/** Run with NO lang arg at all — exercises the config/'en' fallback chain. */
+function runCliNoLangArg(runDir) {
+  const r = spawnSync(process.execPath, [BIN, runDir], { stdio: 'pipe', encoding: 'utf-8' });
+  if (r.status !== 0) {
+    throw new Error(`mc-payload.mjs exited ${r.status}\nstderr: ${r.stderr}\nstdout: ${r.stdout}`);
+  }
+  return r;
+}
+
 console.log('\nbin/mc-payload.mjs — loadSnapshotHistory() via the real CLI');
 
 test('history is built from ALL sibling dated runs, sorted by the summary\'s own .date field — not folder-name order', () => {
@@ -144,6 +153,53 @@ test('the written payload never carries cost/token/outreach fields — privacy i
     for (const denied of ['costUsd', 'inputTokens', 'outputTokens', 'sessionCostUsd', 'outreachTemplates', 'extractionSources']) {
       assert.ok(!raw.includes(denied), `deny-listed field "${denied}" leaked into mc-payload.json`);
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('with no [lang] arg, resolves from .aeo-tracker.json\'s own "lang" field — no warning, no silent \'en\'', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mc-payload-test-'));
+  try {
+    writeFileSync(join(root, '.aeo-tracker.json'), JSON.stringify({ brand: 'Acme', domain: 'acme.com', lang: 'ru' }));
+    const responsesRoot = buildFixtureTree(root, 'acme.com', [['2026-07-20', 80]]);
+    const targetDir = join(responsesRoot, '2026-07-20');
+    const r = runCliNoLangArg(targetDir);
+    const payload = JSON.parse(readFileSync(join(targetDir, 'mc-payload.json'), 'utf-8'));
+
+    assert.equal(payload.identity.lang, 'ru', 'config lang must be used when no CLI arg is given');
+    assert.ok(!r.stderr.includes('defaulted to'), 'no warning expected when config supplies lang');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('with no [lang] arg and no config "lang" field, falls back to \'en\' AND warns loudly on stderr — this is the bug flagged 2026-07-11 and hit repeatedly since, made loud instead of silent', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mc-payload-test-'));
+  try {
+    // No .aeo-tracker.json at all — the config walker finds nothing.
+    const responsesRoot = buildFixtureTree(root, 'acme.com', [['2026-07-20', 80]]);
+    const targetDir = join(responsesRoot, '2026-07-20');
+    const r = runCliNoLangArg(targetDir);
+    const payload = JSON.parse(readFileSync(join(targetDir, 'mc-payload.json'), 'utf-8'));
+
+    assert.equal(payload.identity.lang, 'en', 'bare fallback stays en when nothing else is given');
+    assert.ok(r.stderr.includes('defaulted to'), 'must warn on stderr instead of silently guessing');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an explicit CLI [lang] arg always wins over .aeo-tracker.json\'s "lang" — a deliberate one-off override is never silently ignored', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mc-payload-test-'));
+  try {
+    writeFileSync(join(root, '.aeo-tracker.json'), JSON.stringify({ brand: 'Acme', domain: 'acme.com', lang: 'ru' }));
+    const responsesRoot = buildFixtureTree(root, 'acme.com', [['2026-07-20', 80]]);
+    const targetDir = join(responsesRoot, '2026-07-20');
+    runCli(targetDir, 'pl');
+    const payload = JSON.parse(readFileSync(join(targetDir, 'mc-payload.json'), 'utf-8'));
+
+    assert.equal(payload.identity.lang, 'pl', 'explicit CLI arg overrides config default');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
