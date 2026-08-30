@@ -3914,6 +3914,7 @@ details.uvi-breakdown--hero .uvi-formula-note {
 .lr-chart-point { fill: var(--accent); }
 .lr-chart-first { fill: var(--raised); stroke: var(--text-tertiary); stroke-width: 2; }
 .lr-chart-partial { fill: var(--raised); stroke: var(--orange-600); stroke-width: 2; }
+.lr-chart-partial-span { stroke: var(--orange-600); stroke-width: 1.5; }
 .lr-chart-last { fill: var(--error-color-strong); }
 .lr-chart-axis { font-family: var(--mono); font-size: 12px; fill: var(--text-secondary); }
 .lr-chart-note, .lr-chart-flag { font-family: var(--mono); font-size: 12px; fill: var(--orange-600); }
@@ -3968,7 +3969,10 @@ details.uvi-breakdown--hero .uvi-formula-note {
 .lr-section > .lr-answers:first-of-type { margin-top: 32px; }
 .lr-chart-split { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 48px; align-items: center; }
 .lr-chart-chip { display: flex; align-items: center; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
-.lr-mono-note { margin: 16px 0 0; font-family: var(--mono); font-size: var(--t-meta); line-height: 1.5; color: var(--text-secondary); }
+.lr-mono-table { margin: 10px 0 0; border-collapse: collapse; font-family: var(--mono); font-size: var(--t-meta); line-height: 1.6; color: var(--text-secondary); }
+.lr-mono-table th { padding: 1px 20px 4px 0; text-align: left; font-weight: 600; font-size: 11px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-tertiary); }
+.lr-mono-table td { padding: 1px 20px 1px 0; white-space: nowrap; }
+.lr-mono-table td:first-child { color: var(--text-primary); }
 .lr-alert-figure-wrap { margin-top: 36px; }
 .lr-answers .lr-eyebrow { display: block; }
 @media (max-width: 1080px) {

@@ -458,6 +458,33 @@ test('the index chart is dated and marks partial runs', () => {
   assert.ok(/lr-chart-axis/.test(html), 'chart date labels missing');
 });
 
+test('partial-run coverage collapses into grouped rows, not one near-identical sentence per run', () => {
+  // Real baskets grow over time — early runs measured fewer of the eventual
+  // query set. The old copy restated "Run N measured X of Y answers..." once
+  // per partial run; a report with 8 partial runs printed 8 near-duplicate
+  // sentences in a row. Consecutive runs with the SAME coverage must instead
+  // collapse into a single row of a compact table.
+  const QUERY_POOL = Array.from({ length: 6 }, (_, i) => ({
+    query: `Q${i + 1}`, queryText: `test query ${i + 1}`,
+    provider: i % 2 === 0 ? 'openai' : 'gemini', label: i % 2 === 0 ? 'ChatGPT' : 'Gemini', model: 'test-model',
+    mention: 'yes', position: 1, citationCount: 1,
+    canonicalCitations: ['https://example.com/x'], competitors: [], tag: 'tofu',
+  }));
+  const counts = [1, 1, 1, 1, 2, 2, 3, 4, 6, 6]; // max=6 -> expectedCells; last two are full runs
+  const trendDates = counts.map((_, i) => `2026-04-${String(i + 1).padStart(2, '0')}`);
+  const snaps = counts.map((n, i) => ({ ...baseSnapshot, date: trendDates[i], results: QUERY_POOL.slice(0, n) }));
+  const summary = { ...baseSummary, trend: [10, 10, 10, 10, 20, 20, 30, 40, 60, 90], trendDates };
+  const html = renderHtml(summary, snaps);
+
+  assert.ok(!/Run 1 measured 1 answers of 6\. Its score is marked on the chart and is not comparable\. Run 2 measured/.test(html),
+    'must not restate one sentence per run — the previous wall-of-prose design');
+  assert.match(html, /class="lr-mono-table"/, 'grouped partial-run coverage must render as a compact table');
+  assert.match(html, /<td>Runs 1-4<\/td><td>1 of 6 answers<\/td>/, 'four consecutive same-coverage partial runs must collapse into one row');
+  assert.match(html, /<td>Runs 5-6<\/td><td>2 of 6 answers<\/td>/);
+  assert.match(html, /<td>Run 7<\/td><td>3 of 6 answers<\/td>/, 'a lone partial run still gets its own row, singular label');
+  assert.match(html, /<td>Run 8<\/td><td>4 of 6 answers<\/td>/);
+});
+
 // ─── review #3: measurement-surface disclaimer in the report header ──────────
 test('masthead renders the measurement-surface disclaimer when meta carries it', () => {
   const summary = {

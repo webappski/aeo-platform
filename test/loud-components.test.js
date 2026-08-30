@@ -170,7 +170,61 @@ test('the chart marks a partial run rather than hiding or trusting it', () => {
   });
   assert.match(svg, /lr-chart-partial/, 'partial run not marked on the plot');
   assert.match(svg, />partial</, 'partial run not labelled in words');
-  assert.match(svg, /partial run/, 'partial run missing from the accessible label');
+  assert.match(svg, /aria-label="[^"]*partial run/, 'partial run missing from the accessible label specifically — a per-point <title> also contains this substring, so the assertion must be anchored to aria-label or it stops proving anything about non-visual/print access');
+});
+
+test('the last-value label never sits in the fixed-y date-axis row — the "1"/"08-27" collision bug', () => {
+  // A near-zero score parks the last point right on the baseline. The old
+  // label was drawn at lastY + 26, which lands almost exactly on the axis
+  // row's fixed y=224 whenever the score is low — garbling the two together.
+  const svg = indexChart({
+    values: [0, 0, 1], dates: ['2026-01-01', '2026-02-01', '2026-08-27'],
+    partial: [false, false, false], labelEvery: 1,
+  });
+  const labelMatch = svg.match(/<text class="lr-chart-last-label"[^>]*y="([\d.]+)"/);
+  assert.ok(labelMatch, 'last-value label missing');
+  assert.ok(Number(labelMatch[1]) < 210, `last-value label at y=${labelMatch[1]} sits in the fixed-y (224) date-axis row`);
+});
+
+test('a repeated "partial" flag over every point is gone — one callout per contiguous partial stretch', () => {
+  const svg = indexChart({
+    values: [10, 10, 10, 10, 50, 90],
+    dates: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01'],
+    partial: [true, true, true, true, false, false], labelEvery: 1,
+  });
+  const flagCount = (svg.match(/class="lr-chart-flag"/g) || []).length;
+  assert.equal(flagCount, 1, 'four consecutive partial points must draw one shared callout, not four');
+  assert.match(svg, /<circle class="lr-chart-partial"[^>]*><title>[^<]*partial run<\/title><\/circle>/,
+    'each partial point must still keep its own marker + hover detail even without a visible flag');
+});
+
+test('a partial LAST run scoring near 100 does not collide with the top-of-chart "partial" callout', () => {
+  // Boundary case caught in review: the last-value label sits ABOVE its
+  // point by default, which is exactly where the partial callout lives —
+  // openSideY() must flip it below once a high score pushes the point
+  // into the callout's zone, whether or not that specific point is the
+  // partial one.
+  const svg = indexChart({
+    values: [50, 97], dates: ['2026-01-01', '2026-02-01'],
+    partial: [false, true], labelEvery: 1,
+  });
+  const flagY = Number(svg.match(/class="lr-chart-flag" x="[\d.]+" y="([\d.]+)"/)?.[1]);
+  const labelY = Number(svg.match(/class="lr-chart-last-label"[^>]*y="([\d.]+)"/)?.[1]);
+  assert.ok(Number.isFinite(flagY) && Number.isFinite(labelY), 'both the flag and the last-value label must render');
+  assert.ok(Math.abs(flagY - labelY) >= 15,
+    `partial flag (y=${flagY}) and last-value label (y=${labelY}) are too close — the same collision class, one boundary over`);
+});
+
+test('a partial FIRST run scoring near 100 does not collide with the top-of-chart "partial" callout', () => {
+  const svg = indexChart({
+    values: [98, 50], dates: ['2026-01-01', '2026-02-01'],
+    partial: [true, false], labelEvery: 1,
+  });
+  const flagY = Number(svg.match(/class="lr-chart-flag" x="[\d.]+" y="([\d.]+)"/)?.[1]);
+  const noteY = Number(svg.match(/class="lr-chart-note"[^>]*y="([\d.]+)"/)?.[1]);
+  assert.ok(Number.isFinite(flagY) && Number.isFinite(noteY), 'both the flag and the day-1 note must render');
+  assert.ok(Math.abs(flagY - noteY) >= 15,
+    `partial flag (y=${flagY}) and day-1 note (y=${noteY}) are too close`);
 });
 
 test('a two-point series still plots; a one-point series does not', () => {
