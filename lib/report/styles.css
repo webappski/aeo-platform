@@ -3770,9 +3770,21 @@ details.uvi-breakdown--hero .uvi-formula-note {
 .fold-sum {
   display: flex; align-items: baseline; gap: 10px; cursor: pointer;
   padding: 16px 0 0; font-size: var(--t-body); font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-primary); flex-wrap: wrap;
 }
 .fold-sum:hover { color: var(--accent); }
+/* The category marker. Leads the row, identical on every fold, so the proof
+   layer reads as one kind of thing at a glance. Deliberately NOT a filled
+   band: this is the least important control on the page and must not compete
+   with the matrix toggle or the copy button. */
+.fold-tag {
+  flex-shrink: 0; align-self: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--orange-600);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px; padding: 3px 7px; line-height: 1;
+}
 .fold-caret {
   width: 0; height: 0; flex-shrink: 0; align-self: center;
   border-left: 6px solid var(--accent);

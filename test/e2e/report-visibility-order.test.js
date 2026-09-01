@@ -168,6 +168,22 @@ test('the fold summary carries the count, and says so in one place only', () => 
     'the old always-visible hint is replaced by the fold summary; two prompts for one control is one too many');
 });
 
+test('both folds are marked as the proof layer, and only those two are', () => {
+  // The same word in the same position on both is what makes them read as one
+  // kind of thing — the layer a reader opens to see WHY, not the report's
+  // spine. A third block wearing it would dilute that to decoration.
+  const html = render();
+  const tags = html.match(/class="fold-tag">([^<]+)</g) || [];
+  assert.equal(tags.length, 2, 'exactly two blocks carry the marker: the verbatim answers and the record');
+  assert.ok(tags.every(t => t.includes('Evidence')), 'both markers must read the same');
+  assert.doesNotMatch(html, /class="fold-tag">\s*Advanced/i,
+    'a badge telling a paying reader a section is above their level tells them not to read what they bought');
+  // The purpose line, not the marker, is what a reader actually decides on.
+  assert.match(html, /class="fold-meta">read exactly how an engine worded its answer</);
+  assert.match(html, /class="fold-meta">trace why one question keeps failing</);
+  assert.match(html, /\.fold-tag\s*\{/, 'the marker rule must ship in the embedded stylesheet');
+});
+
 test('the section still renders when only the record has data', () => {
   // `cells` come from this run's positionMatrix, the record from the answer
   // history across snapshots — a partial run can leave one empty and the

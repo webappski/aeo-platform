@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 
-const { discoverModels, discoverClassifyModel, FALLBACK } = await import('../lib/providers/discover.js');
+const { discoverModels, discoverClassifyModel, resolveClassifyModel, FALLBACK } = await import('../lib/providers/discover.js');
 const { DEFAULT_CONFIG } = await import('../lib/config.js');
 
 let passed = 0, failed = 0;
@@ -389,6 +389,78 @@ await test('unknown provider returns {models:null, authError:false}', async () =
   const { models, authError } = await discoverModels('fake-provider', 'k');
   assert.equal(models, null);
   assert.equal(authError, false);
+});
+
+// ─── resolveClassifyModel — the report path's classify tier ─────────────────
+//
+// cmdRun rediscovers both tiers every run; the report path read the config pin
+// verbatim, so a model retired AFTER a project's config was written failed on
+// every report from then on — silently, since the classification is only
+// persisted on success. Google retired the whole gemini-2.5 generation on
+// 2026-08-13 while still listing it in /v1beta/models, and seven local configs
+// (four of them clients) still pinned gemini-2.5-flash there.
+//
+// Tested at this level ON PURPOSE, not end-to-end: exercising the real report
+// path means a working classify model, which means a real billed API call.
+// `discoverFn` is injected so nothing here reaches the network.
+console.log('\nresolveClassifyModel — report path');
+
+const CFG_STALE = { model: 'gemini-3.5-flash', classifyModel: 'gemini-2.5-flash', env: 'GEMINI_TEST_KEY' };
+const ENV_WITH_KEY = { GEMINI_TEST_KEY: 'k-test' };
+
+await test('live discovery overrides a stale model pinned in the config', async () => {
+  const model = await resolveClassifyModel('gemini', CFG_STALE, {
+    env: ENV_WITH_KEY,
+    discoverFn: async () => ({ models: ['gemini-3.1-flash-lite'], authError: false }),
+  });
+  assert.equal(model, 'gemini-3.1-flash-lite',
+    'a config pin that names a retired model must lose to what the catalogue actually serves');
+});
+
+await test('discovery returning nothing falls back to the config pin, not to undefined', async () => {
+  const model = await resolveClassifyModel('gemini', CFG_STALE, {
+    env: ENV_WITH_KEY,
+    discoverFn: async () => ({ models: null, authError: false }),
+  });
+  assert.equal(model, 'gemini-2.5-flash',
+    'an offline report must still classify with whatever the config names — same behaviour as before');
+});
+
+await test('a throwing discovery never takes the report down with it', async () => {
+  const model = await resolveClassifyModel('gemini', CFG_STALE, {
+    env: ENV_WITH_KEY,
+    discoverFn: async () => { throw new Error('network down'); },
+  });
+  assert.equal(model, 'gemini-2.5-flash');
+});
+
+await test('no API key means no discovery call at all', async () => {
+  let called = false;
+  const model = await resolveClassifyModel('gemini', CFG_STALE, {
+    env: {},
+    discoverFn: async () => { called = true; return { models: ['x'], authError: false }; },
+  });
+  assert.equal(called, false, 'a keyless project must not fire a discovery request');
+  assert.equal(model, 'gemini-2.5-flash');
+});
+
+await test('a config with no classify tier at all lands on FALLBACK, never undefined', async () => {
+  const model = await resolveClassifyModel('gemini', { env: 'GEMINI_TEST_KEY' }, {
+    env: {},
+    discoverFn: async () => ({ models: null, authError: false }),
+  });
+  assert.equal(model, FALLBACK.gemini.classify,
+    'passing undefined as the model would send the request with no model and 400');
+});
+
+await test('no shipped default names a retired gemini-2.5 model', async () => {
+  // The generation is gone for new API access but is still LISTED by
+  // /v1beta/models, so discovery cannot self-detect it — the only guard is
+  // that we never ship it as a default again.
+  for (const p of ['openai', 'anthropic', 'gemini', 'perplexity']) {
+    assert.doesNotMatch(String(FALLBACK[p].classify), /^gemini-2\.5\b/);
+    assert.doesNotMatch(String(FALLBACK[p].main), /^gemini-2\.5\b/);
+  }
 });
 
 restore();

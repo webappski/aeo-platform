@@ -23,7 +23,7 @@ import { renderMarkdown, parseRawResponse } from '../lib/report/markdown.js';
 import { renderHtml } from '../lib/report/html.js';
 import { buildMcMetadata } from '../lib/report/mc-metadata.js';
 import { classifyCitations } from '../lib/report/classify-citations.js';
-import { discoverModels, discoverClassifyModel, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
+import { discoverModels, discoverClassifyModel, resolveClassifyModel, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
 import { MAIN_OPTIONS_BY_PROVIDER, CLASSIFY_OPTIONS_BY_PROVIDER, detectThinkingActive } from '../lib/providers/main-options.js';
 import { extractUsage, calcCost, estimateWeeklyCost } from '../lib/providers/pricing.js';
 import { formatTpmHint, estimateRunDuration } from '../lib/util/cost-estimate.js';
@@ -3975,7 +3975,13 @@ async function cmdReport(args = {}) {
                   // Citation classification is a classify task, not generation —
                   // was silently using the flagship model (same bug class as
                   // outreach drafting a few lines below already avoids).
-                  model: providerCfg.classifyModel || providerCfg.model,
+                  //
+                  // Resolved live rather than read straight off the config:
+                  // cmdRun rediscovers this tier every run, this path did not,
+                  // and a config pinning a model retired since it was written
+                  // failed here on every report — silently, because the result
+                  // is only cached on success. See resolveClassifyModel.
+                  model: await resolveClassifyModel(providerKey, providerCfg),
                 });
                 latest.citationClassification = classification;
                 await persistSnapshot(latest);
