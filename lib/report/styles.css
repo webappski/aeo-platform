@@ -3395,12 +3395,6 @@ details.uvi-breakdown--hero .uvi-formula-note {
    headed by the QUERY, with the engine as marginalia and a tone-coded
    verdict badge pushed to the right edge. `excerpt` is ours: it marks a
    truncated answer, which the portal has no equivalent for. */
-.reveals-hint {
-  margin: 4px 0 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink-3);
-}
 .reveal {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3762,6 +3756,55 @@ details.uvi-breakdown--hero .uvi-formula-note {
 .lr-share-track .lr-bar { flex: 1; }
 .lr-share-pct { font-family: var(--mono); font-size: 15px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lr-share-note { font-size: var(--t-body); color: var(--text-secondary); }
+
+/* ─── Fold — a collapsed disclosure around a long block ─────
+   Shut on screen so a section's depth layer does not unroll into a wall of
+   type. The block's own heading and sub stay OUTSIDE the fold, so the reader
+   still learns what is in there without opening it; only the rows wait for a
+   click. Opened for print by the page's inline handler — see the `.reveal,
+   .fold` selector there before touching anything here. */
+.fold { margin-top: 20px; border-top: 1px solid var(--line); }
+.fold > summary { list-style: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::marker { content: ""; }
+.fold-sum {
+  display: flex; align-items: baseline; gap: 10px; cursor: pointer;
+  padding: 16px 0 0; font-size: var(--t-body); font-weight: 600;
+  color: var(--text-primary);
+}
+.fold-sum:hover { color: var(--accent); }
+.fold-caret {
+  width: 0; height: 0; flex-shrink: 0; align-self: center;
+  border-left: 6px solid var(--accent);
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  transition: transform 0.15s ease;
+}
+.fold[open] .fold-caret { transform: rotate(90deg); }
+.fold-hide { display: none; }
+.fold[open] .fold-show { display: none; }
+.fold[open] .fold-hide { display: inline; }
+.fold-meta { font-weight: 400; font-size: var(--t-meta); color: var(--text-secondary); }
+.fold-body { padding-top: 4px; }
+/* Two rules stacked ~150px apart read as a stutter; the sub-section header
+   already draws the boundary, so the fold under it does not. */
+.lr-subsec + .fold { border-top: 0; margin-top: 10px; }
+@media print {
+  /* "Show all 27 answers" is a dead instruction on paper — but the rule that
+     separates the block from its heading is not, so only the label goes. */
+  .fold-sum { display: none; }
+  .fold-body { padding-top: 0; }
+}
+
+/* ─── Sub-section header ────────────────────────────────────
+   A named chapter INSIDE a section — the boundary between the blocks a reader
+   scans and the record that backs them up. Deliberately NOT a card: a card
+   dropped into a section that already holds cards reads as one more peer
+   block, and this is a heading FOR everything below it. The rule + space is
+   the whole signal. */
+.lr-subsec { margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--line); break-inside: avoid; break-after: avoid; }
+.lr-subsec .lr-h3 { margin: 6px 0 0; }
+.lr-subsec .lr-sec-intro { margin-top: 14px; }
 
 /* ─── Answer rows ───────────────────────────────────────── */
 .lr-answers { padding: 0; overflow: hidden; margin-top: 24px; }
