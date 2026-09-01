@@ -255,6 +255,20 @@ test('research-dataset: competitor spellings are merged, and the merge is shown'
     assert.ok(separate, '"Example Agency" was not swallowed into "Example"');
     assert.equal(separate.mentions, 2);
 
+    // Equal-count rows are flagged as ties: the sort order between them is
+    // alphabetical, and publishing it as a ranking is how a public table gets
+    // a fact wrong about a company that is reading it.
+    const tied = names.filter(c => c.tiedWith && c.tiedWith.length > 0);
+    assert.ok(tied.length >= 2, 'equal-mention entities are marked as tied');
+    for (const c of tied) {
+      for (const other of c.tiedWith) {
+        assert.equal(names.find(x => x.entity === other).mentions, c.mentions,
+          'a tie marker must point at a row with the identical count');
+      }
+    }
+    const alfa = names.find(c => c.entity === 'Компания Альфа');
+    assert.ok(alfa && alfa.tiedWith.includes('Компания Бета'), 'two distinct 1-mention entities are marked tied, not ranked');
+
     // …and the pair we chose not to merge is published for a human to rule on.
     // (The display name of the merged entity is whichever spelling the engines
     // used most; here all five tie, so it is the longest — hence matching on

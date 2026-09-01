@@ -716,7 +716,8 @@ export function aggregate(observations, ctx, opts = {}) {
     hostsCitedByEveryComparedEngine: sharedByAll.length,
     hostsCitedByExactlyOneEngine: uniqueToOne,
     shareCitedByExactlyOneEngine: hostEngineCount.size ? uniqueToOne / hostEngineCount.size : 0,
-    sharedHostsSample: sharedByAll.slice(0, 15).sort(),
+    sharedHostsSample: sharedByAll.slice(0, 40).sort(),
+    sharedHostsSampleTruncated: sharedByAll.length > 40,
     pairOverlap: pairOverlap.sort((a, b) => b.jaccard - a.jaccard),
   };
 
@@ -735,6 +736,15 @@ export function aggregate(observations, ctx, opts = {}) {
     distinctQueries: c.distinctQueries,
     spellingsMerged: [...c.spellings].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, count: n })),
   }));
+  // Rows with equal mention counts are ordered lexicographically by the sort,
+  // which is deterministic but NOT a ranking. Flag them, so nobody publishes
+  // "X beat Y" off an alphabetical accident — the top of the Polish table is a
+  // real tie, and the tied parties are the readers most likely to check.
+  for (const row of competitorRows) {
+    row.tiedWith = competitorRows
+      .filter(o => o !== row && o.mentions === row.mentions)
+      .map(o => o.entity);
+  }
 
   return {
     observations: observations.length,
@@ -1009,7 +1019,8 @@ function renderSlice(name, s, lines) {
   for (const c of s.topCompetitors.slice(0, 12)) {
     const merged = c.spellingsMerged.length > 1
       ? `  ← merged ${c.spellingsMerged.map(x => `"${x.name}" ${x.count}`).join(' + ')}` : '';
-    lines.push(`     ${String(c.mentions).padStart(4)}× ${c.entity.padEnd(26)} ${String(c.distinctQueries).padStart(3)}q${merged}`);
+    const tie = c.tiedWith && c.tiedWith.length ? `  ⇄ TIED with ${c.tiedWith.join(', ')} — the order above is alphabetical, not a ranking` : '';
+    lines.push(`     ${String(c.mentions).padStart(4)}× ${c.entity.padEnd(26)} ${String(c.distinctQueries).padStart(3)}q${tie}${merged}`);
   }
   lines.push('   per engine (top 3 domains / top 3 competitors):');
   for (const p of s.perEngine) {
