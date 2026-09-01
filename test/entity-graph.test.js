@@ -4,6 +4,7 @@ import {
   categorizePlatform,
   verifyEdge,
   checkEntityGraph,
+  describeEdgeStatus,
 } from '../lib/report/entity-graph.js';
 
 let passed = 0;
@@ -206,6 +207,38 @@ await test('opts.homepageHtml bypasses home fetch', async () => {
   assert.equal(r.sameAsCount, 1);
   // Should be exactly 1 call (the github fetch), home was bypassed
   assert.equal(calls, 1);
+});
+
+console.log('\ndescribeEdgeStatus — every verifyEdge status gets its own worded label');
+
+await test('one-way and broken-link are distinct labels, not the "Not verified" catch-all', () => {
+  // Regression for the report-loud call site, which used to compare
+  // e.status against the camelCase summary keys ('oneWay'/'brokenLink')
+  // instead of these kebab-case status strings, so both silently fell
+  // through to the default label and 'one-way' also got the wrong tone.
+  const oneWay = describeEdgeStatus('one-way');
+  assert.equal(oneWay.label, 'One-way');
+  assert.notEqual(oneWay.label, 'Not verified');
+
+  const brokenLink = describeEdgeStatus('broken-link');
+  assert.equal(brokenLink.label, 'Broken link');
+  assert.equal(brokenLink.tone, 'bad');
+});
+
+await test('every canonical verifyEdge status has a worded label and a real tone', () => {
+  for (const status of ['reciprocates', 'verified-host', 'one-way', 'unreachable', 'broken-link']) {
+    const d = describeEdgeStatus(status);
+    assert.ok(d.label && d.label.length > 0, `${status} has no label`);
+    assert.ok(['good', 'bad', 'warn'].includes(d.tone), `${status} has an unrecognised tone: ${d.tone}`);
+  }
+});
+
+await test('verified-host counts as positive in reciprocityRate, so it reads as a good tone, not a warning', () => {
+  assert.equal(describeEdgeStatus('verified-host').tone, 'good');
+});
+
+await test('unknown/future status falls back to "Not verified" rather than throwing', () => {
+  assert.deepEqual(describeEdgeStatus('some-future-status'), { label: 'Not verified', tone: 'warn' });
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

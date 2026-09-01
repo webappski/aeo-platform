@@ -514,5 +514,69 @@ test('masthead omits disclaimer gracefully for legacy summaries without the fiel
   assert.ok(/<dt>Run<\/dt>/.test(mastBlock), 'masthead date row broke');
 });
 
+// ─── Identity-links (sameAs) alert card — the "Fixable in one line" card ──
+// Regression coverage for the actual renderHtml call site, not just the
+// describeEdgeStatus() pure function it delegates to (entity-graph.test.js
+// covers that in isolation). A wiring bug here — e.g. a typo'd property name
+// on the {label, tone} object, or 'verified-host' silently counted as
+// "broken" alongside genuinely negative edges — would previously ship with a
+// fully green suite, because nothing exercised this card end to end.
+const entityGraphSnapshot = {
+  ...baseSnapshot,
+  entityGraph: {
+    sameAsCount: 4,
+    edges: [
+      { url: 'https://github.com/acme', platform: 'github', host: 'github.com', status: 'reciprocates', httpStatus: 200, error: null },
+      { url: 'https://www.linkedin.com/company/acme/', platform: 'linkedin', host: 'linkedin.com', status: 'verified-host', httpStatus: null, error: null },
+      { url: 'https://www.youtube.com/channel/acme', platform: 'youtube', host: 'youtube.com', status: 'one-way', httpStatus: 200, error: null },
+      { url: 'https://www.g2.com/sellers/acme', platform: 'g2', host: 'g2.com', status: 'unreachable', httpStatus: 403, error: 'HTTP 403' },
+    ],
+    summary: { reciprocates: 1, oneWay: 1, unreachable: 1, verifiedHost: 1, brokenLink: 0, reciprocityRate: 50 },
+  },
+};
+
+test('identity-links card excludes verified-host from the "does not resolve" count', () => {
+  const html = renderHtml(baseSummary, [entityGraphSnapshot]);
+  const idx = html.indexOf('Fixable in one line');
+  assert.ok(idx !== -1, 'identity-links alert card did not render');
+  const card = html.slice(idx, idx + 2000);
+  // 2 genuinely broken edges (one-way + unreachable), NOT 3 — verified-host
+  // is a positive signal (same treatment as reciprocates in reciprocityRate)
+  // and must not be counted as "does not resolve".
+  assert.ok(/2 of your 4 identity links do not resolve/.test(card),
+    `headline miscounted verified-host as broken: ${card.slice(0, 200)}`);
+});
+
+test('identity-links card never leaks the raw "verified-host" status word into the body sentence', () => {
+  const html = renderHtml(baseSummary, [entityGraphSnapshot]);
+  const idx = html.indexOf('Fixable in one line');
+  const card = html.slice(idx, idx + 2000);
+  const bodyEnd = card.indexOf('lr-alert-code');
+  const body = card.slice(0, bodyEnd);
+  assert.ok(!/verified-host/.test(body), 'raw "verified-host" status leaked into the client-facing sentence');
+});
+
+test('identity-links "fix this" code sample never targets a verified-host edge', () => {
+  const html = renderHtml(baseSummary, [entityGraphSnapshot]);
+  const idx = html.indexOf('Fixable in one line');
+  const card = html.slice(idx, idx + 2000);
+  // The only verified-host edge is LinkedIn — a working, auth-walled page.
+  // The code sample must point at a genuinely broken edge instead.
+  assert.ok(!/lr-alert-code">"sameAs": \["https:\/\/www\.linkedin\.com/.test(card),
+    'code sample told the client to "fix" a verified, working LinkedIn page');
+  assert.ok(/lr-alert-code">"sameAs": \["https:\/\/www\.youtube\.com/.test(card),
+    'code sample should target the first genuinely broken edge (YouTube, one-way)');
+});
+
+test('identity-links tiles render every status with a distinct label and correct tone', () => {
+  const html = renderHtml(baseSummary, [entityGraphSnapshot]);
+  const idx = html.indexOf('Fixable in one line');
+  const card = html.slice(idx, idx + 2000);
+  assert.match(card, /<span class="lr-pill" data-tone="good">Reciprocates<\/span>/, 'Reciprocates tile mislabeled or mistinted');
+  assert.match(card, /<span class="lr-pill" data-tone="good">Verified host<\/span>/, 'Verified host tile must be tone=good, not the "Not verified" catch-all');
+  assert.match(card, /<span class="lr-pill" data-tone="warn">One-way<\/span>/, 'One-way tile mislabeled or mistinted');
+  assert.match(card, /<span class="lr-pill" data-tone="bad">Unreachable<\/span>/, 'Unreachable tile mislabeled or mistinted');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
