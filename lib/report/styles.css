@@ -68,6 +68,12 @@
   --accent-soft:  #FBD5AE;
   --accent-tint:  rgba(247,115,0,0.12);
   --accent-ink:   #B85000;
+  /* The portal's own --accent-soft. It is a WASH (8% orange on white), far
+     lighter than this file's --accent-soft (#FBD5AE, a solid peach), so it
+     cannot reuse that name. Carried verbatim from webappka's
+     variables.scss:38 — the three blocks below share their visual language
+     with the portal's report-v2 card and must resolve to the same pixels. */
+  --accent-wash:  rgba(247,115,0,0.08);
 
   /* Marketing blue — secondary accent. Carries "internal build only",
      links, and rival series in charts. */
@@ -155,6 +161,10 @@
      code and swatches, sm (8px) for callouts and inset blocks, md (12px)
      for cards, lg (16px) for the hero. Pills are 999px inline. */
   --r-xs: 4px;
+  /* Portal's --shadow-card-sm (webappka variables.scss:396) — used by the
+     matrix toggle's pressed state so the control reads identically on both
+     surfaces. */
+  --shadow-card-sm: 0 2px 8px rgba(0,0,0,0.05);
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
@@ -1279,616 +1289,447 @@ body::before {
   white-space: nowrap;
 }
 
-/* ─── Engine cards (lifted, refined) ───────────────────── */
-.eng-row {
+/* ─── Engine cards ─────────────────────────────────────────
+   Visual language shared verbatim with the portal's report-v2 card
+   (webappka ai-visibility-report.component.scss:659-722): a flat bordered
+   tile identified by a 3px colour bar along its top edge, NOT a raised
+   card with a shadow. The bar is the engine's own colour and is the only
+   chrome the tile needs — a shadow on top of it made four tiles read as
+   four competing cards instead of one row. */
+.eng-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
 }
-/* Engine card — an inset inside a bento cell, so it follows .lr-inset: a
-   --paper well on a --raised parent. Before .cell.quiet stopped being page
-   colour this was --paper on --paper, i.e. a border with no box behind it. */
 .eng-card {
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--depth-2);
-  padding: 20px 22px;
-  background: var(--paper);
-  display: flex; flex-direction: column;
-  gap: 10px;
-  position: relative;
-  overflow: hidden;
-}
-.eng-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--c);
+  border-radius: 10px;
+  padding: 16px;
+  border-top: 3px solid var(--c, var(--accent));
 }
 .eng-card-head {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: baseline; justify-content: space-between;
   gap: 8px;
+  margin-bottom: 8px;
 }
 .eng-name {
-  font-family: var(--display);
+  font-size: 14.5px;
   font-weight: 600;
-  font-size: 17px;
-  letter-spacing: -0.015em;
   color: var(--ink);
 }
 .eng-model {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--ink-4);
-  letter-spacing: 0;
 }
 .eng-pct {
-  font-family: var(--display);
+  font-size: 30px;
   font-weight: 600;
-  font-size: 42px;
+  letter-spacing: -1px;
+  color: var(--ink);
   line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--c);
   font-variant-numeric: tabular-nums;
 }
 .eng-pct sup {
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-4);
   margin-left: 1px;
-  vertical-align: super;
-  font-weight: 350;
 }
 .eng-bar {
-  height: 4px;
-  background: color-mix(in srgb, var(--c) 12%, var(--paper-2));
-  border-radius: 99px;
-  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  margin: 12px 0 10px;
   overflow: hidden;
 }
-.eng-bar::after {
-  content: "";
-  position: absolute; inset: 0;
+.eng-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c, var(--accent));
   width: var(--w, 0%);
-  background: var(--c);
-  border-radius: 99px;
 }
 .eng-meta {
   display: flex; justify-content: space-between;
-  font-family: var(--mono);
-  font-size: var(--t-meta);
-  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-4);
 }
 
-/* ─── Matrix (Query × engine heatmap, v2 editorial) ─────────
-   Goal: every cell carries its own visual encoding. No more «white
-   table with one coloured column». Status is signalled by:
-   (1) background tone per data-status (named/cited/competitor/empty/error)
-   (2) explicit mono micro-label ("named" / "cited" / "no mention" / "error")
-   (3) marker glyph (▮ / ◐ / ↳ / ○ / ✕) as a sticker on the left
-   (4) competitor name (when present) as a chip with "vs" prefix
-   Legend pinned under the grid — reader doesn't have to guess. */
+/* ─── Matrix (Query × engine) ───────────────────────────────
+   Visual language shared verbatim with the portal's report-v2 matrix
+   (webappka ai-visibility-report.component.scss:724-999). Cells are flat
+   46px tiles inside one rounded bordered frame; status is carried by fill
+   + a single glyph, never by a repeated word. Class names match the portal
+   (named/cited/competitor/empty/absent/err) so one vocabulary describes
+   both surfaces.
 
-/* Toggle — editorial tab-underline, replacing the 2023 black pill. */
+   What is OURS and has no portal equivalent, kept deliberately:
+     - .mx-v view-spans. This is a static file with no framework to re-render
+       on toggle, so all three views ship in the DOM and CSS reveals one.
+     - the position/sentiment view treatments below.
+     - a legend that decodes all SIX states the grid can draw. The portal's
+       legend lists three while its own grid draws six, so copying it would
+       have imported a legend that misdescribes the table under it. */
+
+/* Toggle — segmented control on a tertiary well. */
 .matrix-toggle {
   display: inline-flex;
-  gap: 4px;
-  align-items: stretch;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  padding: 0;
-  border-radius: 0;
+  background: var(--paper-2);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
 }
 .matrix-toggle button {
-  appearance: none;
-  background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 8px 12px 9px;
-  font-family: var(--mono);
-  font-size: var(--t-overline);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  color: var(--ink-4);
+  background: transparent;
   cursor: pointer;
-  text-transform: uppercase;
-  transition: color var(--motion-fast) var(--ease-edit),
-              border-color var(--motion-fast) var(--ease-edit);
-  margin-bottom: -1px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 5px 11px;
+  border-radius: 6px;
 }
-.matrix-toggle button:hover { color: var(--ink-2); }
-/* The pressed tab must stay one step above the resting tabs. Those now
-   declare 600 (they carried the browser default before), so this goes to
-   700 rather than collapsing to the same weight as an unpressed tab. */
+.matrix-toggle button:hover { color: var(--ink); }
 .matrix-toggle button[aria-pressed="true"] {
-  color: var(--editor);
-  border-bottom-color: var(--editor);
-  font-weight: 700;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-card-sm);
 }
 
-/* Summary bar — sits above the grid as a one-line takeaway. Stats are
-   inline-flex so they wrap on narrow widths; each stat carries data-tone
-   for colour cueing (good/editor/muted/bad). Reads: "0 / 9 cells · 7
-   competitor mentions · 51 URLs cited · 3 engine errors". */
+/* Summary strip — ONE bordered band holding inline stats. Not one chip per
+   stat: the band is the object, the stats are its contents. */
 .mx-summary {
   display: flex;
-  align-items: baseline;
-  gap: 28px;
   flex-wrap: wrap;
-  margin-top: 16px;
-  padding: 14px 18px;
-  background: var(--surface-inset);
+  gap: 10px 22px;
+  align-items: baseline;
+  margin: 16px 0 4px;
+  padding: 12px 14px;
+  background: var(--paper-2);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: 10px;
 }
 .mx-sum-stat {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
-  font-family: var(--mono);
-  font-size: var(--t-meta);
-  color: var(--ink-3);
-  letter-spacing: 0.04em;
+  gap: 5px;
 }
 .mx-sum-num {
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 24px;
-  letter-spacing: -0.022em;
-  color: var(--ink);
-  font-feature-settings: "tnum", "lnum";
-  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 18px;
+  font-weight: 700;
   line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
-.mx-sum-stat[data-tone="good"]   .mx-sum-num { color: var(--success-color); }
-.mx-sum-stat[data-tone="bad"]    .mx-sum-num { color: var(--error-color-strong); }
-.mx-sum-stat[data-tone="editor"] .mx-sum-num { color: var(--editor); }
-.mx-sum-stat[data-tone="muted"]  .mx-sum-num { color: var(--ink-2); }
+.mx-sum-stat[data-tone="editor"] .mx-sum-num { color: var(--accent); }
+.mx-sum-stat[data-tone="bad"]    .mx-sum-num { color: var(--error-color); }
 .mx-sum-denom {
-  font-family: var(--mono);
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--ink-4);
-  font-feature-settings: "tnum", "lnum";
-  font-variant-numeric: tabular-nums lining-nums;
 }
 .mx-sum-label {
-  font-family: var(--mono);
-  font-size: var(--t-meta);
-  color: var(--ink-3);
-  text-transform: lowercase;
-  letter-spacing: 0.06em;
-  margin-left: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
 }
 
-/* Grid — slightly raised hairline between cells via gap+bg. Border softer
-   than v0.5 so the cells themselves carry the visual weight. Last column
-   is the row roll-up (~70px) showing "X / N" named-or-cited per query. */
+/* Grid — one rounded frame, hairline-separated tiles, horizontally
+   scrollable on narrow viewports rather than crushed. */
+.matrix { margin-top: 14px; overflow-x: auto; }
 .matrix-grid {
   display: grid;
-  grid-template-columns: 1.7fr repeat(var(--cols, 3), 1fr) 76px;
-  gap: 1px;
-  background: var(--line);
+  min-width: 520px;
+  grid-template-columns: 1.4fr repeat(var(--cols, 3), 1fr) auto;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: 10px;
   overflow: hidden;
-  margin-top: 14px;
 }
-
-/* Headers — engine names get their --c colour as a prominent top-bar.
-   v0.5 had a 2px hairline that drowned in heatmap noise; now a 4px solid
-   bar + subtle column tint behind the engine label asserts the column
-   identity loud enough to anchor each vertical strip of cells. */
 .mx-h {
-  background: var(--paper);
-  padding: 16px 16px 14px;
-  font-family: var(--mono);
   font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--ink-4);
+  color: var(--text-tertiary);
+  padding: 10px 12px;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
 }
-.mx-h.eng {
-  position: relative;
-  text-align: center;
-  color: var(--c);
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  font-size: 12.5px;
-  padding-top: 18px;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--c) 7%, var(--paper)) 0%,
-      var(--paper) 100%);
-}
-.mx-h.eng::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 4px;
-  background: var(--c);
-}
+.mx-h.eng { color: var(--c, var(--ink-2)); }
+.mx-h-total { text-align: center; }
 
-/* Query column — qpre becomes marginalia (right-aligned mono micro-tag),
-   qrest is the primary text in display serif. */
+/* Query column */
 .mx-q {
-  background: var(--surface-cell);
-  padding: 18px 18px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: start;
-  gap: 6px 12px;
-  min-width: 0;
-}
-.mx-q .qrest {
-  grid-column: 1 / 2;
-  grid-row: 1 / 2;
-  font-family: var(--display);
-  font-weight: 400;
-  font-size: 17px;
-  line-height: 1.3;
+  font-size: 13px;
   color: var(--ink);
-  letter-spacing: -0.014em;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
 }
 .mx-q .qpre {
-  grid-column: 2 / 3;
-  grid-row: 1 / 2;
-  align-self: start;
-  margin-top: 5px;
   font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-4);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  white-space: nowrap;
-  background: var(--paper);
+  font-size: 10.5px;
+  color: var(--accent);
+  flex-shrink: 0;
 }
+.mx-q .qrest { min-width: 0; }
 
-/* Cell — base structure. Padding ample so micro-typography breathes.
-   align-items: flex-start so labels left-anchored, not centered. */
+/* Cell — base tile */
 .mx-c {
-  background: var(--surface-cell);
-  padding: 18px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  font-family: var(--mono);
-  font-size: 13px;
-  color: var(--ink-3);
-  text-align: left;
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  min-height: 46px;
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 0;
+}
+/* Fill is --orange-600, NOT --accent. White on #F77300 measures 2.84:1 and
+   is barred by the stylesheet's own contrast contract (test/loud-components
+   "white text never sits on … the accent orange"); #B85000 measures 5.02:1.
+   Same role, same read — the named tile is still the loudest cell in the
+   grid — at a contrast a printed client deliverable can carry. */
+.mx-c.named  { background: var(--orange-600); color: #fff; }
+.mx-c.cited  { background: var(--accent-wash); color: var(--accent); }
+.mx-c.absent { background: transparent; color: var(--ink-4); }
+/* Placeholder for ANY view whose span carries nothing — not just .absent.
+   Sentiment is only ever scored for named/cited cells, so a competitor or
+   empty cell has an empty sentiment span in every report; Position is empty
+   for a competitor cell that cited nothing. Without this those tiles render
+   blank and read as a rendering failure rather than as "no data here".
+   Scoped to :empty so it can never double up on a span that has content. */
+.mx-c .mx-v:empty::after {
+  content: '·';
+  color: var(--line-strong);
+  font-size: 18px;
+  line-height: 1;
+}
+.mx-c.err { background: rgba(255, 77, 79, 0.1); }
+.mx-c.err span {
+  font-size: 10px;
+  color: var(--error-color);
+}
+.mx-c[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
   position: relative;
-  transition: background var(--motion-fast) var(--ease-edit);
-  min-width: 0;
+  z-index: 1;
 }
-.mx-c:hover { background: color-mix(in srgb, currentColor 4%, var(--surface-cell)); }
 
-/* Inner view-spans are flex layouts so marker + label + comp line up */
-.mx-c .mx-v {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-width: 0;
-  width: 100%;
-}
+/* View-spans — this file has no framework to re-render on toggle, so all
+   three views ship and CSS reveals whichever [data-view] selects. */
+.mx-c .mx-v { display: none; }
 .matrix-grid[data-view="mention"]   .mx-c .mx-v-mention,
 .matrix-grid[data-view="position"]  .mx-c .mx-v-position,
-.matrix-grid[data-view="sentiment"] .mx-c .mx-v-sentiment { display: inline-flex; }
-
-/* Marker glyph — small sticker on the left of the cell */
-.mx-marker {
+.matrix-grid[data-view="sentiment"] .mx-c .mx-v-sentiment {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--r-xs);
-  font-size: 14px;
-  line-height: 1;
-  flex-shrink: 0;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  color: currentColor;
-}
-.mx-label {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: lowercase;
-  font-weight: 600;
-  color: currentColor;
-  white-space: nowrap;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
-/* Competitor chip — "vs LSEO +3" with explicit prefix label */
+/* Competitor / empty cells — transparent, content-bearing */
+.mx-c.competitor,
+.mx-c.empty {
+  background: transparent;
+  padding: 6px 8px;
+  font-weight: 500;
+}
 .mx-comp {
   display: inline-flex;
   align-items: baseline;
-  gap: 5px;
-  padding: 3px 9px 3px 7px;
-  border-radius: 99px;
-  background: color-mix(in srgb, var(--editor) 10%, var(--paper));
-  border: 1px solid color-mix(in srgb, var(--editor) 22%, var(--line));
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--editor-ink);
-  max-width: 100%;
-  overflow: hidden;
+  gap: 4px;
   min-width: 0;
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--ink-2);
+}
+.mx-c.competitor .mx-comp::before {
+  content: '↳';
+  color: var(--text-tertiary);
+  margin-right: 2px;
 }
 .mx-comp-prefix {
   font-size: 9.5px;
-  letter-spacing: 0.16em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--editor) 60%, var(--ink-4));
-  font-weight: 500;
+  color: var(--text-tertiary);
 }
 .mx-comp-name {
-  font-weight: 600;
-  color: var(--editor-ink);
+  display: inline-block;
+  max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 14ch;
+  vertical-align: bottom;
+  font-weight: 600;
+  color: var(--ink);
 }
 .mx-comp-more {
-  font-size: 9.5px;
-  font-weight: 500;
-  color: color-mix(in srgb, var(--editor) 60%, var(--ink-4));
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
   margin-left: 1px;
 }
-/* In "no mention" cells where citesHint is used (via N cites), tint chip
-   in clay instead of editor-blue so the data-role reads "citation, not competitor". */
-.mx-c[data-status="empty"] .mx-comp {
-  background: color-mix(in srgb, var(--clay) 8%, var(--paper));
-  border-color: color-mix(in srgb, var(--clay) 22%, var(--line));
-  color: var(--clay);
+.mx-cited-share {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-4);
+  white-space: nowrap;
 }
-.mx-c[data-status="empty"] .mx-comp-prefix,
-.mx-c[data-status="empty"] .mx-comp-name { color: var(--clay); }
+.mx-c .mx-cited-share::before {
+  content: '○';
+  margin-right: 3px;
+  color: var(--text-tertiary);
+}
 
-/* Position view — large mono number when ranked, mono micro-label otherwise */
+/* Position view — the rank number reads as data, so it keeps a mono face
+   and lining figures rather than the tile's default weight. */
 .mx-pos {
   font-family: var(--mono);
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 600;
-  font-feature-settings: "tnum", "lnum";
   font-variant-numeric: tabular-nums lining-nums;
-  color: var(--ink);
   letter-spacing: -0.01em;
   line-height: 1;
-}
-.mx-status {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  letter-spacing: 0.08em;
-  color: var(--ink-4);
-  text-transform: lowercase;
+  color: inherit;
 }
 
-/* Sentiment view — dot + label paired, coloured by tone */
-.mx-v-sentiment {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
+/* Sentiment view — dot + word, tinted by tone. */
+.mx-v-sentiment { font-size: 11.5px; }
 .mx-sent-dot {
   display: inline-block;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1;
   color: currentColor;
 }
 .mx-sent-label {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 600;
   text-transform: lowercase;
-  color: var(--ink-3);
 }
-.mx-v-sentiment[data-tone="pos"]     { color: var(--success-color); }
-.mx-v-sentiment[data-tone="pos"] .mx-sent-label { color: var(--success-color); }
-.mx-v-sentiment[data-tone="neg"]     { color: var(--error-color-strong); }
-.mx-v-sentiment[data-tone="neg"] .mx-sent-label { color: var(--error-color-strong); }
-.mx-v-sentiment[data-tone="flat"]    { color: var(--ink-3); }
-.mx-v-sentiment[data-tone="missing"] { color: var(--ink-4); }
+.mx-c.named .mx-v-sentiment,
+.mx-c.named .mx-sent-label { color: #fff; }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="pos"],
+.mx-c:not(.named) .mx-v-sentiment[data-tone="pos"] .mx-sent-label { color: var(--success-color); }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="neg"],
+.mx-c:not(.named) .mx-v-sentiment[data-tone="neg"] .mx-sent-label { color: var(--error-color-strong); }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="flat"]    { color: var(--ink-3); }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="missing"] { color: var(--text-tertiary); }
 
-/* ─── Status-coded cell backgrounds ──────────────────────
-   Each data-status gets a distinct paper tone. No more
-   «white cell, one red column» pattern. */
-.mx-c[data-status="named"] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface-cell));
-  color: var(--accent-ink);
-}
-.mx-c[data-status="cited"] {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface-cell));
-  color: var(--accent-deep);
-}
-.mx-c[data-status="competitor"] {
-  background: color-mix(in srgb, var(--editor) 7%, var(--surface-cell));
-  color: var(--editor-ink);
-}
-.mx-c[data-status="empty"] {
+/* Row Σ column */
+.mx-c-total {
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 46px;
+  padding: 0 12px;
   background: var(--paper-2);
-  color: var(--ink-3);
 }
-.mx-c[data-status="error"] {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--error-color-strong) 14%, var(--surface-cell)) 0px,
-      color-mix(in srgb, var(--error-color-strong) 14%, var(--surface-cell)) 6px,
-      color-mix(in srgb, var(--error-color-strong) 6%, var(--surface-cell))  6px,
-      color-mix(in srgb, var(--error-color-strong) 6%, var(--surface-cell))  12px
-    );
-  color: var(--error-color-strong);
-}
-
-/* Legacy class-fallbacks: yes/cited/err legacy CSS still hits these in
-   case any selector elsewhere expects them. data-status is the canonical
-   path going forward. */
-.mx-c.yes   { color: var(--accent-ink); }
-.mx-c.cited { color: var(--accent-deep); }
-.mx-c.err   { color: var(--error-color-strong); font-weight: 600; }
-.mx-c.no    { color: var(--ink-3); }
-
-/* Row roll-up — last column of every row. Shows «named-or-cited / total»
-   for this query, tone-coded: any hits → good, zero → muted. Reads at a
-   glance: «which queries got any traction». */
-.mx-h-total {
-  text-align: right;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.18em;
+.mx-c-total[data-tone="good"] { background: var(--accent-wash); }
+.mx-row-num {
+  font-size: 13px;
   font-weight: 700;
   color: var(--ink-4);
-  padding-right: 18px !important;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
-.mx-c-total {
-  background: var(--surface-inset);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 14px 16px;
-  font-family: var(--mono);
-  text-align: right;
-  font-feature-settings: "tnum", "lnum";
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.mx-c-total[data-tone="good"]  { background: color-mix(in srgb, var(--success-color) 10%, var(--surface-inset)); }
-.mx-c-total[data-tone="muted"] { background: var(--surface-inset); }
-.mx-row-num {
-  font-family: var(--display);
-  font-weight: 500;
-  font-size: 20px;
-  letter-spacing: -0.022em;
-  color: var(--ink);
+.mx-c-total[data-tone="good"] .mx-row-num { color: var(--accent); }
+.mx-row-den {
+  font-size: 10.5px;
+  color: var(--ink-4);
   line-height: 1;
 }
-.mx-c-total[data-tone="good"]  .mx-row-num { color: var(--success-color); }
-.mx-c-total[data-tone="muted"] .mx-row-num { color: var(--ink-3); }
-.mx-row-den {
-  font-size: 11px;
-  color: var(--ink-4);
-  letter-spacing: 0.02em;
-}
 
-/* ─── Sentiment empty state ────────────────────────────
-   Shown ONLY when Sentiment view is active AND no cell has a sentiment
-   label (all cells are unscored — brand wasn't named anywhere, so there's
-   nothing to classify). Replaces the all-n/a grid that confused users
-   into thinking the data was broken. */
+/* Sentiment empty-state */
 .mx-sentiment-empty {
   display: none;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 18px;
-  padding: 22px 24px;
-  background: var(--surface-inset);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-md);
+  margin-top: 14px;
+  padding: 18px 16px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--paper-2);
 }
-.matrix-grid[data-view="sentiment"][data-sentiment-scored="0"] {
-  display: none;
-}
-.matrix-grid[data-view="sentiment"][data-sentiment-scored="0"] + .mx-sentiment-empty {
-  display: flex;
-}
+.matrix[data-view="sentiment"][data-sentiment-scored="0"] .matrix-grid { display: none; }
+.matrix[data-view="sentiment"][data-sentiment-scored="0"] ~ .mx-sentiment-empty { display: block; }
 .mx-empty-glyph {
-  font-family: var(--display);
-  font-weight: 300;
-  font-size: 28px;
-  line-height: 1;
-  color: var(--editor);
+  display: block;
+  font-size: 22px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
 }
 .mx-empty-title {
-  font-family: var(--display);
-  font-weight: 500;
-  font-size: 18px;
-  letter-spacing: -0.014em;
+  display: block;
+  font-size: 14px;
   color: var(--ink);
+  margin-bottom: 4px;
 }
 .mx-empty-body {
-  margin: 0;
-  font-family: var(--display);
-  font-weight: 350;
-  font-size: 14px;
+  margin: 0 auto;
+  max-width: 460px;
+  font-size: 12.5px;
   line-height: 1.55;
   color: var(--ink-2);
-  max-width: 64ch;
 }
 
-/* ─── Legend ────────────────────────────────────────────
-   Inline mono caption row under the matrix. Reader decodes
-   colour-status without scrolling away from the data. */
-/* View-aware legend — three legend variants live in markup; CSS shows only
-   the one matching matrix-grid's current data-view. ~ sibling selector
-   walks from matrix-grid forward to its legend sibling. */
+/* Legend — the portal's swatch row, carrying ALL SIX states this grid can
+   draw. Each swatch is a miniature of the cell it decodes: same fill, same
+   glyph, so the mapping needs no explaining. */
 .mx-legend { display: none; }
-.matrix-grid[data-view="mention"]   ~ .mx-legend[data-view-show="mention"],
-.matrix-grid[data-view="position"]  ~ .mx-legend[data-view-show="position"],
-.matrix-grid[data-view="sentiment"] ~ .mx-legend[data-view-show="sentiment"] {
+.matrix[data-view="mention"]   ~ .mx-legend[data-view-show="mention"],
+.matrix[data-view="position"]  ~ .mx-legend[data-view-show="position"],
+.matrix[data-view="sentiment"] ~ .mx-legend[data-view-show="sentiment"] {
   display: flex;
 }
-.mx-leg-caption {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-3);
-  letter-spacing: 0.02em;
-  line-height: 1.55;
-  max-width: 76ch;
-}
-.mx-leg-caption strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-/* Shared legend layout — applies only when one of the matching-view rules
-   above flips display from `none` to `flex`. Keeps spacing/typography in
-   one place across all three variants. */
-.matrix-grid[data-view="mention"]   ~ .mx-legend[data-view-show="mention"],
-.matrix-grid[data-view="position"]  ~ .mx-legend[data-view-show="position"],
-.matrix-grid[data-view="sentiment"] ~ .mx-legend[data-view-show="sentiment"] {
-  align-items: center;
-  gap: 22px;
+.matrix-legend {
+  gap: 16px;
   flex-wrap: wrap;
-  margin-top: 16px;
-  padding: 14px 0 2px;
-  border-top: 1px dashed var(--line);
-  font-family: var(--mono);
-  font-size: var(--t-meta);
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-2);
 }
-.mx-leg {
+.matrix-legend .lg {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  white-space: nowrap;
+  gap: 6px;
 }
-.mx-leg-swatch {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--r-xs);
-  border: 1px solid var(--line);
+.matrix-legend .sw {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  color: var(--text-tertiary);
 }
-.mx-leg[data-status="named"]      .mx-leg-swatch { background: color-mix(in srgb, var(--accent) 16%, var(--surface-cell)); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
-.mx-leg[data-status="cited"]      .mx-leg-swatch { background: color-mix(in srgb, var(--accent) 8%,  var(--surface-cell)); border-color: color-mix(in srgb, var(--accent) 20%, var(--line)); }
-.mx-leg[data-status="competitor"] .mx-leg-swatch { background: color-mix(in srgb, var(--editor) 7%,  var(--surface-cell)); border-color: color-mix(in srgb, var(--editor) 24%, var(--line)); }
-.mx-leg[data-status="empty"]      .mx-leg-swatch { background: var(--paper-2); }
-.mx-leg[data-status="error"]      .mx-leg-swatch {
-  background:
-    repeating-linear-gradient(135deg,
-      color-mix(in srgb, var(--error-color-strong) 14%, var(--surface-cell)) 0px,
-      color-mix(in srgb, var(--error-color-strong) 14%, var(--surface-cell)) 3px,
-      color-mix(in srgb, var(--error-color-strong) 6%, var(--surface-cell)) 3px,
-      color-mix(in srgb, var(--error-color-strong) 6%, var(--surface-cell)) 6px
-    );
-  border-color: color-mix(in srgb, var(--error-color-strong) 28%, var(--line));
+.lg[data-status="named"]      .sw { background: var(--orange-600); color: #fff; font-size: 9px; font-weight: 700; }
+.lg[data-status="cited"]      .sw { background: var(--accent-wash); border: 1px solid rgba(247,115,0,0.22); }
+.lg[data-status="competitor"] .sw { background: transparent; border: 1px solid var(--line); font-size: 10px; }
+.lg[data-status="empty"]      .sw { background: transparent; border: 1px solid var(--line); font-size: 8px; }
+.lg[data-status="absent"]     .sw { background: transparent; border: 1px solid var(--line); font-size: 15px; }
+.lg[data-status="error"]      .sw { background: rgba(255,77,79,0.1); border: 1px solid rgba(255,77,79,0.25); }
+.mx-leg-caption {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
 }
-.mx-leg-text { color: var(--ink-3); }
+.mx-leg-caption strong { font-weight: 600; color: var(--ink); }
 
 /* ─── Stippled chart (sparkline / domains bar) ────────── */
 .chart {
@@ -3543,30 +3384,81 @@ details.uvi-breakdown--hero .uvi-formula-note {
    <details> — zero JS, keyboard-accessible, works offline / printed.
    Renders in BOTH default and white-label modes (the answer is measured
    data, not a tool fingerprint). */
-.mx-reveals { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
-.mx-reveals-head { margin: 0 0 10px; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
-.mx-reveal { border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 8px; background: var(--paper); }
-.mx-reveal[open] { box-shadow: 0 1px 0 var(--line); }
-.mx-reveal summary {
-  cursor: pointer; list-style: none; padding: 9px 12px;
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 12.5px; font-weight: 600; color: var(--ink);
+/* ─── Verbatim answers ──────────────────────────────────────
+   Visual language shared verbatim with the portal's report-v2 reveals
+   (webappka ai-visibility-report.component.scss:1115-1199). Each row is
+   headed by the QUERY, with the engine as marginalia and a tone-coded
+   verdict badge pushed to the right edge. `excerpt` is ours: it marks a
+   truncated answer, which the portal has no equivalent for. */
+.reveals-hint {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-3);
 }
-.mx-reveal summary::-webkit-details-marker { display: none; }
-.mx-reveal summary::before { content: '▸'; color: var(--ink-3); font-weight: 400; }
-.mx-reveal[open] summary::before { content: '▾'; }
-.mx-reveal-q { font-family: var(--mono); font-size: 11px; color: var(--accent); }
-.mx-reveal-eng { font-weight: 600; }
-.mx-reveal-status { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--ink-3); }
-.mx-reveal-status[data-status="yes"] { background: color-mix(in srgb, var(--success-color) 16%, transparent); color: var(--success-color); }
-.mx-reveal-status[data-status="src"] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
-.mx-reveal-trunc { font-size: 10px; font-style: italic; color: var(--ink-3); }
-.mx-reveal-body { padding: 0 12px 12px; }
-.mx-reveal-meta { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-3); }
-.mx-reveal-text {
-  margin: 0; white-space: pre-wrap; word-break: break-word;
-  font-family: var(--sans); font-size: 12.5px; line-height: 1.6; color: var(--ink);
-  max-height: 420px; overflow-y: auto;
+.reveal {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--raised);
+}
+.reveal[open] { box-shadow: 0 1px 0 var(--line); }
+.reveal-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.reveal-summary::-webkit-details-marker { display: none; }
+.reveal-summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.reveal[open] .reveal-summary::before { content: '▾'; }
+.reveal-q {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.reveal-provider {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.reveal-trunc {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--ink-4);
+}
+.reveal-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+.reveal-badge.named  { color: var(--accent); background: var(--accent-wash); }
+.reveal-badge.cited  { color: var(--editor); background: rgba(18, 80, 176, 0.1); }
+.reveal-badge.absent { color: var(--ink-4); background: var(--paper-2); }
+.reveal-badge.error  { color: var(--error-color); background: rgba(255, 77, 79, 0.1); }
+.reveal-excerpt {
+  display: block;
+  margin: 0;
+  padding: 0 14px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
 }
 
 @media print {
@@ -3584,10 +3476,12 @@ details.uvi-breakdown--hero .uvi-formula-note {
   /* Force every verbatim reveal open in print/PDF so "Save as PDF" captures
      the full answers — the accordion is collapsed on screen but a printed
      deliverable must show everything. The text region drops its scroll cap. */
-  .mx-reveal { display: block; }
-  .mx-reveal > .mx-reveal-body { display: block !important; }
-  .mx-reveal-text { max-height: none; overflow: visible; }
-  .mx-reveals, .mx-reveal { break-inside: avoid; }
+  /* The on-screen scroll wrapper must not clip in print: print gives the
+     matrix the full content width, so the 520px floor is a floor, not a demand. */
+  .matrix { overflow-x: visible; }
+  .matrix-grid { min-width: 0; }
+  .reveal { display: block; break-inside: avoid; }
+  .reveal > .reveal-excerpt { display: block !important; max-height: none; overflow: visible; }
   /* A long markdown cell (headline + narrative + two tables + a list) is long
      enough that the blanket `.cell { break-inside: avoid }` above would force
      it onto a single unbreakable box and either blank-page or clip in

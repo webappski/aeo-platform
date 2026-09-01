@@ -210,7 +210,11 @@ test('the shipped CSS carries no font-variation-settings — the axes have no fa
 test('every card shell reads the depth ladder instead of being flat', async () => {
   // Named explicitly rather than "everything inside .bento": a list that
   // derives itself would quietly stop covering new components.
-  const SHELLS = ['.cell', '.cell.dominant', '.eng-card', '.act-row'];
+  // .eng-card is deliberately absent. It is not a card shell any more: since
+  // 2026-09-01 it matches the portal's report-v2 engine tile — flat, no
+  // shadow, identified by a 3px top rule in the engine's own colour. Its own
+  // invariant is asserted separately below.
+  const SHELLS = ['.cell', '.cell.dominant', '.act-row'];
   await withTmpProject('aeo-e2e-register-depth-', async (dir) => {
     const { css } = shippedCss(dir);
     for (const sel of SHELLS) {
@@ -229,19 +233,34 @@ test('the quiet card is not the page, and the engine well is not its own card', 
     const { css } = shippedCss(dir);
     const page = resolve(css, declared(css, 'body', 'background'));
     const quiet = resolve(css, declared(css, '.cell.quiet', 'background'));
-    const well = resolve(css, declared(css, '.eng-card', 'background'));
 
-    for (const [name, v] of [['body', page], ['.cell.quiet', quiet], ['.eng-card', well]]) {
+    for (const [name, v] of [['body', page], ['.cell.quiet', quiet]]) {
       assert.ok(v && !/^var\(/.test(v), `${name} background did not resolve to a literal (got ${v})`);
     }
-    // Directional on purpose. "quiet !== well" alone would still pass if the
-    // two swapped, which is the same defect wearing the other shoe.
     assert.notEqual(quiet, page,
       `.cell.quiet is painted ${quiet}, the same as the page — a container the colour of the ` +
       `page reads as unstyled space, not as a quiet card`);
-    assert.notEqual(well, quiet,
-      `.eng-card is painted ${well}, the same as the card it sits inside — that is a border ` +
-      `with no box behind it`);
+  });
+});
+
+// ─── 3b. The engine tile is identified by its rule, not by a box ────────────
+
+test('the engine tile carries its engine colour as a top rule and stays flat', async () => {
+  // The tile stopped being a raised well on 2026-09-01 and became the portal's
+  // report-v2 engine tile: flat, bordered, identified by a 3px rule in the
+  // engine's own colour. Without this assertion the previous register — a
+  // shadowed card on a card — can drift back unnoticed, which is exactly what
+  // e537ce4 did before the founder rejected it.
+  await withTmpProject('aeo-e2e-engine-tile-', async (dir) => {
+    const { css } = shippedCss(dir);
+    const shadow = declared(css, '.eng-card', 'box-shadow');
+    assert.ok(!shadow,
+      `.eng-card declares box-shadow (${shadow}) — the tile is meant to be flat; a shadow on ` +
+      `four tiles inside one card reads as four competing cards`);
+    const topRule = declared(css, '.eng-card', 'border-top');
+    assert.ok(topRule && /3px/.test(topRule) && /var\(--c/.test(topRule),
+      `.eng-card must carry a 3px top rule in var(--c), the engine's own colour (got ${topRule}) — ` +
+      `that rule is the only thing identifying which engine the tile belongs to`);
   });
 });
 

@@ -393,15 +393,15 @@ test('reveal: default HTML carries a per-cell <details> with the FULL, HTML-esca
     const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 
     // (a) the reveal accordion exists with a non-empty answer body.
-    assert.match(html, /<details class="mx-reveal">/, 'default HTML must render the reveal <details>');
-    assert.match(html, /<summary><span class="mx-reveal-q">Q1<\/span>/, 'reveal summary must label the cell Q1');
-    assert.match(html, /<pre class="mx-reveal-text">[^<]/, 'reveal body must be non-empty');
+    assert.match(html, /<details class="reveal">/, 'default HTML must render the reveal <details>');
+    assert.match(html, /<span class="reveal-q">best test brands 2026<\/span>/, 'reveal summary must be headed by the query text itself, not a Q-index');
+    assert.match(html, /<div class="reveal-excerpt">[^<]/, 'reveal body must be non-empty');
 
     // FULL answer, not the truncated excerpt — the unique closing sentence is in
     // the full answer only, and the cell is NOT tagged "excerpt".
     assert.match(html, /UNIQUE_CLOSING_SENTENCE_THAT_NO_EXCERPT_WOULD_CONTAIN_END\./, 'reveal must carry the FULL answer (unique sentence present)');
-    const revealBlock = html.slice(html.indexOf('<details class="mx-reveal">'));
-    assert.doesNotMatch(revealBlock.split('</details>')[0], /mx-reveal-trunc/, 'a cell WITH a raw file must NOT be tagged as an excerpt fallback');
+    const revealBlock = html.slice(html.indexOf('<details class="reveal">'));
+    assert.doesNotMatch(revealBlock.split('</details>')[0], /reveal-trunc/, 'a cell WITH a raw file must NOT be tagged as an excerpt fallback');
 
     // (b) the answer is HTML-ESCAPED — the injection payload is inert text, the
     // live page has no <script>alert / unescaped tag from the answer.
@@ -421,7 +421,7 @@ test('reveal: white-label HTML embeds the FULL answer and is IDENTITY-fingerprin
     const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 
     // The reveal renders in white-label too (the answer is measured data).
-    assert.match(html, /<details class="mx-reveal">/, 'white-label HTML must still render the reveal <details>');
+    assert.match(html, /<details class="reveal">/, 'white-label HTML must still render the reveal <details>');
     assert.match(html, /UNIQUE_CLOSING_SENTENCE_THAT_NO_EXCERPT_WOULD_CONTAIN_END\./, 'white-label reveal must carry the full answer');
 
     // The WHOLE file — chrome AND embedded answers — is free of the tool/agency
@@ -431,7 +431,7 @@ test('reveal: white-label HTML embeds the FULL answer and is IDENTITY-fingerprin
       assert.doesNotMatch(html, re, `white-label HTML (incl. embedded answers) must not match identity ${re}`);
     }
     // The embedded answer region specifically — scan just the reveal bodies.
-    const bodies = [...html.matchAll(/<pre class="mx-reveal-text">([\s\S]*?)<\/pre>/g)].map(m => m[1]);
+    const bodies = [...html.matchAll(/<div class="reveal-excerpt">([\s\S]*?)<\/div>/g)].map(m => m[1]);
     assert.ok(bodies.length > 0, 'white-label must have at least one embedded answer');
     for (const body of bodies) {
       for (const re of IDENTITY_FINGERPRINT) {
@@ -450,8 +450,8 @@ test('reveal: a cell with NO raw file gracefully falls back to the excerpt and t
     const html = readFileSync(join(reportsDateDir(dir, DOMAIN, today), 'report.html'), 'utf-8');
 
     // Reveal still renders, sourced from the excerpt, tagged as such.
-    assert.match(html, /<details class="mx-reveal">/, 'reveal must still render from the excerpt');
-    assert.match(html, /<span class="mx-reveal-trunc">excerpt<\/span>/, 'a no-raw-file cell must be tagged "excerpt"');
+    assert.match(html, /<details class="reveal">/, 'reveal must still render from the excerpt');
+    assert.match(html, /<span class="reveal-trunc">excerpt<\/span>/, 'a no-raw-file cell must be tagged "excerpt"');
     assert.match(html, /TestBrand operates a global network/, 'the excerpt text must be present');
     // The full-only sentence is absent (we never had the raw file).
     assert.doesNotMatch(html, /UNIQUE_CLOSING_SENTENCE_THAT_NO_EXCERPT_WOULD_CONTAIN_END/, 'no full answer without a raw file');
