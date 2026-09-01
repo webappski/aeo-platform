@@ -33,13 +33,45 @@ export const FIXTURE_ROOT = join(REPO_ROOT, 'test', 'fixtures');
 // When this test helper is loaded as a subprocess preload, fail provider HTTP
 // immediately and deterministically. Product code has no test branch/hook.
 if (process.env.AEO_E2E_OFFLINE_FETCH === '1') {
-  globalThis.fetch = async () => ({
+  const unauthorized = () => ({
     ok: false,
     status: 401,
     headers: { get: () => null },
     json: async () => ({ error: { message: 'offline E2E fixture' } }),
     text: async () => JSON.stringify({ error: { message: 'offline E2E fixture' } }),
   });
+  // Optional model-CATALOGUE stub: `AEO_E2E_CATALOGUE` is a JSON array of
+  // OpenAI model ids served from `/v1/models`, so a test can exercise the real
+  // discovery + pin-resolution path (which needs a SUCCESSFUL discovery to be
+  // meaningful — the pin defect only ever showed itself when discovery worked)
+  // while every answer call still fails closed at 401. Absent → unchanged
+  // offline behaviour for every existing E2E.
+  let catalogue = null;
+  try { catalogue = JSON.parse(process.env.AEO_E2E_CATALOGUE || 'null'); }
+  catch { catalogue = null; }
+  // Optional ANSWER stub: `AEO_E2E_ANSWER` is a JSON body served for OpenAI
+  // Responses calls, so a test can drive a whole run to a written
+  // `_summary.json` without a live engine. Extraction/classify calls still 401
+  // and are swallowed by the extractor (same as the run-manual E2E), which is
+  // what keeps the stub to one endpoint instead of a fake OpenAI.
+  let answer = null;
+  try { answer = JSON.parse(process.env.AEO_E2E_ANSWER || 'null'); }
+  catch { answer = null; }
+  const okJson = (body) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
+  globalThis.fetch = async (url) => {
+    const href = typeof url === 'string' ? url : String(url?.url || url);
+    if (Array.isArray(catalogue) && href.includes('/v1/models')) {
+      return okJson({ data: catalogue.map((id) => ({ id })) });
+    }
+    if (answer && href.includes('/v1/responses')) return okJson(answer);
+    return unauthorized();
+  };
 }
 
 // ─── Domain-scoped storage paths ───

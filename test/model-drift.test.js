@@ -87,15 +87,19 @@ test('evaluateModelDrift — on drift, returns warnLine + provenance + stable ta
   assert.equal(d.tallyKey, 'gemini:gemini-2.5-flash→gemini-3.5-flash');
 });
 
-test('evaluateModelDrift — no drift: null warn/provenance/tallyKey, record stays lean', () => {
-  // Benign OpenAI alias→snapshot: must NOT stamp provenance (keeps the summary
-  // JSON lean — absence of requestedModel in a record == no drift).
+test('evaluateModelDrift — no drift: null warn/provenance/tallyKey, but the served id is still reported', () => {
+  // Benign OpenAI alias→snapshot. `provenance` and `warnLine` stay null — those
+  // are the DRIFT channel and a benign roll-forward must not warn.
   const d = evaluateModelDrift('openai', 'gpt-5-search-api', { model: 'gpt-5-search-api-2025-10-14' });
   assert.equal(d.isDrift, false);
   assert.equal(d.warnLine, null);
   assert.equal(d.provenance, null);
   assert.equal(d.tallyKey, null);
-  // Mutation-sanity: if provenance were returned on a non-drift cell, the spread
-  // `...(driftProvenance || {})` in bin/ would stamp every benign OpenAI cell.
-  // The null pins that off.
+  // `resolvedModel` is NOT part of the drift channel — it is reported on every
+  // cell. Since 2026-09-01 the run loop stamps requested/resolved on every
+  // record (the drift flag became its own `modelDrift` field), so the served
+  // dated snapshot must survive the no-drift branch rather than be nulled with
+  // the warn. Without this the summary could not say which model produced a
+  // number, and catching a swap meant hand-diffing raw response filenames.
+  assert.equal(d.resolvedModel, 'gpt-5-search-api-2025-10-14');
 });

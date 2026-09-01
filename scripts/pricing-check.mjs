@@ -61,14 +61,28 @@ async function fetchJson(url) {
   }
 }
 
-// Build { modelId → { input, output } } from a feed vendor file, using the
-// CURRENT price (the history entry with to_date === null, else the last one).
-function indexFeed(feed) {
+// Build { modelId → { input, output } } from a feed vendor file, using the price
+// IN FORCE TODAY — the history entry whose [from_date, to_date) window contains
+// now.
+//
+// The earlier rule was `hist.find(h => h.to_date == null)`, i.e. "the open-ended
+// entry". That is the entry a SCHEDULED FUTURE RISE lives in: Google's
+// gemini-3.x flash rows read "$0.75 through 2026-12-31, $1.50 from 2027-01-01",
+// so the open-ended entry is next year's price and the checker was validating
+// our table against a rate nobody is charged yet. It duly passed a 3.6-flash row
+// carrying the 2027 number while every real call billed at half of it.
+function indexFeed(feed, now = new Date()) {
   const out = new Map();
+  const iso = now.toISOString().slice(0, 10);
+  const active = (h) =>
+    (h.from_date == null || String(h.from_date) <= iso)
+    && (h.to_date == null || iso < String(h.to_date));
   for (const m of feed?.models || []) {
     const hist = Array.isArray(m.price_history) ? m.price_history : [];
     if (!hist.length || !m.id) continue;
-    const current = hist.find(h => h.to_date == null) || hist[hist.length - 1];
+    // Fall back to the open-ended entry, then to the last one, so a feed row
+    // with an odd/empty window still yields a comparison instead of vanishing.
+    const current = hist.find(active) || hist.find(h => h.to_date == null) || hist[hist.length - 1];
     if (typeof current?.input === 'number' && typeof current?.output === 'number') {
       out.set(m.id, { input: current.input, output: current.output });
     }

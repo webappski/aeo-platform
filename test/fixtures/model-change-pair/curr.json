@@ -1,0 +1,489 @@
+{
+  "date": "2026-09-01",
+  "brand": "typelessform",
+  "domain": "typelessform.com",
+  "score": 50,
+  "mentions": 6,
+  "total": 12,
+  "errors": 0,
+  "extractorMode": "dual",
+  "generatedBy": "aeo-platform@1.10.0",
+  "results": [
+    {
+      "query": "Q3",
+      "queryText": "multilingual voice form filling for international websites",
+      "provider": "openai",
+      "label": "ChatGPT",
+      "model": "gpt-5.4-mini",
+      "mode": "web",
+      "mention": "no",
+      "position": null,
+      "citationCount": 6,
+      "canonicalCitations": [
+        "https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Understanding_WCAG/Understandable?utm_source=openai",
+        "https://www.w3.org/WAI/tutorials/forms/?utm_source=openai",
+        "https://universally.com/docs/multilingual-forms/?utm_source=openai",
+        "https://webaim.org/techniques/forms/controls?utm_source=openai",
+        "https://www.w3.org/WAI/people-use-web/tools-techniques/input/?utm_source=openai"
+      ],
+      "competitors": [],
+      "competitorsUnverified": [],
+      "hasBrandInCitations": false,
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q2",
+      "queryText": "top one-shot voice form filling services for e-commerce",
+      "provider": "openai",
+      "label": "ChatGPT",
+      "model": "gpt-5.4-mini",
+      "mode": "web",
+      "mention": "no",
+      "position": null,
+      "citationCount": 10,
+      "canonicalCitations": [
+        "https://chromewebstore.google.com/detail/talk2forms/eenambafobbedhkadcpagdgkobnaicjo?utm_source=openai",
+        "https://chromewebstore.google.com/detail/speak2fillai-ai-form-fill/mndjlefccfjnefmpphoniacjbpgfbddn?hl=en&utm_source=openai",
+        "https://chromewebstore.google.com/detail/smart-form-automation/piaonobagchckdhclkdcpaiiliinccog?utm_source=openai",
+        "https://play.google.com/store/apps/details?id=com.auto.voiceagents&utm_source=openai",
+        "https://chromewebstore.google.com/detail/servicemark-ai-form-fille/mhamghnimniejnpimfcaiiomdigedkph?utm_source=openai",
+        "https://chromewebstore.google.com/detail/product-description-gener/fnamjoakpghidcdooemmkceiacpibhaf?utm_source=openai"
+      ],
+      "competitors": [
+        "Talk2Forms",
+        "Speak2Fill.ai",
+        "Smart Form Automation",
+        "ServiceMark AI Form Filler"
+      ],
+      "competitorsUnverified": [
+        "Product Description Generator",
+        "VoiceAgents"
+      ],
+      "hasBrandInCitations": false,
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q1",
+      "queryText": "best voice form filling tools 2026",
+      "provider": "openai",
+      "label": "ChatGPT",
+      "model": "gpt-5.4-mini",
+      "mode": "web",
+      "mention": "no",
+      "position": null,
+      "citationCount": 11,
+      "canonicalCitations": [
+        "https://zapier.com/blog/best-text-dictation-software/?utm_source=openai",
+        "https://www.g2.com/categories/ai-voice-dictation/themes/universal-compatibility?utm_source=openai",
+        "https://www.g2.com/categories/ai-voice-dictation/themes/privacy-focused?utm_source=openai",
+        "https://www.capterra.com/forms-automation-software/?year=2024&utm_source=openai"
+      ],
+      "competitors": [],
+      "competitorsUnverified": [
+        "Wispr Flow",
+        "Superwhisper",
+        "Dragon by Nuance",
+        "Voicy",
+        "Spokenly",
+        "VoiceDash"
+      ],
+      "hasBrandInCitations": false,
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q3",
+      "queryText": "multilingual voice form filling for international websites",
+      "provider": "gemini",
+      "label": "Gemini",
+      "model": "gemini-3.7-flash",
+      "mode": "web",
+      "mention": "no",
+      "position": null,
+      "citationCount": 0,
+      "canonicalCitations": [],
+      "competitors": [],
+      "competitorsUnverified": [
+        "Deepgram Nova-2",
+        "Azure Speech Service",
+        "Google Cloud Speech-to-Text"
+      ],
+      "hasBrandInCitations": false,
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q1",
+      "queryText": "best voice form filling tools 2026",
+      "provider": "gemini",
+      "label": "Gemini",
+      "model": "gemini-3.7-flash",
+      "mode": "web",
+      "mention": "no",
+      "position": null,
+      "citationCount": 18,
+      "canonicalCitations": [
+        "https://zapier.com",
+        "https://sonix.ai",
+        "https://voiceform.com",
+        "https://fulcrumapp.com",
+        "https://google.com",
+        "https://dictanote.co",
+        "https://voicecontrol.pro",
+        "https://willowvoice.com",
+        "https://wisprflow.ai",
+        "https://kizeo-forms.com",
+        "https://smartsheet.com",
+        "https://voicefill.ai",
+        "https://viavoice.ai",
+        "https://youtube.com",
+        "https://incredible.one"
+      ],
+      "competitors": [
+        "Fulcrum Audio FastFill",
+        "VoiceFill.ai"
+      ],
+      "competitorsUnverified": [
+        "Kizeo Forms",
+        "Voice In",
+        "Wispr Flow",
+        "Kizeo Forms (AI Voice Input)",
+        "Smartsheet Intelligent Mobile Forms Fill",
+        "Voiceform",
+        "ViaVoice.ai",
+        "Dragon Medical One (Nuance / Microsoft)",
+        "Suki AI",
+        "Vapi",
+        "Retell AI"
+      ],
+      "hasBrandInCitations": false,
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q2",
+      "queryText": "top one-shot voice form filling services for e-commerce",
+      "provider": "gemini",
+      "label": "Gemini",
+      "model": "gemini-3.7-flash",
+      "mode": "web",
+      "mention": "yes",
+      "position": null,
+      "citationCount": 10,
+      "canonicalCitations": [
+        "https://typelessform.com",
+        "https://anveforms.com",
+        "https://webappski.com",
+        "https://voicefill.ai",
+        "https://voiceai.guide",
+        "https://dasha.ai",
+        "https://andrey-markin.com"
+      ],
+      "competitors": [
+        "Anve Voice Forms (AnveVoice)"
+      ],
+      "competitorsUnverified": [
+        "VoiceFill.ai",
+        "Slang Labs (Slang CONVA)",
+        "Vapi.ai",
+        "Retell AI"
+      ],
+      "hasBrandInCitations": true,
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high",
+        "rationale": "Listed as a top plug-and-play service with specific benefits, portraying it as a leading solution."
+      },
+      "proseRank": {
+        "rank": 1,
+        "confidence": "med",
+        "rationale": "TypelessForm is the first listed turnkey voice form widget among several other comparable vendor platforms."
+      },
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q1",
+      "queryText": "best voice form filling tools 2026",
+      "provider": "anthropic",
+      "label": "Claude",
+      "model": "manual",
+      "mention": "yes",
+      "position": 1,
+      "citationCount": 21,
+      "canonicalCitations": [
+        "https://typelessform.com/blog/best-ai-form-filling-tools-2026/",
+        "https://www.usecarly.com/blog/best-ai-for-filling-out-forms/",
+        "https://anveforms.com/best-of/best-form-builder-with-voice-input-2026/",
+        "https://anvevoice.app/best/best-voice-ai-widget-2026",
+        "https://theresanaiforthat.com/s/voice+form-filling/",
+        "https://www.g2.com/products/voiceform/competitors/alternatives",
+        "https://elfsight.com/ai-voice-widget/",
+        "https://typelessform.com/",
+        "https://www.jotform.com/widgets/voice-recording-and-ai-follow-ups-by-voiceform",
+        "https://www.jotform.com/ai/agents/channels/voice/",
+        "https://www.jotform.com/ai/agents/features/voice-agent/",
+        "https://www.jotform.com/help/how-to-create-a-form-using-voice-with-jotform-ai/",
+        "https://filliny.io/",
+        "https://instafill.ai/",
+        "https://jobwizard.ai/blog/ai-job-application-filler",
+        "https://www.retellai.com/blog/vapi-ai-review",
+        "https://www.lindy.ai/blog/vapi-ai",
+        "https://www.nuance.com/products/help/dragon/dragon-for-pc/enx/dps/main/Content/Web/web_basics.htm",
+        "https://support.microsoft.com/en-us/accessibility/windows/voice-access/use-voice-access-to-control-your-pc-author-text-with-your-voice",
+        "https://www.hume.ai/blog/controlling-your-computer-with-voice",
+        "https://www.11x.ai/guides/ai-voice-agents-calling-back-form"
+      ],
+      "competitors": [
+        "Anve Voice Forms"
+      ],
+      "competitorsUnverified": [
+        "Elfsight AI Voice Widget",
+        "Jotform's Voice Recording widget",
+        "Voiceform",
+        "Say2Form",
+        "vForm",
+        "DodoForm",
+        "Vapi",
+        "Retell AI",
+        "Bland AI",
+        "Synthflow",
+        "Jotform AI Voice Agent",
+        "Filliny",
+        "Instafill.ai",
+        "FillApp"
+      ],
+      "hasBrandInCitations": true,
+      "sentiment": {
+        "label": "neutral",
+        "confidence": "low",
+        "rationale": "Models disagreed (positive vs neutral); TypelessForm is recommended as a top choice for website owners looking to reduce form abandonment."
+      },
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q2",
+      "queryText": "top one-shot voice form filling services for e-commerce",
+      "provider": "anthropic",
+      "label": "Claude",
+      "model": "manual",
+      "mention": "yes",
+      "position": 1,
+      "citationCount": 11,
+      "canonicalCitations": [
+        "https://typelessform.com/",
+        "https://typelessform.com/blog/one-shot-form-filling/",
+        "https://www.talktoform.ai/",
+        "https://anvevoice.app/features/form-filling",
+        "https://form2agent.freeportmetrics.com/",
+        "https://apps.shopify.com/ai-voice-agent",
+        "https://apps.shopify.com/shop-speak",
+        "https://www.voiceform.com/",
+        "https://www.digitalcommerce360.com/2026/05/13/amazon-launches-ai-agent-alexa-for-shopping/",
+        "https://www.siliconreport.com/amazon-opens-alexa-for-shopping-stack-to-retailers-starting-with-kate-spade-4f66a874da0dacc2",
+        "https://typelessform.com/blog/best-ai-form-filling-tools-2026/"
+      ],
+      "competitors": [
+        "TalkToForm.ai",
+        "AnveVoice",
+        "Form2Agent"
+      ],
+      "competitorsUnverified": [],
+      "hasBrandInCitations": true,
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high",
+        "rationale": "TypelessForm is highlighted as the leading product for this specific feature and is explicitly recommended for a trial."
+      },
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q3",
+      "queryText": "multilingual voice form filling for international websites",
+      "provider": "anthropic",
+      "label": "Claude",
+      "model": "manual",
+      "mention": "yes",
+      "position": null,
+      "citationCount": 12,
+      "canonicalCitations": [
+        "https://typelessform.com/blog/best-ai-form-filling-tools-2026/",
+        "https://www.talktoform.ai/",
+        "https://anvevoice.app/",
+        "https://anvevoice.app/features",
+        "https://form2agent.freeportmetrics.com/",
+        "https://form2agent.freeportmetrics.com/technical-overview",
+        "https://docs.voiceform.com/docs/multilingual-surveys-and-translations",
+        "https://www.voiceform.com/",
+        "https://www.jotform.com/widgets/voice-recorder",
+        "https://www.fillout.com/help/make-a-form-in-any-language",
+        "https://docs.cloud.google.com/speech-to-text/docs",
+        "https://www.g2.com/compare/azure-ai-speech-vs-google-cloud-speech-to-text"
+      ],
+      "competitors": [
+        "TalkToForm.ai",
+        "AnveVoice",
+        "Form2Agent AI"
+      ],
+      "competitorsUnverified": [
+        "Voiceform",
+        "Jotform"
+      ],
+      "hasBrandInCitations": true,
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high",
+        "rationale": "TypelessForm is recommended as a top, low-effort choice and praised for its valuable cross-language filling feature."
+      },
+      "proseRank": {
+        "rank": 1,
+        "confidence": "med",
+        "rationale": "TypelessForm is listed first among six comparable voice-based form filling tools mentioned in the response."
+      },
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q1",
+      "queryText": "best voice form filling tools 2026",
+      "provider": "perplexity",
+      "label": "Perplexity",
+      "model": "manual",
+      "mention": "yes",
+      "position": null,
+      "citationCount": 10,
+      "canonicalCitations": [
+        "https://typelessform.com/blog/best-ai-form-filling-tools-2026/",
+        "https://typelessform.com/blog/one-shot-voice-form-filling-ecommerce-2026/",
+        "https://typelessform.com/blog/best-form-filling-tools-accessibility-2026/",
+        "https://anvevoice.app/best/best-conversational-form-builders-2026",
+        "https://anvevoice.app/features/form-filling",
+        "https://anvevoice.app/use-cases/form-filling",
+        "https://anvevoice.app/best/best-ai-form-builder-for-saas-2026",
+        "https://www.opentypeless.com/en/blog/best-voice-input-apps-2026",
+        "https://anvevoice.app/faq/best-voice-ai-for-intake-forms",
+        "https://anvevoice.app/how-to/automate-form-filling-home-services"
+      ],
+      "competitors": [],
+      "competitorsUnverified": [
+        "AnveVoice",
+        "Say2Form",
+        "Form2Agent"
+      ],
+      "hasBrandInCitations": true,
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high",
+        "rationale": "TypelessForm is recommended as a top tool to reduce typing, boost completion, and improve accessibility."
+      },
+      "proseRank": {
+        "rank": 1,
+        "confidence": "med",
+        "rationale": "TypelessForm is the first listed tool among six comparable options mentioned in the text."
+      },
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q2",
+      "queryText": "top one-shot voice form filling services for e-commerce",
+      "provider": "perplexity",
+      "label": "Perplexity",
+      "model": "manual",
+      "mention": "yes",
+      "position": null,
+      "citationCount": 34,
+      "canonicalCitations": [
+        "https://typelessform.com/blog/best-ai-form-filling-tools-2026/",
+        "https://typelessform.com/blog/one-shot-voice-form-filling-ecommerce-2026/",
+        "https://typelessform.com/blog/best-form-filling-tools-accessibility-2026/",
+        "https://anvevoice.app/best/best-conversational-form-builders-2026",
+        "https://anvevoice.app/features/form-filling",
+        "https://anvevoice.app/use-cases/form-filling",
+        "https://www.linkedin.com/posts/morteza-tawakuli-904818170_buildinpublic-ai-accessibility-activity-74925189111674",
+        "https://anvevoice.app/best/best-ai-form-builder-for-saas-2026",
+        "https://www.sobot.io/blog/top-ai-voice-agent-platforms-for-retail-2026/",
+        "https://murf.ai/blog/best-ai-voice-agent-services-for-businesses",
+        "https://www.sobot.io/blog/ai-voice-agents-ecommerce-customer-support-compared-2026/",
+        "https://www.sobot.io/blog/customer-service-ai-agent-platforms-ecommerce-2026/",
+        "https://www.11x.ai/guides/ai-voice-agents-calling-back-form",
+        "https://www.cloudtalk.io/blog/best-ai-voice-agents/",
+        "https://www.cloudtalk.io/blog/best-ai-voice-agents-for-ecommerce/",
+        "https://www.esferasoft.com/blog/how-ai-voice-agents-are-transforming-the-ecommerce-experience",
+        "https://vomyra.com/blogs/best-ai-voice-agent-platforms-india",
+        "https://github.com/FireRedTeam/FireRedTTS3",
+        "https://markets.businessinsider.com/news/stocks/will-this-be-the-end-of-contact-us-forms-thepowerlabs-ai-launches-",
+        "https://mastra.ai/articles/best-ai-voice-tools",
+        "https://harshith-nayaka-l-portfolio.vercel.app/work/craftconnect",
+        "https://www.cryptopolitan.com/ru/best-ai-voice-agent-platforms-in-2026-8-options-for-builders-and-businesses/",
+        "https://chatarmin.com/en/blog/ai-voice-agent",
+        "https://www.thenews.com.pk/latest/1413191-stripe-predicts-the-end-of-the-online-checkout-page",
+        "https://www.youtube.com/watch?v=wtSuUt7e6Ic",
+        "https://note.com/r_k_t/n/nebabc2e20e6c?hl=en",
+        "https://higgsfield.ai/blog/ai-ecommerce-ads-2026",
+        "https://www.youtube.com/watch?v=vBPJx2iQWhg",
+        "https://moras.ai/blog/ai-commerce-agent-ecommerce",
+        "https://www.thareja.ai/alternatives/jotform-ai-chatbot-review-2026-features-pricing-pros-cons",
+        "https://chatarmin.com/en/blog/voice-commerce",
+        "https://www.youtube.com/watch?v=j_HuGhPPg24",
+        "https://www.businesswire.com/news/home/20260812602613/en/Text-to-Speech-Comes-of-Age-Deepgram-Launches-",
+        "https://thoughtly.com/blog/best-ai-appointment-setting-agents"
+      ],
+      "competitors": [
+        "AnveVoice",
+        "Say2Form",
+        "vForm",
+        "DodoForm"
+      ],
+      "competitorsUnverified": [
+        "Talk2Forms"
+      ],
+      "hasBrandInCitations": true,
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high",
+        "rationale": "TypelessForm is explicitly recommended as the starting choice for existing forms and noted as frequently cited in industry roundups."
+      },
+      "proseRank": {
+        "rank": 1,
+        "confidence": "med",
+        "rationale": "TypelessForm is listed first among six comparable voice form-filling options mentioned in both the table and prose."
+      },
+      "responseQuality": "rich"
+    },
+    {
+      "query": "Q3",
+      "queryText": "multilingual voice form filling for international websites",
+      "provider": "perplexity",
+      "label": "Perplexity",
+      "model": "manual",
+      "mention": "no",
+      "position": null,
+      "citationCount": 17,
+      "canonicalCitations": [
+        "https://aitoolsatlas.ai/tools/anvevoice/pros-cons",
+        "https://anvevoice.app/languages/arabic",
+        "https://anvevoice.app/features/voice-ai-multilingual-detection",
+        "https://www.ask-bennett.com/multilingual-voice-assistant",
+        "https://www.linkedin.com/posts/chatlab_spring-and-summer-2026-has-been-chatlabs-activity-7490085778652565504",
+        "https://dialnexa.com/blogs/7-best-ai-voice-agents-in-india-for-businesses-2026/",
+        "https://dialnexa.com/blogs/voice-ai-platforms/",
+        "https://vomyra.com/blogs/best-no-code-ai-voice-agent-builders-for-indian-smbs-in-2026",
+        "https://anvevoice.app/features/form-filling",
+        "https://anvevoice.app/use-cases/form-filling",
+        "https://www.nice.com/ai-voice-agents/multilingual-ai-voice-agents",
+        "https://www.awaaz.ai/blog/multilingual-ai-voice-assistant-platforms",
+        "https://blink.new/p/voicegov-ai-app-0vqwvn5p",
+        "https://www.dictationdatabase.com/categories/general-dictation",
+        "https://www.linkedin.com/posts/callevate-ai_callevate-smartservice-voiceagent-activity-7496500701112467456-QYo3",
+        "https://www.cloudtalk.io/blog/best-ai-voice-agents-for-ecommerce/",
+        "https://www.linkedin.com/posts/morteza-tawakuli-904818170_buildinpublic-ai-accessibility-activity-74925189111674"
+      ],
+      "competitors": [
+        "AnveVoice"
+      ],
+      "competitorsUnverified": [
+        "Ask Bennett",
+        "ChatLab",
+        "Vomyra",
+        "DialNexa"
+      ],
+      "hasBrandInCitations": false,
+      "responseQuality": "rich"
+    }
+  ]
+}

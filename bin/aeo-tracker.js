@@ -12,7 +12,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides } from '../lib/config.js';
+import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, resolveRunModels } from '../lib/config.js';
 import { PROVIDERS } from '../lib/providers/index.js';
 import { extractOpenAIResponse } from '../lib/providers/openai.js';
 import { pickClassifyProvider } from '../lib/providers/pick-classify.js';
@@ -23,7 +23,7 @@ import { renderMarkdown, parseRawResponse } from '../lib/report/markdown.js';
 import { renderHtml } from '../lib/report/html.js';
 import { buildMcMetadata } from '../lib/report/mc-metadata.js';
 import { classifyCitations } from '../lib/report/classify-citations.js';
-import { discoverModels, discoverClassifyModel, resolveClassifyModel, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
+import { discoverModels, discoverClassifyModel, resolveClassifyModel, listModelIds, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
 import { MAIN_OPTIONS_BY_PROVIDER, CLASSIFY_OPTIONS_BY_PROVIDER, detectThinkingActive } from '../lib/providers/main-options.js';
 import { extractUsage, calcCost, estimateWeeklyCost } from '../lib/providers/pricing.js';
 import { formatTpmHint, estimateRunDuration } from '../lib/util/cost-estimate.js';
@@ -654,6 +654,45 @@ async function buildResearchProviders(providerKeyMap, providerConfig = DEFAULT_C
  * parallel cross-check; one → single-model extraction (callers mark results
  * unverified — single-key mode, 1.1.8); zero → throw with one next step.
  */
+/**
+ * A providerConfig view whose `classifyModel` is the LIVE one for each provider,
+ * for callers outside `cmdRun`'s discovery loop (`run-manual`).
+ *
+ * `cmdRun` rediscovers both tiers and hands `buildExtractionProviders` the
+ * resolved view; `run-manual` used to hand it the raw config file, so the two
+ * legs of a single day's run could be classified by different models — which is
+ * what happened on 2026-09-01 and is invisible unless someone reads the logs of
+ * both commands side by side. Best-effort by construction: `resolveClassifyModel`
+ * never throws and falls back to the config pin, so an offline `run-manual`
+ * behaves exactly as before.
+ *
+ * @param {Object} providerConfig
+ * @returns {Promise<Object>} shallow per-provider clones with classifyModel resolved
+ */
+/**
+ * The classify-tier models actually in use, as `["openai/gpt-5-nano", …]` —
+ * stable, sorted, and safe to diff between two summaries.
+ * @param {{primary: Object, secondary: Object|null}} extraction
+ * @returns {string[]}
+ */
+function extractorModelList(extraction) {
+  return [extraction?.primary, extraction?.secondary]
+    .filter(p => p && p.model)
+    .map(p => `${p.name}/${p.model}`)
+    .sort();
+}
+
+async function resolveClassifyProviderConfig(providerConfig) {
+  const base = providerConfig || DEFAULT_CONFIG.providers;
+  const entries = await Promise.all(
+    Object.entries(base).map(async ([name, cfg]) => [
+      name,
+      { ...cfg, classifyModel: (await resolveClassifyModel(name, cfg)) || cfg.classifyModel },
+    ]),
+  );
+  return Object.fromEntries(entries);
+}
+
 async function buildExtractionProviders(providerConfig) {
   const mkProvider = async (name) => {
     const cfg = providerConfig?.[name] || DEFAULT_CONFIG.providers[name];
@@ -2261,12 +2300,19 @@ async function cmdRun(options = {}) {
   // providerConfig — overrides mutate config.providers in place so downstream
   // provider discovery picks up the user's chosen model. Disk config is not
   // touched; this is per-run only.
-  applyCliModelOverrides(config, {
+  const cliModelOverrides = {
     openaiModel:     options.openaiModel,
     geminiModel:     options.geminiModel,
     anthropicModel:  options.anthropicModel,
     perplexityModel: options.perplexityModel,
-  });
+  };
+  applyCliModelOverrides(config, cliModelOverrides);
+  // Kept SEPARATELY from the config mutation above: once the flag is written
+  // into providers.<name>.model it is indistinguishable from a value that was
+  // simply sitting in .aeo-tracker.json, and live discovery is allowed to
+  // override the latter. That collapse is why --openai-model was a documented
+  // no-op — see cliModelPins() in lib/config.js.
+  const modelPins = cliModelPins(cliModelOverrides);
   const { brand, domain, queries: rawQueries, providers: providerConfig } = config;
   const brandAliases = Array.isArray(config.brandAliases) ? config.brandAliases : [];
 
@@ -2399,14 +2445,19 @@ async function cmdRun(options = {}) {
           if (!apiKey) return { name, cfg, skip: 'no-key', envKey };
           // Main and classify tiers discovered in parallel — same live-vs-hardcode
           // treatment for both now, where classify used to have none at all.
-          const [mainResult, classifyResult] = await Promise.all([
+          // A pinned provider ALSO gets the raw catalogue, so a pin naming a
+          // model the key can no longer see fails loudly BEFORE the first paid
+          // call rather than being quietly swapped for something else.
+          const [mainResult, classifyResult, catalogue] = await Promise.all([
             discoverModels(name, apiKey, cfg.baseURL),
             discoverClassifyModel(name, apiKey, cfg.baseURL),
+            modelPins[name] ? listModelIds(name, apiKey, cfg.baseURL) : Promise.resolve({ ids: null, authError: false }),
           ]);
           return {
             name, cfg, apiKey,
             models: mainResult.models, authError: mainResult.authError,
             classifyModels: classifyResult.models,
+            catalogueIds: catalogue.ids,
           };
         } catch (err) {
           // Defensive per-task catch: ensures one crash doesn't break Promise.all.
@@ -2420,6 +2471,10 @@ async function cmdRun(options = {}) {
     // buildResearchProviders/buildExtractionProviders read below instead of
     // re-deriving their own (previously stale/inconsistent) resolution.
     const providerOverrides = {};
+    // Pins whose id is provably absent from the provider's own catalogue.
+    // Collected here, refused after the loop — one message listing every bad
+    // pin beats failing on whichever provider happened to be iterated first.
+    const deadPins = [];
 
     for (const r of discoveryResults) {
       if (r.skip === 'no-key') {
@@ -2434,11 +2489,22 @@ async function cmdRun(options = {}) {
         console.error(`  ${c.red}${SYM.err}${c.reset} ${r.name} — invalid API key (HTTP 401/403). Skipping this provider.${c.reset}`);
         continue;
       }
-      // Discovery success → use discovered. Discovery soft-fail → fallback to cfg.model.
-      const finalModels = r.models ?? (r.cfg.model ? [r.cfg.model] : null);
+      // Explicit --<provider>-model pin wins outright; else discovery; else
+      // cfg.model. The precedence lives in resolveRunModels() (lib/config.js)
+      // so it is unit-testable without a network — this stays a thin caller.
+      const pinnedModel = modelPins[r.name] || null;
+      const { models: finalModels, source: modelSource } = resolveRunModels({
+        pinnedModel, discovered: r.models, cfgModel: r.cfg.model,
+      });
       if (!finalModels?.length) {
         console.log(`${c.dim}  skip ${r.name} — discovery failed and no fallback (re-run: aeo-platform init)${c.reset}`);
         continue;
+      }
+      // A pin the provider no longer lists: refuse rather than substitute. The
+      // catalogue is null when it could not be read (Perplexity's /models 404s
+      // routinely) — unknown is not absent, so that case proceeds.
+      if (pinnedModel && Array.isArray(r.catalogueIds) && !r.catalogueIds.includes(pinnedModel)) {
+        deadPins.push({ provider: r.name, pinned: pinnedModel, catalogue: r.catalogueIds });
       }
       // Classify tier keeps its extra fallback rung (discovered → cfg → hardcode)
       // — unlike main, which has always stopped at cfg.model with no further
@@ -2447,7 +2513,12 @@ async function cmdRun(options = {}) {
         || r.cfg.classifyModel
         || MODEL_FALLBACK[r.name]?.classify;
       const classifySourceLabel = r.classifyModels ? '' : ' (fallback)';
-      const sourceLabel = r.models ? '' : ` ${c.dim}(fallback)${c.reset}`;
+      // Naming the SOURCE is the point: the operator has to be able to see, in
+      // the run log, whether the id being measured on came from their flag,
+      // from the live catalogue, or from a config file that may be months old.
+      const sourceLabel = modelSource === 'cli-pin'
+        ? ` ${c.dim}(pinned by --${r.name}-model)${c.reset}`
+        : modelSource === 'config' ? ` ${c.dim}(fallback)${c.reset}` : '';
       console.log(`  ${c.green}${SYM.ok}${c.reset} ${r.name}: ${finalModels.join(', ')}${sourceLabel}${c.dim} · classify: ${resolvedClassifyModel}${classifySourceLabel}${c.reset}`);
 
       providerOverrides[r.name] = { model: finalModels[0], classifyModel: resolvedClassifyModel };
@@ -2467,6 +2538,20 @@ async function cmdRun(options = {}) {
           ...PROVIDERS[r.name],
         });
       }
+    }
+
+    // A pin the provider does not list is a hard stop, and it happens HERE —
+    // after discovery (free GETs), before the first billed answer call. Silently
+    // measuring on some other model is the original defect; so is charging the
+    // operator for a run that answers a different question than they asked.
+    if (deadPins.length > 0) {
+      for (const p of deadPins) {
+        const near = p.catalogue.filter(id => id.startsWith(String(p.pinned).split('-')[0])).slice(0, 8);
+        console.error(`${c.red}  --${p.provider}-model=${p.pinned} — this key's /models catalogue does not list that id.${c.reset}`);
+        if (near.length) console.error(`${c.dim}    Available on this key: ${near.join(', ')}${c.reset}`);
+      }
+      console.error(`${c.red}  Refusing to run: substituting a different model would measure something other than what you asked for.${c.reset}`);
+      process.exit(1);
     }
 
     // Build the overridden config view — shallow clone per provider so we don't
@@ -2800,11 +2885,13 @@ async function cmdRun(options = {}) {
               // FAIL is opt-in via --strict-model-pin (handled after the loop).
               // Decision is the pure evaluateModelDrift() (unit-tested); this
               // block is a thin caller (house pattern — see silent-substitute).
-              let driftProvenance = null;
+              let servedModel = null;
+              let isModelDriftCell = false;
               if (!replayed && mode !== 'training') {
                 const drift = evaluateModelDrift(provider.name, cellModel, raw);
+                servedModel = drift.resolvedModel;
+                isModelDriftCell = drift.isDrift;
                 if (drift.isDrift) {
-                  driftProvenance = drift.provenance;
                   const e = modelDriftEvents.get(drift.tallyKey)
                     || { provider: provider.name, requested: cellModel, resolved: drift.resolvedModel, count: 0 };
                   e.count++;
@@ -2989,10 +3076,24 @@ async function cmdRun(options = {}) {
                 // Only persist when false — absence means tracked (keeps the
                 // year-over-year summary JSON lean; see storeSources rationale).
                 ...(costInfo.costTracked === false ? { costTracked: false } : {}),
-                // Model-drift provenance — persisted ONLY when the served model
-                // diverged from the requested one (lean-summary convention).
-                // Its presence in a record is the machine-readable drift flag.
-                ...(driftProvenance || {}),
+                // Model provenance — ALWAYS, not only on divergence (2026-09-01).
+                //
+                // `model` stays the REQUESTED id, because every downstream
+                // reader already means "requested" by it. `requestedModel`
+                // mirrors it under an unambiguous name, and `resolvedModel` is
+                // the id the provider says it actually served — including the
+                // benign dated snapshot (`gpt-5.4-mini-2026-03-17`), which is
+                // the finest-grained record of the instrument available.
+                //
+                // The old convention persisted these two ONLY on drift, so
+                // "which model produced this number" could not be answered from
+                // the summary at all — catching a swap meant opening the raw
+                // response files by hand and diffing filenames, which is exactly
+                // what the 2026-09-01 TypelessForm session had to do. The drift
+                // FLAG is now its own field rather than the presence of these.
+                requestedModel: cellModel,
+                ...(servedModel ? { resolvedModel: servedModel } : {}),
+                ...(isModelDriftCell ? { modelDrift: true } : {}),
               });
               const icon = mention === 'yes' ? `${c.green}YES` : mention === 'src' ? `${c.yellow}SRC` : `${c.red}NO`;
               const costStr = costInfo.costUsd > 0 ? ` $${costInfo.costUsd.toFixed(4)}` : '';
@@ -3387,9 +3488,24 @@ async function cmdRun(options = {}) {
     regressionThreshold,
     sessionCostUsd,
     costByModel,
+    // Cost completeness (2026-09-01). `sessionCostUsd` sums only the models the
+    // pricing table knows; anything served by a model with no row contributes
+    // $0 to it. Discovery structurally OUTRUNS the table — it walks itself to
+    // each vendor's newest generation, which by definition ships before anyone
+    // adds its price — so this is not an edge case, it recurs at every
+    // generation change (2026-09-01: `gemini-3.7-flash`). Until now that was
+    // said on stdout and nowhere else, so any consumer reading the summary got
+    // an understated total presented as a complete one. The total is NOT fudged
+    // — an invented price is worse than a known gap; the gap is named instead.
+    ...(untrackedModels.size > 0
+      ? { costComplete: false, costUntrackedModels: [...untrackedModels].sort() }
+      : {}),
     // single-key mode marker (1.1.8) — the report renderer needs it to phrase
     // «unverified» honestly (no second model ≠ model disagreement).
     extractorMode: extractionProviders.secondary ? 'dual' : 'single',
+    // See the run-manual writer: the grader is part of the measurement, so it
+    // is recorded next to the result rather than only printed at run time.
+    extractorModels: extractorModelList(extractionProviders),
     // version stamp — answers "which build produced this run?" from the artifact
     generatedBy: `aeo-platform@${TRACKER_VERSION}`,
     // measurement scope — honest record that we query each engine's API surface
@@ -4532,7 +4648,18 @@ async function cmdRunManual(argv) {
 
   let extractionProvidersManual;
   try {
-    extractionProvidersManual = await buildExtractionProviders(config.providers);
+    // Resolve the classify tier the SAME way `run` does — live discovery first,
+    // config pin second, shipped FALLBACK last (resolveClassifyModel). Reading
+    // config.providers verbatim here is what split one run's cells across two
+    // different classifiers: on 2026-09-01 the API leg was labelled by the
+    // discovered `gemini-3.1-flash-lite + gpt-4o-mini` while these manual legs
+    // used the config's `gemini-3.5-flash + gpt-5-nano`. Cells of one run,
+    // compared against each other, judged by different graders — and the
+    // difference was invisible in the summary. Same reason resolveClassifyModel
+    // exists for the report path: a config pin goes stale, discovery does not.
+    extractionProvidersManual = await buildExtractionProviders(
+      await resolveClassifyProviderConfig(config.providers),
+    );
   } catch (err) {
     console.error(`\n${c.red}${SYM.err} ${errMsg(err)}${c.reset}`);
     process.exit(1);
@@ -4708,6 +4835,13 @@ async function cmdRunManual(argv) {
     errors,
     regressionThreshold,
     extractorMode: extractionProvidersManual.secondary ? 'dual' : 'single',
+    // Which models graded THIS merge's cells. `run-manual` and `run` are two
+    // commands executed minutes or days apart, so even with both now resolving
+    // the classify tier the same way (resolveClassifyProviderConfig) the two
+    // legs can legitimately land on different graders if a vendor rolls a model
+    // between them. Naming the grader in the artifact is what makes that
+    // knowable from the summary instead of from two terminal scrollbacks.
+    extractorModels: extractorModelList(extractionProvidersManual),
     generatedBy: `aeo-platform@${TRACKER_VERSION}`,
     results: allResults,
     topCompetitors: mergedTopCompetitors,
@@ -5105,15 +5239,22 @@ ${c.bold}Query validation:${c.reset}
                          Use full|auto to distinguish "absent from current SERPs" from "absent from training corpus".
 
 ${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only):
-  ${c.bold}--openai-model=<id>${c.reset}     Override providers.openai.model for this run
-  ${c.bold}--gemini-model=<id>${c.reset}     Override providers.gemini.model
-  ${c.bold}--anthropic-model=<id>${c.reset}  Override providers.anthropic.model
-  ${c.bold}--perplexity-model=<id>${c.reset} Override providers.perplexity.model
+  ${c.bold}--openai-model=<id>${c.reset}     Pin providers.openai.model for this run
+  ${c.bold}--gemini-model=<id>${c.reset}     Pin providers.gemini.model
+  ${c.bold}--anthropic-model=<id>${c.reset}  Pin providers.anthropic.model
+  ${c.bold}--perplexity-model=<id>${c.reset} Pin providers.perplexity.model
 
-  OpenAI's default main (gpt-5-mini) does live web search via the Responses web_search
-  tool at the general 500k-TPM bucket — NOT the legacy gpt-5-search-api SKU (its own tiny
-  ~6k-TPM bucket that cools down fast). Avoid overriding to a -search SKU. See --depth=full
-  for the training-corpus (no-search) pass alongside the live-search pass.
+  A pin BEATS live model discovery — that is the point of it: re-measuring an earlier
+  month like-for-like means running the id that month ran, not the id that is newest
+  today. If the provider's catalogue no longer lists the pinned id, the run stops with
+  an error instead of quietly substituting another model.
+
+  OpenAI's default main is the cheapest tier of the newest generation (gpt-5.6-luna as
+  of 2026-09), which does live web search via the Responses web_search tool at the
+  general 500k-TPM bucket — NOT the legacy gpt-5-search-api SKU (its own tiny ~6k-TPM
+  bucket that cools down fast). Avoid pinning to a -search SKU except for exactly this
+  like-for-like case. See --depth=full for the training-corpus (no-search) pass
+  alongside the live-search pass.
   --replay caveat: cached raw responses are filename-keyed by (query index, provider, model)
   within the active domain's namespace. An override that doesn't match the recorded model — or a
   query list reordered since capture — will miss the file and hit live API.

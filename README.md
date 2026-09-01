@@ -159,7 +159,7 @@ Use category-based phrasing («best X for Y» / «top X 2026») the way real use
 
 Six concrete reasons `aeo-platform` exists, in order of how often they decide the install:
 
-- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5-mini` + the Responses `web_search` tool), Claude (`claude-sonnet-5`), Gemini (`gemini-3.5-flash`), Perplexity (`sonar-reasoning-pro`). No scraping. No proprietary score.
+- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5.6-luna` + the Responses `web_search` tool), Claude (`claude-sonnet-5`), Gemini (`gemini-3.7-flash`), Perplexity (`sonar-reasoning-pro`). No scraping. No proprietary score.
 - **Local-first.** Raw responses stay on your disk in `aeo-responses/<domain>/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. OpenAI Responses web-search calls send `store:false` to disable Responses application-state storage; this is not a claim of Zero Data Retention, and provider abuse-monitoring retention remains governed by your provider account. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+. The report is a single self-contained HTML file (~390 KB — about 170 KB of that is the embedded variable fonts that let it render identically offline, with zero CDN calls).
@@ -268,12 +268,12 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 
 ## Multi-engine coverage
 
-**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5-mini` + the Responses `web_search` tool), Gemini (`gemini-3.5-flash`), Claude (`claude-sonnet-5`), Perplexity (`sonar-reasoning-pro`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
+**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5.6-luna` + the Responses `web_search` tool), Gemini (`gemini-3.7-flash`), Claude (`claude-sonnet-5`), Perplexity (`sonar-reasoning-pro`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
 
 | Engine | Default model | API path | Web-search grounding | Required key |
 |---|---|---|---|---|
-| ChatGPT (OpenAI) | `gpt-5-mini` | direct REST | yes (Responses `web_search` tool) | `OPENAI_API_KEY` |
-| Gemini (Google) | `gemini-3.5-flash` | direct REST | optional (request flag) | `GEMINI_API_KEY` |
+| ChatGPT (OpenAI) | `gpt-5.6-luna` | direct REST | yes (Responses `web_search` tool) | `OPENAI_API_KEY` |
+| Gemini (Google) | `gemini-3.7-flash` | direct REST | optional (request flag) | `GEMINI_API_KEY` |
 | Claude (Anthropic) | `claude-sonnet-5` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
 | Perplexity | `sonar-reasoning-pro` | direct REST | always | `PERPLEXITY_API_KEY` |
 
@@ -363,7 +363,7 @@ Each run records this in `_summary.json` under `measurement` (`{ "surface": "api
 
 | Engine measured (API) | What we call | Is NOT the same as |
 |---|---|---|
-| OpenAI `gpt-5-mini` + Responses `web_search` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
+| OpenAI `gpt-5.6-luna` + Responses `web_search` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
 | Perplexity `sonar-reasoning-pro` | direct REST, always grounded | perplexity.ai Pro browser UI |
 | Gemini `generateContent` + grounding | direct REST | the Gemini app |
 | Anthropic `claude-sonnet-5` | direct REST (optional column) | claude.ai chat |
@@ -510,7 +510,7 @@ Every flag `aeo-platform` accepts, grouped by which command consumes it.
 | `--no-html` | `report` | Markdown only — skip HTML write + browser auto-open |
 | `--no-open` | `report` | Write files but don't auto-open the browser |
 | `--no-authority` / `--no-page-signals` / `--no-entity-graph` / `--no-pricing` | `report` | Skip optional fetch-heavy checks (use behind a VPN, offline, or to dodge rate limits) |
-| `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from the default `gpt-5-mini` to another model available to your OpenAI project |
+| `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from the default `gpt-5.6-luna` to another model available to your OpenAI project |
 | `--add-queries "q1,q2,q3"` | `init` | Add queries to an existing config without re-running brainstorm; preserves prior basket history |
 | `--replace-queries "q1,q2,q3"` | `init` | Replace queries in an existing config (forks basket version); preserves prior versions in `basketHistory` |
 
@@ -632,8 +632,8 @@ jobs:
   ],
   "regressionThreshold": 10,
   "providers": {
-    "openai":     { "model": "gpt-5-mini",          "classifyModel": "gpt-5-nano",       "env": "OPENAI_API_KEY" },
-    "gemini":     { "model": "gemini-3.5-flash",    "classifyModel": "gemini-2.5-flash", "env": "GEMINI_API_KEY" },
+    "openai":     { "model": "gpt-5.6-luna",        "classifyModel": "gpt-5-nano",       "env": "OPENAI_API_KEY" },
+    "gemini":     { "model": "gemini-3.7-flash",    "classifyModel": "gemini-3.1-flash-lite", "env": "GEMINI_API_KEY" },
     "anthropic":  { "model": "claude-sonnet-5",     "classifyModel": "claude-haiku-4-5", "env": "ANTHROPIC_API_KEY" },
     "perplexity": { "model": "sonar-reasoning-pro", "classifyModel": "sonar",            "env": "PERPLEXITY_API_KEY" }
   }
@@ -665,7 +665,7 @@ Traditional SEO optimises for click-through from search-result pages. AEO/GEO op
 
 ### Which AI engines does `aeo-platform` cover?
 
-Four, via official APIs: **ChatGPT** (`gpt-5-mini` + the Responses `web_search` tool), **Claude** (`claude-sonnet-5`), **Gemini** (`gemini-3.5-flash`), **Perplexity** (`sonar-reasoning-pro`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
+Four, via official APIs: **ChatGPT** (`gpt-5.6-luna` + the Responses `web_search` tool), **Claude** (`claude-sonnet-5`), **Gemini** (`gemini-3.7-flash`), **Perplexity** (`sonar-reasoning-pro`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
 
 ### Is my data private?
 
@@ -1067,7 +1067,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "Which AI engines does aeo-platform cover?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5-mini with the Responses web_search tool), Claude (claude-sonnet-5), Gemini (gemini-3.5-flash), Perplexity (sonar-reasoning-pro). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5.6-luna with the Responses web_search tool), Claude (claude-sonnet-5), Gemini (gemini-3.7-flash), Perplexity (sonar-reasoning-pro). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
         },
         {
           "@type": "Question",

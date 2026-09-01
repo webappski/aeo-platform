@@ -42,7 +42,7 @@ await test('openai: general mini picked; search SKUs + flagship excluded/outrank
   stub(() => ok({ data: [
     { id: 'gpt-5-mini-search-api' },  // search SKU — excluded (tiny bucket)
     { id: 'gpt-5-search-api' },        // search SKU — excluded
-    { id: 'gpt-5' },                   // flagship — mini is required, so outranked
+    { id: 'gpt-5' },                   // flagship — outranked by the cheap-tier preference
     { id: 'gpt-5-mini' },              // ← winner
     { id: 'gpt-5-nano' },              // nano is NOT mini
     { id: 'gpt-4o' },
@@ -51,6 +51,53 @@ await test('openai: general mini picked; search SKUs + flagship excluded/outrank
   const { models, authError } = await discoverModels('openai', 'sk-test');
   assert.equal(authError, false);
   assert.deepStrictEqual(models, ['gpt-5-mini']);
+});
+
+await test('openai: NEWEST GENERATION wins even when it ships no -mini at all', async () => {
+  // THE regression this rule exists for. OpenAI's 5.6 line replaced size
+  // suffixes with names (sol / terra / luna). Under the old "mini required"
+  // filter the whole 5.6 generation fell out of the pool BEFORE the version
+  // sort, so discovery reported a healthy pick of gpt-5.4-mini — two
+  // generations behind — and the run measured a world that had moved on.
+  // Founder ruling 2026-09-01: "надо брать последние модели… последняя
+  // модель, но дешёвая модификация". Cheapness may not cost a generation.
+  stub(() => ok({ data: [
+    { id: 'gpt-5.6-sol' },      // newest gen, flagship
+    { id: 'gpt-5.6-terra' },    // newest gen, balanced
+    { id: 'gpt-5.6-luna' },     // ← winner: newest gen, cheapest tier
+    { id: 'gpt-5.4-mini' },     // older gen — must NOT win on its suffix
+    { id: 'gpt-5.4-nano' },
+  ]}));
+  const { models } = await discoverModels('openai', 'sk-test');
+  assert.deepStrictEqual(models, ['gpt-5.6-luna']);
+});
+
+await test('openai: an unrecognised newest generation still wins, and says so on stderr', async () => {
+  // The hint list is a PREFERENCE, never a gate: a generation whose tier names
+  // we have never seen must still be picked over an older one we understand.
+  // And the operator has to hear about it — a silent fallback pick is how the
+  // NEXT naming change would cost three months of drifting numbers.
+  const lines = [];
+  const spy = (s, ...rest) => {
+    if (typeof s === 'string' && s.includes('[discover-warn]')) { lines.push(s); return true; }
+    return originalStderrWrite(s, ...rest);
+  };
+  const prevWrite = process.stderr.write;
+  process.stderr.write = spy;
+  try {
+    stub(() => ok({ data: [
+      { id: 'gpt-6-alpha' },
+      { id: 'gpt-6-beta' },
+      { id: 'gpt-5.6-luna' },
+    ]}));
+    const { models } = await discoverModels('openai', 'sk-test');
+    assert.equal(models[0].startsWith('gpt-6-'), true, `expected a gen-6 pick, got ${models[0]}`);
+  } finally {
+    process.stderr.write = prevWrite;
+  }
+  assert.equal(lines.length, 1, 'expected exactly one [discover-warn] about the unrecognised tier');
+  assert.match(lines[0], /no recognised cheap tier/);
+  assert.match(lines[0], /MAIN_CHEAP_TIER/);
 });
 
 await test('openai: newest-gen mini wins (5.4-mini > 5-mini via parseFloat)', async () => {
@@ -62,7 +109,7 @@ await test('openai: newest-gen mini wins (5.4-mini > 5-mini via parseFloat)', as
   assert.deepStrictEqual(models, ['gpt-5.4-mini']);
 });
 
-await test('openai: mini REQUIRED — falls back to newest general only when no mini', async () => {
+await test('openai: newest generation wins even when nothing in it is a recognised cheap tier', async () => {
   stub(() => ok({ data: [
     { id: 'gpt-5' },
     { id: 'gpt-5.4' },
