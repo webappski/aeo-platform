@@ -327,7 +327,6 @@ body::before {
   margin: 0;
   font-family: var(--display);
   font-weight: 300;
-  font-variation-settings: "opsz" 144, "SOFT" 40;
   font-size: var(--t-display-2);
   line-height: 0.96;
   letter-spacing: -0.035em;
@@ -422,8 +421,9 @@ body::before {
 }
 .hero-num {
   font-family: var(--display);
-  font-weight: 200;
-  font-variation-settings: "opsz" 144, "SOFT" 100;
+  /* Dead selector (no emitter in lib/ or bin/) — kept in step with the live
+     register so a future revival cannot reintroduce a sub-300 hairline. */
+  font-weight: 600;
   font-size: var(--t-display-1);
   line-height: 0.86;
   letter-spacing: -0.045em;
@@ -440,7 +440,6 @@ body::before {
 .hero-num-frac {
   font-family: var(--display);
   font-weight: 300;
-  font-variation-settings: "opsz" 144;
   font-size: 30px;
   letter-spacing: -0.02em;
   color: var(--ink-3);
@@ -493,7 +492,6 @@ body::before {
   font-family: var(--display);
   font-weight: 350;
   font-style: italic;
-  font-variation-settings: "opsz" 36, "SOFT" 60;
   font-size: 23px;
   line-height: 1.42;
   color: var(--ink-2);
@@ -503,7 +501,6 @@ body::before {
   font-family: var(--display);
   font-weight: 300;
   font-style: normal;
-  font-variation-settings: "opsz" 144, "SOFT" 40;
   font-size: 4.4em;
   line-height: 0.82;
   float: left;
@@ -576,7 +573,6 @@ body::before {
 .hero-kpi-num {
   font-family: var(--display);
   font-weight: 350;
-  font-variation-settings: "opsz" 96;
   font-size: 38px;
   letter-spacing: -0.025em;
   line-height: 1;
@@ -696,7 +692,6 @@ body::before {
   margin: 0;
   font-family: var(--display);
   font-weight: 400;
-  font-variation-settings: "opsz" 60, "SOFT" 40;
   font-size: var(--t-display-4);
   line-height: 1.06;
   letter-spacing: -0.028em;
@@ -872,7 +867,6 @@ body::before {
 .rail-num {
   font-family: var(--display);
   font-weight: 400;
-  font-variation-settings: "opsz" 24, "SOFT" 50;
   font-size: 15px;
   color: var(--ink-4);
   letter-spacing: -0.02em;
@@ -891,12 +885,17 @@ body::before {
   margin: 0 0 56px;
   scroll-margin-top: 80px;
 }
+/* The bento level is quieter than the loud spine on purpose — but quiet in
+   the SAME language, not a dialect. It reads the declared depth ladder one
+   rung below .lr-card/.lr-quiet (--depth-3) and carries .lr-quiet's padding,
+   so a bento cell and a loud card differ by elevation, never by vocabulary. */
 .cell {
   position: relative;
   background: var(--surface-cell);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  padding: 24px 26px;
+  box-shadow: var(--depth-2);
+  padding: 28px 30px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -915,28 +914,30 @@ body::before {
 .cell.dominant {
   background: var(--surface-dominant);
   border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
-  box-shadow: var(--depth-edge-accent);
-  padding: 28px 30px;
+  box-shadow: var(--depth-edge-accent), var(--depth-3);
+  padding: 32px 34px;
 }
 .cell.dominant > .cell-head { margin-bottom: 18px; }
 .cell.dominant .cell-title {
   font-size: var(--t-display-4);
-  font-variation-settings: "opsz" 60, "SOFT" 40;
   letter-spacing: -0.025em;
 }
 .cell.dominant .cell-label { color: var(--accent-ink); }
 .cell.dominant.editor {
   background: var(--editor-tint);
   border-color: color-mix(in srgb, var(--editor) 22%, var(--line));
-  box-shadow: var(--depth-edge-editor);
+  box-shadow: var(--depth-edge-editor), var(--depth-3);
 }
 .cell.dominant.editor .cell-label { color: var(--editor-ink); }
 
-/* Quiet cell — reference/footnote data. Reads last. Sits in the paper
-   plane (no raised feel) so it visually recedes behind raised siblings. */
+/* Quiet cell — reference/footnote data. Reads last, but it is still a CARD:
+   it recedes by carrying less elevation than its dominant sibling, never by
+   being painted the colour of the page. A container the colour of the page
+   reads as un-styled space, which is why the loud register's own quiet card
+   (.lr-quiet) keeps --raised and only drops its padding. */
 .cell.quiet {
-  background: var(--surface-quiet);
-  border-color: var(--line-soft);
+  background: var(--surface-cell);
+  border-color: var(--line);
 }
 
 /* Inset cell — for data tables / matrix grids. Slightly toned surface
@@ -978,7 +979,6 @@ body::before {
 .section-overline .so-numeral {
   font-family: var(--display);
   font-weight: 300;
-  font-variation-settings: "opsz" 144, "SOFT" 60;
   font-size: 56px;
   line-height: 0.8;
   letter-spacing: -0.04em;
@@ -1002,7 +1002,6 @@ body::before {
   margin: 0;
   font-family: var(--display);
   font-weight: 350;
-  font-variation-settings: "opsz" 48, "SOFT" 50;
   font-size: 24px;
   line-height: 1.18;
   letter-spacing: -0.018em;
@@ -1047,17 +1046,27 @@ body::before {
   gap: 16px;
   margin-bottom: 12px;
 }
+/* Cell eyebrow — same atom as .lr-eyebrow (sans, --t-overline, 600, .04em).
+   Colour deliberately stays --ink-4 (4.7:1) rather than adopting the loud
+   eyebrow's --text-tertiary (2.23:1): this pass raises the legacy register,
+   and re-tinting a label paler would move it the wrong way. */
 .cell-label {
-  font-family: var(--mono);
-  font-size: 10.5px;
+  font-family: var(--sans);
+  font-size: var(--t-overline);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
   color: var(--ink-4);
   display: flex; align-items: center; gap: 8px;
 }
+/* Sits inside .cell-label and must stay exactly one step below it. That was
+   10.5 → 9.5 while the label was mono; the label is now 12px sans, so this
+   follows to 11px rather than widening the gap to 2.5px. The font-family is
+   inherited now but kept explicit on purpose: the pill should not silently
+   change face if the label's ever does. */
 .cell-label .merge {
   font-family: var(--sans);
-  font-size: 9.5px;
+  font-size: 11px;
   background: var(--accent-tint);
   color: var(--accent-ink);
   padding: 1.5px 6px;
@@ -1070,9 +1079,8 @@ body::before {
 .cell-title {
   margin: 0 0 4px;
   font-family: var(--display);
-  font-weight: 400;
-  font-variation-settings: "opsz" 36, "SOFT" 30;
-  font-size: 22px;
+  font-weight: 600;
+  font-size: var(--t-display-5);
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: var(--ink);
@@ -1172,12 +1180,16 @@ body::before {
 .cell.utm-empty .cell-title { color: var(--ink-2); }
 
 /* ─── Big number block ─────────────────────────────────── */
+/* The report's big figures answer to .lr-kpi-num, which is 600 with tight
+   tracking. The old 250 was a Fraunces-era hairline that Geist clamps to
+   300 (its lightest axis stop), which is why the bento numbers read faint
+   beside the hero KPIs. Tracking eases -0.04em → -0.03em because the extra
+   weight closes the counters that the tighter value used to compensate for. */
 .big-num {
   font-family: var(--display);
-  font-weight: 250;
-  font-variation-settings: "opsz" 96;
+  font-weight: 600;
   font-size: 76px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
   line-height: 0.92;
   font-variant-numeric: tabular-nums;
 }
@@ -1214,8 +1226,7 @@ body::before {
 }
 .ratio-main {
   font-family: var(--display);
-  font-weight: 250;
-  font-variation-settings: "opsz" 96;
+  font-weight: 600;
   font-size: 64px;
   line-height: 0.88;
   letter-spacing: -0.04em;
@@ -1274,10 +1285,14 @@ body::before {
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
+/* Engine card — an inset inside a bento cell, so it follows .lr-inset: a
+   --paper well on a --raised parent. Before .cell.quiet stopped being page
+   colour this was --paper on --paper, i.e. a border with no box behind it. */
 .eng-card {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  padding: 14px 16px;
+  box-shadow: var(--depth-2);
+  padding: 20px 22px;
   background: var(--paper);
   display: flex; flex-direction: column;
   gap: 10px;
@@ -1297,8 +1312,7 @@ body::before {
 }
 .eng-name {
   font-family: var(--display);
-  font-weight: 500;
-  font-variation-settings: "opsz" 24;
+  font-weight: 600;
   font-size: 17px;
   letter-spacing: -0.015em;
   color: var(--ink);
@@ -1311,8 +1325,7 @@ body::before {
 }
 .eng-pct {
   font-family: var(--display);
-  font-weight: 250;
-  font-variation-settings: "opsz" 96;
+  font-weight: 600;
   font-size: 42px;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -1342,7 +1355,7 @@ body::before {
 .eng-meta {
   display: flex; justify-content: space-between;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--t-meta);
   color: var(--ink-3);
 }
 
@@ -1373,7 +1386,8 @@ body::before {
   border-bottom: 2px solid transparent;
   padding: 8px 12px 9px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--t-overline);
+  font-weight: 600;
   letter-spacing: 0.16em;
   color: var(--ink-4);
   cursor: pointer;
@@ -1383,10 +1397,13 @@ body::before {
   margin-bottom: -1px;
 }
 .matrix-toggle button:hover { color: var(--ink-2); }
+/* The pressed tab must stay one step above the resting tabs. Those now
+   declare 600 (they carried the browser default before), so this goes to
+   700 rather than collapsing to the same weight as an unpressed tab. */
 .matrix-toggle button[aria-pressed="true"] {
   color: var(--editor);
   border-bottom-color: var(--editor);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 /* Summary bar — sits above the grid as a one-line takeaway. Stats are
@@ -1409,14 +1426,13 @@ body::before {
   align-items: baseline;
   gap: 6px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--t-meta);
   color: var(--ink-3);
   letter-spacing: 0.04em;
 }
 .mx-sum-num {
   font-family: var(--display);
-  font-weight: 500;
-  font-variation-settings: "opsz" 48;
+  font-weight: 600;
   font-size: 24px;
   letter-spacing: -0.022em;
   color: var(--ink);
@@ -1437,7 +1453,7 @@ body::before {
 }
 .mx-sum-label {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--t-meta);
   color: var(--ink-3);
   text-transform: lowercase;
   letter-spacing: 0.06em;
@@ -1508,7 +1524,6 @@ body::before {
   grid-row: 1 / 2;
   font-family: var(--display);
   font-weight: 400;
-  font-variation-settings: "opsz" 32, "SOFT" 40;
   font-size: 17px;
   line-height: 1.3;
   color: var(--ink);
@@ -1745,7 +1760,6 @@ body::before {
 .mx-row-num {
   font-family: var(--display);
   font-weight: 500;
-  font-variation-settings: "opsz" 36;
   font-size: 20px;
   letter-spacing: -0.022em;
   color: var(--ink);
@@ -1791,7 +1805,6 @@ body::before {
 .mx-empty-title {
   font-family: var(--display);
   font-weight: 500;
-  font-variation-settings: "opsz" 36, "SOFT" 50;
   font-size: 18px;
   letter-spacing: -0.014em;
   color: var(--ink);
@@ -1844,7 +1857,7 @@ body::before {
   padding: 14px 0 2px;
   border-top: 1px dashed var(--line);
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--t-meta);
   letter-spacing: 0.06em;
   color: var(--ink-3);
 }
@@ -1947,8 +1960,7 @@ body::before {
       color-mix(in srgb, var(--competitor) 9%, transparent) var(--w-norm, 0%),
       transparent var(--w-norm, 0%),
       transparent 100%);
-  border-radius: 8px;
-  padding: 4px 10px 6px;
+  border-radius: var(--r-sm);
   margin: 2px -10px;
   display: grid;
   grid-template-columns: 1fr 56px;
@@ -2012,7 +2024,7 @@ body::before {
       color-mix(in srgb, var(--ink-3) 7%, transparent) var(--w-norm, 0%),
       transparent var(--w-norm, 0%),
       transparent 100%);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 6px 10px 8px;
   margin: 2px -10px;
   display: grid;
@@ -2089,7 +2101,7 @@ body::before {
   align-items: center;
   padding: 7px 10px;
   margin: 2px -10px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background:
     linear-gradient(90deg,
       color-mix(in srgb, var(--ink-3) 7%, transparent) 0%,
@@ -2152,7 +2164,7 @@ body::before {
   margin-top: 14px;
   display: flex; flex-direction: column;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--t-meta);
   border-top: 1px solid var(--line);
 }
 .radar-row {
@@ -2164,14 +2176,17 @@ body::before {
   color: var(--ink-2);
 }
 .radar-row:last-child { border-bottom: 0; }
+/* Header row follows .lr-mono-table th: 11px uppercase. Colour stays --ink-4
+   rather than the loud table's --text-tertiary, for the reason given on
+   .cell-label above. */
 .radar-row.radar-head {
   color: var(--ink-4);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   border-bottom: 1px solid var(--line);
 }
-.radar-axis { font-family: var(--sans); font-size: 12px; color: var(--ink); font-weight: 500; }
+.radar-axis { font-family: var(--sans); font-size: 15px; color: var(--ink); font-weight: 500; }
 .radar-row.radar-head .radar-axis,
 .radar-row.radar-head > span { font-family: var(--mono); }
 .radar-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -2209,7 +2224,7 @@ body::before {
   align-items: center;
   padding: 8px 10px;
   margin: 0 -10px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   border-bottom: 1px dashed var(--line);
 }
 .comp-li:last-child { border-bottom: 0; }
@@ -2225,15 +2240,17 @@ body::before {
   font-feature-settings: "tnum", "lnum";
 }
 .comp-li.lead .comp-rank { color: var(--accent-ink); font-weight: 600; }
+/* Same brands as .lr-share-row up in the loud part of the section, so they
+   answer to .lr-share-name (18px / 600). The lead row keeps its one-step
+   lift over the rest, which is why it moves 500 → 700 alongside the base. */
 .comp-name {
   font-family: var(--display);
-  font-weight: 400;
-  font-variation-settings: "opsz" 24, "SOFT" 30;
-  font-size: 16px;
+  font-weight: 600;
+  font-size: 18px;
   letter-spacing: -0.012em;
   color: var(--ink);
 }
-.comp-li.lead .comp-name { color: var(--accent-ink); font-weight: 500; }
+.comp-li.lead .comp-name { color: var(--accent-ink); font-weight: 700; }
 .comp-bar {
   width: 100%;
   height: 5px;
@@ -2253,7 +2270,7 @@ body::before {
 .comp-li.lead .comp-bar::after { background: var(--accent); }
 .comp-count {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
   font-feature-settings: "tnum", "lnum";
   font-variant-numeric: tabular-nums lining-nums;
@@ -2277,10 +2294,11 @@ body::before {
   grid-template-columns: 48px 1fr auto;
   gap: 18px;
   align-items: start;
-  padding: 18px 22px 18px 24px;
+  padding: 22px 26px 22px 28px;
   background: var(--surface-cell);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
+  box-shadow: var(--depth-2);
   overflow: hidden;
 }
 /* Priority marker — a coloured rule on the left edge of the row. Replaces
@@ -2300,8 +2318,7 @@ body::before {
 
 .act-num {
   font-family: var(--display);
-  font-weight: 250;
-  font-variation-settings: "opsz" 144, "SOFT" 60;
+  font-weight: 600;
   font-size: 38px;
   color: var(--accent);
   line-height: 0.9;
@@ -2311,18 +2328,19 @@ body::before {
   padding-top: 2px;
 }
 .act-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* Section 06 is what the client pays for, so its rows are set at the same
+   scale as .lr-h3 / .lr-body rather than a step below everything above them. */
 .act-title {
   font-family: var(--display);
-  font-weight: 500;
-  font-variation-settings: "opsz" 24, "SOFT" 30;
-  font-size: 17px;
+  font-weight: 600;
+  font-size: 20px;
   letter-spacing: -0.014em;
   line-height: 1.28;
   color: var(--ink);
   margin: 0;
 }
 .act-detail {
-  font-size: 13.5px;
+  font-size: var(--t-body);
   color: var(--ink-2);
   line-height: 1.55;
   margin: 2px 0 4px;
@@ -2390,19 +2408,19 @@ body::before {
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px dashed var(--line-soft);
-  font-size: 13px;
+  font-size: 15px;
 }
 .cost-row.is-last { border-bottom: 0; }
 .cost-eng {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--t-meta);
   font-weight: 600;
   color: var(--c, var(--ink-3));
   letter-spacing: 0.04em;
 }
 .cost-usd {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: var(--t-meta);
   font-weight: 500;
   color: var(--ink-2);
   font-feature-settings: "tnum", "lnum";
@@ -2416,7 +2434,7 @@ body::before {
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px dashed var(--line-soft);
-  font-size: 13px;
+  font-size: 15px;
 }
 .ready-row:last-child { border-bottom: 0; }
 .ready-row .ck {
@@ -2435,15 +2453,15 @@ body::before {
 /* Neutral marker for a row that reports a FACT with no pass/fail verdict
    (llms.txt) — deliberately not green, amber or red. */
 .ready-row .ck.muted { background: var(--paper-2); color: var(--ink-3); }
-.ready-row .label { color: var(--ink); font-size: 13px; }
-.ready-row .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.ready-row .label { color: var(--ink); font-size: 15px; }
+.ready-row .meta { font-family: var(--mono); font-size: var(--t-meta); color: var(--ink-3); }
 
 /* ─── Quote figures (Visibility verbatim cell) ─── */
 .quote { margin: 12px 0 0; padding: 0; }
 .quote blockquote {
   margin: 6px 0; padding: 12px 14px;
   background: var(--paper-2); border-left: 3px solid var(--accent);
-  border-radius: var(--r-sm); color: var(--ink); font-size: 13.5px; line-height: 1.55;
+  border-radius: var(--r-sm); color: var(--ink); font-size: 15px; line-height: 1.55;
   font-family: var(--display); font-weight: 400;
 }
 .quote-meta {
@@ -2607,7 +2625,7 @@ body::before {
   height: 22px;
   border-radius: 99px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--t-meta);
   letter-spacing: 0.04em;
   font-weight: 600;
   border: 1px solid transparent;
@@ -2643,7 +2661,7 @@ body::before {
   font-family: var(--display);
   font-style: italic;
   font-weight: 350;
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--ink-3);
   line-height: 1.5;
 }
@@ -2656,7 +2674,7 @@ body::before {
 .auth-tips {
   margin: 8px 0 0;
   padding: 0 0 0 18px;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--ink-2);
 }
@@ -2708,7 +2726,7 @@ body::before {
 .auth-advisory-head {
   margin: 0 0 8px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--t-overline);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -2744,7 +2762,6 @@ body::before {
 .outreach-num {
   font-family: var(--display);
   font-weight: 300;
-  font-variation-settings: "opsz" 96, "SOFT" 40;
   font-size: 28px;
   line-height: 0.9;
   color: var(--accent);
@@ -2754,7 +2771,6 @@ body::before {
 .outreach-host {
   font-family: var(--display);
   font-weight: 400;
-  font-variation-settings: "opsz" 36, "SOFT" 50;
   font-size: 20px;
   line-height: 1.1;
   color: var(--ink);
@@ -2778,7 +2794,6 @@ body::before {
 .outreach-field-value {
   font-family: var(--display);
   font-weight: 400;
-  font-variation-settings: "opsz" 24, "SOFT" 40;
   font-size: 15px;
   line-height: 1.4;
   color: var(--ink);
@@ -2787,7 +2802,6 @@ body::before {
 .outreach-body {
   font-family: var(--display);
   font-weight: 350;
-  font-variation-settings: "opsz" 18, "SOFT" 60;
   font-size: 14px;
   line-height: 1.62;
   color: var(--ink-2);
@@ -3140,9 +3154,11 @@ body::before {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+/* 600 is the report's heaviest numeral weight (.lr-kpi-num); this was the
+   only figure in the document set above it. */
 .score-block-num {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 64px;
   line-height: 1;
   margin: 8px 0;
@@ -3208,7 +3224,9 @@ body::before {
 }
 
 /* ─── Embedded markdown panels (md-block) ─── */
-.md-block { font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+/* This panel carries "how the index is calculated" — the part of the report
+   that shows our working. It was the smallest body copy in the document. */
+.md-block { font-size: 15px; line-height: 1.6; color: var(--ink-2); }
 .md-block a {
   color: var(--editor-ink);
   text-decoration: underline;
@@ -3220,13 +3238,15 @@ body::before {
   text-decoration-color: var(--editor);
 }
 .md-block h2 { display: none; }
+/* A subheading cannot be smaller than the body it introduces — this rule
+   follows .md-block's 13px → 15px move up to --t-display-6. */
 .md-block h3 {
-  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  font-family: var(--sans); font-size: var(--t-display-6); font-weight: 600;
   color: var(--ink); margin: 14px 0 6px;
 }
 .md-block table {
   width: 100%; border-collapse: collapse; margin: 8px 0;
-  font-family: var(--mono); font-size: 11px;
+  font-family: var(--mono); font-size: var(--t-meta);
 }
 .md-block th {
   text-align: left; padding: 6px 8px;
@@ -3239,13 +3259,13 @@ body::before {
 .md-block tr:last-child td { border-bottom: 0; }
 .md-block code {
   font-family: var(--mono); background: var(--paper-2);
-  padding: 1px 4px; border-radius: var(--r-xs); font-size: 11.5px;
+  padding: 1px 4px; border-radius: var(--r-xs); font-size: var(--t-meta);
 }
 .md-block details {
   margin: 8px 0; padding: 10px 12px;
-  background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-sm);
 }
-.md-block details summary { cursor: pointer; font-weight: 600; color: var(--ink); font-size: 12.5px; }
+.md-block details summary { cursor: pointer; font-weight: 600; color: var(--ink); font-size: 15px; }
 
 /* ─── UVI calculation popover — «(ⓘ) How is this calculated?» ───
    Native <details> sits right under the score block. Zero JS — keyboard
@@ -3256,7 +3276,7 @@ body::before {
   padding: 10px 14px;
   background: color-mix(in srgb, var(--paper-2) 80%, var(--paper) 20%);
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 .md-block details.uvi-breakdown[open] {
   background: var(--paper-2);
@@ -3349,7 +3369,7 @@ details.uvi-breakdown--hero[open] {
   border: 1px solid var(--accent-soft);
   border-left: 3px solid var(--accent);
   padding: 10px 14px 12px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 details.uvi-breakdown--hero summary {
   cursor: pointer;
@@ -3472,7 +3492,6 @@ details.uvi-breakdown--hero .uvi-formula-note {
 .colophon-glyph {
   font-family: var(--display);
   font-weight: 300;
-  font-variation-settings: "opsz" 96, "SOFT" 100;
   font-size: 22px;
   line-height: 1;
   color: var(--accent);
@@ -3482,7 +3501,6 @@ details.uvi-breakdown--hero .uvi-formula-note {
   margin: 0;
   font-family: var(--display);
   font-weight: 350;
-  font-variation-settings: "opsz" 36, "SOFT" 50;
   font-size: 13px;
   font-style: italic;
   color: var(--ink-3);
@@ -3526,8 +3544,8 @@ details.uvi-breakdown--hero .uvi-formula-note {
    Renders in BOTH default and white-label modes (the answer is measured
    data, not a tool fingerprint). */
 .mx-reveals { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
-.mx-reveals-head { margin: 0 0 10px; font-size: 12px; color: var(--ink-3, #6b6b6b); line-height: 1.5; }
-.mx-reveal { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; background: var(--paper, #fff); }
+.mx-reveals-head { margin: 0 0 10px; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+.mx-reveal { border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 8px; background: var(--paper); }
 .mx-reveal[open] { box-shadow: 0 1px 0 var(--line); }
 .mx-reveal summary {
   cursor: pointer; list-style: none; padding: 9px 12px;
@@ -3535,19 +3553,19 @@ details.uvi-breakdown--hero .uvi-formula-note {
   font-size: 12.5px; font-weight: 600; color: var(--ink);
 }
 .mx-reveal summary::-webkit-details-marker { display: none; }
-.mx-reveal summary::before { content: '▸'; color: var(--ink-3, #6b6b6b); font-weight: 400; }
+.mx-reveal summary::before { content: '▸'; color: var(--ink-3); font-weight: 400; }
 .mx-reveal[open] summary::before { content: '▾'; }
-.mx-reveal-q { font-family: var(--mono, monospace); font-size: 11px; color: var(--accent, #f77300); }
+.mx-reveal-q { font-family: var(--mono); font-size: 11px; color: var(--accent); }
 .mx-reveal-eng { font-weight: 600; }
-.mx-reveal-status { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--ink-3, #6b6b6b); }
+.mx-reveal-status { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--ink-3); }
 .mx-reveal-status[data-status="yes"] { background: color-mix(in srgb, var(--success-color) 16%, transparent); color: var(--success-color); }
-.mx-reveal-status[data-status="src"] { background: color-mix(in srgb, var(--accent, #f77300) 16%, transparent); color: var(--accent, #f77300); }
-.mx-reveal-trunc { font-size: 10px; font-style: italic; color: var(--ink-3, #6b6b6b); }
+.mx-reveal-status[data-status="src"] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.mx-reveal-trunc { font-size: 10px; font-style: italic; color: var(--ink-3); }
 .mx-reveal-body { padding: 0 12px 12px; }
-.mx-reveal-meta { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-3, #6b6b6b); }
+.mx-reveal-meta { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-3); }
 .mx-reveal-text {
   margin: 0; white-space: pre-wrap; word-break: break-word;
-  font-family: var(--sans, inherit); font-size: 12.5px; line-height: 1.6; color: var(--ink);
+  font-family: var(--sans); font-size: 12.5px; line-height: 1.6; color: var(--ink);
   max-height: 420px; overflow-y: auto;
 }
 
