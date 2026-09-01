@@ -17,12 +17,12 @@ import { renderHtml } from '../../lib/report/html.js';
 const ENGINE = { provider: 'openai', label: 'ChatGPT', model: 'gpt-test', kind: 'gpt-test', pct: 50, hits: 1, total: 2, citations: 3, delta: null, series: [50], cells: ['yes'] };
 
 /** Render a one-engine report whose single matrix row carries `column`. */
-function renderCell(column) {
+function renderCell(column, coverage) {
   const summary = {
     meta: { brand: 'TestBrand', domain: 'testbrand.com', date: '2026-09-01', prevDate: null, queryCount: 1, providerCount: 1, runId: 'cellstates' },
     score: 50, scorePrev: null, trend: [50], trendDates: ['2026-09-01'],
     engines: [ENGINE],
-    coverage: { yes: 1, src: 0, no: 1, error: 0, total: 2 },
+    coverage: coverage || { yes: 1, src: 0, no: 1, error: 0, total: 2 },
     competitors: [], sources: [], quotes: [], citationOnly: [], actions: [],
     positionMatrix: [{ query: 'best test tools', columns: [{ provider: 'openai', label: 'ChatGPT', ...column }] }],
     totalCitations: 3, totalCitationsPrev: null,
@@ -118,4 +118,32 @@ test('the toggle target and the legend target carry the same view attribute', ()
   assert.match(html, /<div class="matrix" data-view="mention"/, '.matrix must carry the view attribute the legend selects on');
   assert.match(html, /<div class="matrix-grid" data-view="mention"/, '.matrix-grid must carry the view attribute the cells select on');
   assert.match(html, /wrap\.setAttribute\('data-view', view\)/, 'the toggle must mirror the view onto the wrapper, not just the grid');
+});
+
+// ── the per-engine headline states THIS run's result ────────────────────────
+
+test('a zero-coverage run is not told it is cited when nothing of its was cited', () => {
+  // Regression: "Cited but never named" fired on any coverage.yes === 0,
+  // including runs where the domain was never a source either. Found on
+  // merchpilot.ai's real 2026-08-31 run — 27 cells all `no`, zero of our URLs
+  // in a 175-URL pool — where the client would have been told their site is
+  // being cited. Three distinct states, each with copy that matches it.
+  const nothing = renderCell({ mention: 'no', citationCount: 8, competitors: [] }, { yes: 0, src: 0, no: 27, error: 0, total: 27 });
+  assert.match(nothing, /Neither named nor cited/);
+  assert.doesNotMatch(nothing, /Cited but never named/);
+  assert.doesNotMatch(nothing, /engines see your domain in citations/,
+    'the sub must not claim citations the run does not have');
+  assert.match(nothing, /none of the sources they cited were yours/);
+
+  const citedOnly = renderCell({ mention: 'src', citationCount: 8 }, { yes: 0, src: 4, no: 23, error: 0, total: 27 });
+  assert.match(citedOnly, /Cited but never named/);
+  assert.match(citedOnly, /engines see your domain in citations/);
+
+  const named = renderCell({ mention: 'yes', position: 1, citationCount: 2 }, { yes: 9, src: 2, no: 16, error: 0, total: 27 });
+  assert.match(named, /Named in 9\/27 cells/);
+  // Scoped to this block's own sub — "This run:" is a phrase other sections
+  // use legitimately, so a whole-document search would assert nothing.
+  const sub = named.match(/Every engine got the same questions\.[\s\S]*?<\/p>/);
+  assert.ok(sub, 'the per-engine sub did not render');
+  assert.doesNotMatch(sub[0], /This run:/, 'a run with hits leads with the count, not with a consolation sentence');
 });

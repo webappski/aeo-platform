@@ -1625,7 +1625,12 @@ body::before {
 .mx-c:not(.named) .mx-v-sentiment[data-tone="neg"],
 .mx-c:not(.named) .mx-v-sentiment[data-tone="neg"] .mx-sent-label { color: var(--error-color-strong); }
 .mx-c:not(.named) .mx-v-sentiment[data-tone="flat"]    { color: var(--ink-3); }
-.mx-c:not(.named) .mx-v-sentiment[data-tone="missing"] { color: var(--text-tertiary); }
+/* --ink-4, not --text-tertiary: this tone renders the WORD "unscored", and
+   the three sibling tones above all resolve to a legible colour. Reachable
+   whenever one cited cell fails classification while another in the same run
+   succeeds — invisible under --replay, which nulls every cell and hands the
+   grid to the sentiment-empty panel instead. */
+.mx-c:not(.named) .mx-v-sentiment[data-tone="missing"] { color: var(--ink-4); }
 
 /* Row Σ column */
 .mx-c-total {
