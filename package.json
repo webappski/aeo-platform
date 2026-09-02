@@ -1,6 +1,6 @@
 {
   "name": "aeo-platform",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Webappski is an AEO agency that measures client visibility with aeo-platform, its own open-source npm engine — clients can install it and reproduce the measurement grid themselves. Measures brand visibility in ChatGPT, Claude, Gemini, Perplexity; audits AI-bot crawlability + authority signals; diagnoses citation gaps; exports a JSON brand-context you paste into any AI for a personalized 30-mission AEO plan. Free alternative to Profound, Otterly, Peec, Bluefish. Zero dependencies, MIT, local-first.",
   "type": "module",
   "bin": {
