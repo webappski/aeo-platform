@@ -24,7 +24,7 @@ import assert from 'node:assert/strict';
 
 import {
   parseModelId, classifyModelChange, modelsByProvider, buildModelChanges,
-  formatModelTransition,
+  formatModelTransition, providersIn,
   CHANGE_NONE, CHANGE_SNAPSHOT, CHANGE_MINOR, CHANGE_GENERATION, CHANGE_LINE,
   CHANGE_SURFACE, CHANGE_UNKNOWN,
 } from '../lib/report/model-change.js';
@@ -175,6 +175,43 @@ test('buildModelChanges — a provider present in only one run is not an instrum
     { provider: 'gemini', model: 'gemini-3.7-flash', mode: 'web' },
   ]};
   assert.deepEqual(buildModelChanges(prev, curr).changedProviders, []);
+});
+
+test('buildModelChanges — a provider on only one side is NAMED, on the coverage axis', () => {
+  // Not being an instrument swap is not the same as being nothing. Until
+  // 2026-09-02 this case was correctly excluded from `changedProviders` and
+  // then reported by no field and no renderer at all: an engine measured last
+  // run and skipped this one left no trace in any sentence of any report.
+  const prev = { results: [
+    { provider: 'openai', model: 'gpt-5.4-mini', mode: 'web' },
+    { provider: 'perplexity', model: 'sonar-pro', mode: 'web' },
+  ]};
+  const curr = { results: [
+    { provider: 'openai', model: 'gpt-5.4-mini', mode: 'web' },
+    { provider: 'gemini', model: 'gemini-3.7-flash', mode: 'web' },
+  ]};
+  const changes = buildModelChanges(prev, curr);
+  assert.deepEqual(changes.droppedProviders, ['perplexity']);
+  assert.deepEqual(changes.addedProviders, ['gemini']);
+  // Still not an instrument swap — the two axes stay separate.
+  assert.deepEqual(changes.changedProviders, []);
+});
+
+test('providersIn — a row with no model id still counts as an engine that ran', () => {
+  // `modelsByProvider` drops such a row, and a coverage check built on that map
+  // would report a still-present engine as having disappeared — inventing the
+  // exact false absence the coverage sentence exists to prevent. Legacy
+  // captures and hand-seeded fixtures both hit this.
+  const snap = { results: [
+    { provider: 'openai', model: 'gpt-5.4-mini', mode: 'web' },
+    { provider: 'anthropic', mode: 'web' },
+    { provider: 'gemini', model: 'gemini-3.7-flash', mode: 'training' },
+  ]};
+  assert.deepEqual([...providersIn(snap)].sort(), ['anthropic', 'openai']);
+  assert.equal(modelsByProvider(snap).has('anthropic'), false);
+  // The consequence that matters: an engine whose rows carry no model id is not
+  // reported as dropped when it is plainly still there.
+  assert.deepEqual(buildModelChanges(snap, snap).droppedProviders, []);
 });
 
 test('buildModelChanges — same engine held: no change, and a like-for-like exists', () => {
