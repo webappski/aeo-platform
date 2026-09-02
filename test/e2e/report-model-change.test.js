@@ -222,8 +222,11 @@ test('the caveat states the delta rather than withholding it, on HTML too', () =
   // SCOPE, precisely: this pins that the delta survives, and that the same
   // document now carries the caveat SOMEWHERE. It does NOT pin that a reader
   // meets the caveat before the number — the hero lede is still byte-identical
-  // and still carries no marker of its own; the caveat leads Overview, which is
-  // the third block of the page. The founder chose that placement (2026-09-02)
+  // and still carries no marker of its own; the caveat leads Overview, which on
+  // a real CLI run is the FOURTH block (hero → one page → the Mission-Control
+  // bridge → Overview; the bridge renders whenever `mcMetadata` is present,
+  // which is every run without `--no-mc-block`, and is absent from the minimal
+  // summary this file builds). The founder chose that placement (2026-09-02)
   // over restoring a full Run Comparison chapter. The guarantee that IS pinned
   // on ordering is the test above: within Overview, the caveat precedes the
   // block that names competitors.
@@ -316,6 +319,15 @@ test('neither caveat claims the score is scoped to the shared engines', () => {
   // answers, so coverage moves it by basket composition alone. Proven here
   // rather than asserted, so a future rewording cannot quietly re-adopt the
   // false version.
+  // Pinned to the literal values, not just "they differ". These three numbers
+  // are quoted in buildCoverageCaveat's docstring as the evidence that the
+  // index is NOT scoped to shared engines; a docstring number no test asserts
+  // is a claim that rots silently, which is how a −24 from a synthetic fifth
+  // provider — a real value, but unreproducible from this fixture — survived
+  // into the first version of that comment.
+  assert.equal(buildRunComparison(snapshots).uvi.delta, -18, 'base pair');
+  assert.equal(buildRunComparison(droppedPair).uvi.delta, -21, 'perplexity removed from curr');
+  assert.equal(buildRunComparison(addedPair).uvi.delta, -17, 'perplexity removed from prev');
   const base = buildRunComparison(snapshots).uvi.delta;
   const withDrop = buildRunComparison(droppedPair).uvi.delta;
   const withAdd = buildRunComparison(addedPair).uvi.delta;
