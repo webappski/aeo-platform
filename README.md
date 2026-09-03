@@ -6,6 +6,7 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](./package.json)
 [![GitHub stars](https://img.shields.io/github/stars/webappski/aeo-platform?style=social)](https://github.com/webappski/aeo-platform)
+[![Self-test UVI](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwebappski%2Faeo-platform%2Fmain%2F.github%2Fbadges%2Fuvi.json)](https://webappski.com/reports/aeo-webappski-2026-06-14.html)
 
 **Webappski is an AEO agency that measures client visibility with `aeo-platform`, its own open-source npm engine — clients can install it and reproduce the measurement grid themselves.**
 
@@ -483,7 +484,8 @@ A handful of open-source AEO trackers exist; methodologies overlap. The closest 
 
 `aeo-platform --help` lists every flag. `aeo-platform <cmd> --help` for per-command help.
 
-## Flags reference
+<details id="flags-reference">
+<summary><b>Flags reference — every flag, by command</b></summary>
 
 Every flag `aeo-platform` accepts, grouped by which command consumes it.
 
@@ -514,7 +516,10 @@ Every flag `aeo-platform` accepts, grouped by which command consumes it.
 | `--add-queries "q1,q2,q3"` | `init` | Add queries to an existing config without re-running brainstorm; preserves prior basket history |
 | `--replace-queries "q1,q2,q3"` | `init` | Replace queries in an existing config (forks basket version); preserves prior versions in `basketHistory` |
 
-## Exit codes (CI-friendly)
+</details>
+
+<details id="exit-codes-and-ci-integration">
+<summary><b>Exit codes &amp; CI integration — cron, Task Scheduler, GitHub Actions</b></summary>
 
 `aeo-platform run` returns one of four exit codes after every audit — wire them into your alerting tier.
 
@@ -531,7 +536,7 @@ Tune the threshold in `.aeo-tracker.json`:
 { "regressionThreshold": 5 }
 ```
 
-## CI integration
+**CI integration**
 
 **Bash + cron (macOS / Linux):**
 
@@ -616,7 +621,10 @@ jobs:
         with: { name: aeo-latest, path: aeo-responses/ }
 ```
 
-## Configuration (`.aeo-tracker.json`)
+</details>
+
+<details id="configuration-aeo-tracker-json">
+<summary><b>Configuration — <code>.aeo-tracker.json</code> fields</b></summary>
 
 `aeo-platform init` creates `.aeo-tracker.json` in the working directory. The file name is preserved across the rename so existing dotfiles keep working.
 
@@ -648,6 +656,8 @@ Fields:
 - `providers[].env` — name of the env var that holds the key (override for non-standard names like `OPENAI_API_KEY_DEV`)
 - `providers[].model` — auto-discovered at run start (newest available); override here to pin a specific model
 - `providers[].classifyModel` — cheaper model used for extraction, sentiment, validation, and other short classification calls
+
+</details>
 
 ## FAQ
 
@@ -938,17 +948,20 @@ Methodology lives in the weekly reports at [webappski.com/blog](https://webappsk
 
 ---
 
-## Contributing
+<details id="contributing">
+<summary><b>Contributing &amp; git hooks</b></summary>
 
 PRs welcome. Open an issue first if you're planning a non-trivial change so we can sketch the shape together. Bug reports and feature requests at [github.com/webappski/aeo-platform/issues](https://github.com/webappski/aeo-platform/issues).
 
-### Git hooks
+**Git hooks**
 
 Repo ships with `pre-commit` (runs `npm test` before commit) and `pre-push` (runs `npm test` and on `main` / `master` runs it a second time for a determinism check) hooks under `.githooks/`. They are auto-installed via the `npm install` `postinstall` script — it points git at the tracked hooks via `git config core.hooksPath .githooks`. Zero new dependencies (no Husky, no `lint-staged`, no `simple-git-hooks`); vanilla bash that runs on macOS and Linux. `postinstall` ends with `|| true`, so the step is a no-op in non-git environments (CI containers, Docker, etc.).
 
 Bypass when needed: `git commit --no-verify` / `git push --no-verify`, or add `[skip-tests]` anywhere in the commit message to make the intent explicit (suitable for typo / comment-only / doc-only changes).
 
 > **Running from source on Windows:** the shebang line in `bin/aeo-tracker.js` is ignored by Windows, so `./bin/aeo-tracker.js` won't work. Use `node bin/aeo-tracker.js <command>` for development, or install globally (`npm install -g .` from the repo root) which creates the `aeo-platform.cmd` wrapper that handles the shebang transparently.
+
+</details>
 
 ## License
 
