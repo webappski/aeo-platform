@@ -236,7 +236,7 @@ The HTML report has:
 
 Each surface is grounded in actual run data: specific competitors named by this run, specific URLs cited by AI, specific gaps you can act on this week.
 
-## The 30-mission AEO plan (the wedge no commercial vendor ships)
+## The 30-mission AEO plan (the portable wedge no hosted vendor ships)
 
 After measuring you across 4 engines, `aeo-platform report` exports a **JSON brand-context block** with everything the AI needs to write a grounded plan: visibility index, per-engine citation deltas, top competitors, citation gaps, crawl matrix, authority signals, page signals, entity graph, region, freshness, competitor pricing tier.
 
@@ -265,7 +265,7 @@ UVI **42%** (5/12 cells), leading 8 named competitors by mentions but missing on
 
 Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-typelessform.md) (established brand at UVI 42%) · [`sample-plan-output.md`](https://github.com/webappski/aeo-platform/blob/main/examples/sample-plan-output.md) (bare-site brand at 0%).
 
-**Why no hosted AEO dashboard ships this:** a paste-into-AI plan cannibalises the dashboard moat. Once the user takes the JSON to their own AI chat, the vendor's UI is no longer the destination. Open-source has the opposite incentive — show zero when it's zero, hand you the data, win when you take it wherever you want.
+**Why no hosted AEO dashboard ships a *portable* one:** a paste-into-AI plan cannibalises the dashboard moat. Once the user takes the JSON to their own AI chat, the vendor's UI is no longer the destination. Hosted tools do generate action plans — [Waikay](https://waikay.io/) meters them by the unit, "up to 30 / 90 / 220 AIO Action Plans" depending on tier (checked 4 September 2026) — but they generate them *inside* the dashboard you are renting, and the plan stops when the subscription does. Open-source has the opposite incentive: show zero when it's zero, hand you the data, win when you take it wherever you want.
 
 ## Multi-engine coverage
 
@@ -443,30 +443,68 @@ This is the same discipline the tool applies to itself: a number without provena
 
 ## Comparison vs hosted AEO platforms
 
-| Tool | Pricing model | Open source | Raw data stays local | Paste-into-AI 30-mission plan |
+| Tool | Pricing model | Open source | Raw data stays local | Portable paste-into-AI plan |
 |---|---|---|---|---|
-| **`aeo-platform`** | **Free + your own API spend** | **MIT** | **Yes** | **Yes — no tracked vendor shipped this in our July 2026 review of 23 AEO tools** |
-| Otterly | Paid subscription | No | No | No |
-| Profound | Paid subscription | No | No | No |
-| Peec.ai | Paid subscription | No | No | No |
-| Bluefish | Enterprise contract | No | No | No |
-| AthenaHQ | Paid subscription | No | No | No |
-| Goodie | Paid subscription | No | No | No |
-| HubSpot AEO Grader | Free one-shot scorecard | No | No | No |
-| Evertune | Custom contract | No | No | No |
-| Ahrefs Brand Radar | Paid SEO-suite add-on | No | No | No |
-| Semrush AI Toolkit | Paid SEO-suite add-on | No | No | No |
-| Discovered Labs | Managed-service retainer | No | No | No |
+| **[`aeo-platform`](https://github.com/webappski/aeo-platform)** | **Free + your own API spend** | **MIT** | **Yes** | **Yes — the only row in this table** |
+| [Ahrefs Brand Radar](https://ahrefs.com/brand-radar) | Paid SEO-suite add-on | No | No | No |
+| [AirOps](https://www.airops.com/) ✳ | Freemium platform — AI-search visibility is one module beside content production and agents | No | No | No |
+| [AthenaHQ](https://athenahq.ai/) | Paid subscription | No | No | No |
+| [Bluefish](https://www.bluefish.ai/) | Enterprise contract | No | No | No |
+| [Discovered Labs](https://discoveredlabs.com/) | Managed-service retainer | No | No | No |
+| [Evertune](https://www.evertune.ai/) | Custom contract | No | No | No |
+| [Goodie](https://higoodie.com/) | Paid subscription | No | No | No |
+| [HubSpot AI Search Grader](https://www.hubspot.com/ai-search-grader) ✳ | Free one-shot grade; HubSpot's ongoing AEO monitoring from $50 a month | No | No | No |
+| [LLMrefs](https://llmrefs.com/) ✳ | $79 a month, 7-day trial | No | No | No |
+| [Otterly](https://otterly.ai/) ✳ | Paid subscription from $29 a month | No | No | No |
+| [Peec.ai](https://peec.ai/) | Paid subscription | No | No | No |
+| [Profound](https://www.tryprofound.com/) | Paid subscription | No | No | No |
+| [Scrunch AI](https://scrunch.com/) ✳ | Sales-led — 7-day trial, no public price | No | No | No |
+| [Semrush AI Visibility](https://www.semrush.com/ai-seo/overview/) ✳ | Paid SEO-suite add-on | No | No | No |
+| [Superlines](https://www.superlines.io/) ✳ | Paid subscription, price on request | No | No | No |
+| [Trakkr](https://trakkr.ai/) ✳ | $100 a month for one brand · $500 a month for ten | No | No | No |
+| [Waikay](https://waikay.io/) ✳ | $69.95 / $199.95 / $449.95 per month | No | No | No — meters plans by quota, generated in-dashboard |
 
-**Pick something else when:** you need team SSO, Slack/email alerts, multi-brand management UI, or SOC-2 — **Profound** or **Peec.ai** are the better fit. For broader engine coverage out-of-the-box — **Otterly**. For enterprise agentic-marketing infrastructure — **Bluefish**. For a free one-time scorecard inside an existing HubSpot workflow — **HubSpot AEO Grader**.
+**✳ = re-checked live on 4 September 2026; the linked page is the page that was read.** Unmarked rows keep the pricing *shape* recorded in our July 2026 review of 23 AEO tools and had only their URL re-confirmed on the same day — read those price cells as a category, not as a quote. Two labels moved at that check and are corrected above: HubSpot's tool now ships as **AI Search Grader** (it was the "AEO Grader") and Semrush's surface now reads **AI Visibility**. Adobe LLM Optimizer is on our watch list but is deliberately absent from the table — its product page timed out twice on 4 September 2026, and an unreachable page is *unknown*, not *absent*.
 
-**Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is a few cents per week.
+**To be fair about where the hosted tools are genuinely ahead.** Engine breadth is the clearest gap: `aeo-platform` calls four engines and deliberately does not scrape Google AI Overviews or AI Mode, while Superlines reads 10+ surfaces, LLMrefs 11, Trakkr 8 (including Meta AI and DeepSeek) and Otterly 7 (including AI Overviews and AI Mode) — all counts from their own pages on 4 September 2026. Trakkr and Superlines each ship an MCP server and a hosted API; Trakkr adds white-label client portals on its $500 tier. AirOps is a different animal again, wrapping visibility inside content production and pipeline attribution. And HubSpot AI Search Grader returns a score in under two minutes with nothing to install. `aeo-platform` does none of that, and none of it is on the roadmap — it trades breadth and polish for a run whose every number you can read in `lib/`.
+
+**Pick something else when.** Three questions; one "yes" and a row above serves you better than this CLI:
+
+1. **Does the result need to reach people who will never open a terminal, on a schedule?** Then you want seats, alerting and SSO — **Profound** or **Peec.ai**. `aeo-platform` writes an HTML file; nothing emails it for you.
+2. **Do Google AI Overviews or AI Mode have to be inside the number?** Then you need a vendor that goes and gets them — **Otterly** (7 surfaces) or **Superlines** (10+). This tool covers the four engines reachable by official API and says so instead of estimating the rest.
+3. **Does procurement need SOC-2, a DPA and an invoice?** Then you need a company, not an MIT repo — **Bluefish**, or **AirOps** at its enterprise tier.
+
+If all three are "no", the rest of this README is written for you.
+
+**Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the portable paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is a few cents per week.
 
 **One axis the table cannot show: who checks the checker.** Every hosted platform above is closed-source — see the column; `aeo-platform` is the one MIT row in it. That means the score reaches you from a server you cannot enter, and you are trusting the vendor's definition of a mention, their competitor matching, and their weighting, none of which you can read. Here all three sit in `lib/` in the copy on your disk, [how we count visibility](#how-we-count-visibility) writes out the mention rule and the one-call-per-cell sampling behaviour, and the [UVI methodology](#uvi-methodology--unified-visibility-index) writes out the weights. It is also the axis on which an *agency* is judged: Webappski measures clients with this engine, so a client can install it and re-derive the grid they were sent. Transparency as a file you can open, rather than as a word on a landing page.
 
 ## Comparison vs open-source AEO trackers
 
-A handful of open-source AEO trackers exist; methodologies overlap. The closest peer is **geo-aeo-tracker (danishashko)** — same goal of tracking brand mentions across AI answer engines via API calls. The structural difference is the **paste-into-AI 30-mission plan generator**: after measuring you across 4 engines, `aeo-platform` exports a JSON brand-context block you paste into any frontier AI chat to receive a 30-action plan keyed to your specific gaps. In our July 2026 review of 23 tracked AEO tools, no other open-source AEO tracker shipped this wedge.
+The open-source side of this category is real, crowded, and moving faster than we are on stars. Rather than name one peer and stop, here is the whole neighbourhood. Every cell below was derived live on **4 September 2026** — `gh api repos/<owner>/<repo>` for the stars, licence and last push, and the project's own README for what it takes to run and what it covers. Star counts are what GitHub served that day, not a cached number, and they include ours.
+
+| Project | Stars | Licence | What it takes to run | Engines | Portable paste-into-AI plan |
+|---|---|---|---|---|---|
+| **[`aeo-platform`](https://github.com/webappski/aeo-platform)** (this repo) | **11** | **MIT** | **`npx aeo-platform` — no server, no database, no container** | **4** (ChatGPT, Claude, Gemini, Perplexity) | **Yes** |
+| [elmohq/elmo](https://github.com/elmohq/elmo) | 293 | MIT | Docker Compose + PostgreSQL you run, or their managed cloud from $29 a month | 9 named, incl. Google AI Mode and AI Overviews | No |
+| [danishashko/geo-aeo-tracker](https://github.com/danishashko/geo-aeo-tracker) | 250 | MIT | Clone + `npm install`, local dashboard; bring your own keys | 6 | No |
+| [ai-search-guru/getcito](https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool) | 182 | MIT — a derivative work of elmo, above | Docker Compose + PostgreSQL 16+, plus a scraping provider | 7, incl. Google AI Mode and AI Overview | No |
+| [aryamantodkar/oneglanse](https://github.com/aryamantodkar/oneglanse) | 164 | MIT | Docker + PostgreSQL + ClickHouse; captures through the real product UIs rather than the APIs | 5, incl. AI Overview | No |
+| [Canonry/canonry](https://github.com/Canonry/canonry) | 129 | FSL-1.1-ALv2 — fair-source, converts to Apache-2.0 after two years, not OSI-approved at release | `npm i -g @canonry/canonry`, then a self-hosted single-tenant deployment | 4 | No |
+| [ansvisor/ansvisor](https://github.com/ansvisor/ansvisor) | 106 | MIT | Self-host on Supabase, or their managed cloud | 8 | No |
+| [letterstory/lettertrace](https://github.com/letterstory/lettertrace) | 69 | MIT | Self-host Next.js + Supabase, Docker path documented; bring your own keys | 4 provider APIs | No |
+| [sharozdawa/ai-visibility](https://github.com/sharozdawa/ai-visibility) | 9 | MIT | Clone + `npm install` + Prisma | 4 | No |
+
+**Read the fourth column before the second.** Stars measure attention; that column measures the afternoon between you and your first number. Every other project above asks you to stand something up first — a Postgres, a Supabase project, a Docker Compose file, at minimum a clone and an install. `npx aeo-platform` writes to disk and is done, and that is the trade being made: they get a dashboard and a database you can query, we get no deployment step at all. If you want the dashboard, take one of theirs — elmo and ansvisor are both MIT and both actively shipping.
+
+**Activity, from the same check.** elmo, canonry and lettertrace all pushed on 4 September 2026; getcito on 31 August; geo-aeo-tracker on 12 August; this repo on 2 September. Two are quiet: oneglanse has had no push since 10 May 2026 and sharozdawa/ai-visibility since 22 March 2026 — they are listed because engines still name them, not because we would bet a workflow on them.
+
+**Two naming traps worth knowing before you type an install command.** The npm package literally called [`ai-visibility`](https://www.npmjs.com/package/ai-visibility) is *not* [sharozdawa/ai-visibility](https://github.com/sharozdawa/ai-visibility) — it is a robots.txt / llms.txt / JSON-LD generator for AI crawlers (`npm view ai-visibility`, 4 September 2026). And `geo-aeo-tracker`, `oneglanse`, `getcito` and `ansvisor` have no package under those names on the npm registry — all four returned 404 on that same check — so whatever a search result implies, you get them by cloning, not by installing.
+
+**Deliberately not in the table, with the reason.** [addyosmani/agentic-seo](https://github.com/addyosmani/agentic-seo) is the most-starred repo in this neighbourhood at 307, but it audits a site or a docs folder for agent readiness (`npx agentic-seo ./my-docs-site`) — it does not measure brand mentions across engines, so it is not a peer of the rows above. Same reasoning for [mverab/eGEOagents](https://github.com/mverab/eGEOagents) (173), a GEO content-optimisation skills pack. [ivannikov-pro/ai-visibility-tracker](https://github.com/ivannikov-pro/ai-visibility-tracker) *is* a tracker by intent, but its README still marks self-hosting as "planned", the repo sits at 0 stars, and nothing has been pushed since 22 May 2026 — putting it in would pad the table rather than inform it.
+
+**The structural difference is still the plan.** After measuring you across four engines, `aeo-platform` exports a JSON brand-context block you paste into any frontier AI chat and get back a 30-action plan keyed to your own gaps. In our July 2026 review of 23 tracked AEO tools, plus a live re-check of 19 tools on 4 September 2026, no other tracker — open or closed — shipped a portable one. Those 19, so the number can be audited rather than taken on faith: the eight open-source projects listed beside ours above, the three excluded in the paragraph before this one, and eight hosted platforms whose own pages were read that day (AirOps, HubSpot AI Search Grader, LLMrefs, Otterly, Scrunch AI, Superlines, Trakkr, Waikay). The ninth ✳ row, Semrush, had only its URL and current product name re-confirmed, so it is not counted here.
 
 ## Commands
 
@@ -687,11 +725,11 @@ No. One is enough to start: any of `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHRO
 
 ### What is the 30-mission AEO plan?
 
-A personalised action plan you get by pasting `aeo-platform`'s JSON brand-context block (visibility index, per-engine deltas, top competitors, citation gaps, crawl matrix, authority signals) into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, specific URLs to pitch, weakest-engine fortification, citation-gap closure. In our July 2026 review of 23 tracked AEO tools, no other one shipped this paste-into-AI plan generator. Detailed flow above in [The 30-mission AEO plan](#the-30-mission-aeo-plan-the-wedge-no-commercial-vendor-ships).
+A personalised action plan you get by pasting `aeo-platform`'s JSON brand-context block (visibility index, per-engine deltas, top competitors, citation gaps, crawl matrix, authority signals) into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, specific URLs to pitch, weakest-engine fortification, citation-gap closure. In our July 2026 review of 23 tracked AEO tools, plus a live re-check of 19 tools on 4 September 2026, no other one shipped a *portable* plan generator — hosted tools do produce action plans, but inside the dashboard you are renting. Detailed flow above in [The 30-mission AEO plan](#the-30-mission-aeo-plan-the-portable-wedge-no-hosted-vendor-ships).
 
 ### How is this different from Otterly, Profound, Peec, Bluefish?
 
-Otterly, Profound, Peec, Bluefish, AthenaHQ, and Goodie are paid hosted dashboards — monitoring-only. They tell you the problem inside their UI and stop there. `aeo-platform` is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and — in our July 2026 review of 23 tracked AEO tools — was the only one shipping a paste-into-AI 30-mission plan generator. See [Comparison vs hosted AEO platforms](#comparison-vs-hosted-aeo-platforms) for the full table.
+Otterly, Profound, Peec, Bluefish, AthenaHQ, Goodie — and Waikay, Trakkr, LLMrefs, Superlines, Scrunch AI and AirOps, added to the table after the 4 September 2026 check — are paid hosted dashboards. They tell you the problem inside their UI and mostly stop there; where they do generate an action plan, Waikay most explicitly, it is metered and stays in the dashboard. `aeo-platform` is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and was the only one of the 18 tools in that table shipping a portable paste-into-AI 30-mission plan generator. See [Comparison vs hosted AEO platforms](#comparison-vs-hosted-aeo-platforms) for the full table, including what those tools do better than this one.
 
 ### Is `aeo-platform` CI-friendly?
 
@@ -1015,7 +1053,7 @@ MIT — do whatever you want with it.
       "description": "Open-source CLI that measures brand visibility across ChatGPT, Claude, Gemini, and Perplexity using direct provider APIs, audits AI-bot crawlability + authority signals, and exports a JSON brand-context you paste into any AI for a personalised 30-mission AEO/GEO plan. Free MIT-licensed alternative to Otterly, Profound, Peec, and Bluefish.",
       "featureList": [
         "4 engines via official APIs (ChatGPT, Claude, Gemini, Perplexity)",
-        "Paste-into-AI 30-mission AEO plan (JSON brand-context export)",
+        "Portable paste-into-AI 30-mission AEO plan (JSON brand-context export)",
         "AI-bot crawlability audit (robots.txt × bot matrix)",
         "Authority signals: Wikipedia, Reddit, GitHub, Wikidata",
         "Unified Visibility Index (UVI) — 4 sub-components with re-norm",
@@ -1095,12 +1133,17 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "What is the 30-mission AEO plan?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A personalised AEO action plan you get by pasting aeo-platform's JSON brand-context block into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, URLs to pitch, weakest-engine fortification. The only paste-into-AI plan generator among the 23 AEO tools we reviewed in July 2026." }
+          "acceptedAnswer": { "@type": "Answer", "text": "A personalised AEO action plan you get by pasting aeo-platform's JSON brand-context block into your own ChatGPT, Claude, Gemini, or Perplexity chat. The receiving AI returns 30 missions (≈1–3 hours each, grouped into 4 weekly chunks) keyed to your specific gaps — named competitors to displace, URLs to pitch, weakest-engine fortification. The only portable paste-into-AI plan generator among the 23 AEO tools we reviewed in July 2026 and the 19 we re-checked live on 4 September 2026. Hosted tools do generate action plans — Waikay meters them by quota — but those plans are produced and kept inside the vendor dashboard, not exported as a prompt you own." }
         },
         {
           "@type": "Question",
           "name": "How is aeo-platform different from Otterly, Profound, Peec, Bluefish?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Otterly, Profound, Peec, Bluefish, AthenaHQ, Goodie are paid hosted dashboards — monitoring-only. aeo-platform is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and — in our July 2026 review of 23 tracked AEO tools — was the only one with a paste-into-AI 30-mission plan generator." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Otterly, Profound, Peec, Bluefish, AthenaHQ, Goodie, Waikay, Trakkr, LLMrefs, Superlines, Scrunch AI, AirOps, Ahrefs Brand Radar, Semrush AI Visibility, Evertune, Discovered Labs and HubSpot AI Search Grader are closed hosted products — 17 of them are compared row by row in the README. aeo-platform is a free open-source CLI that calls provider APIs directly, runs on your machine, stores raw responses locally, and was the only one of those 18 tools with a portable paste-into-AI 30-mission plan generator when the table was re-checked live on 4 September 2026. Where the hosted tools are ahead: engine breadth (Superlines reads 10+ surfaces, LLMrefs 11, Trakkr 8, Otterly 7 including Google AI Overviews and AI Mode, while aeo-platform covers the 4 engines reachable by official API), plus seats, alerting, SSO and SOC-2, none of which aeo-platform has." }
+        },
+        {
+          "@type": "Question",
+          "name": "What are the open-source alternatives to aeo-platform?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The main open-source AI-visibility trackers, with stars and licences derived live from the GitHub API on 4 September 2026: elmohq/elmo (293 stars, MIT, Docker Compose or managed cloud), danishashko/geo-aeo-tracker (250, MIT, clone and run), ai-search-guru/getcito (182, MIT, a derivative work of elmo, Docker Compose), aryamantodkar/oneglanse (164, MIT, captures through product UIs rather than APIs), Canonry/canonry (129, FSL-1.1-ALv2 fair-source rather than OSI-approved), ansvisor/ansvisor (106, MIT), letterstory/lettertrace (69, MIT, bring your own keys) and sharozdawa/ai-visibility (9, MIT). aeo-platform itself is at 11 stars and MIT. The practical difference is not the star count but the setup: every one of those projects needs something stood up first — a PostgreSQL, a Supabase project, a Docker Compose file, at minimum a clone and an install — whereas npx aeo-platform writes to disk with no server, no database and no container. None of them exports a portable paste-into-AI plan. Note two naming traps: the npm package named ai-visibility is a robots.txt and llms.txt generator, not the GitHub project of that name, and geo-aeo-tracker, oneglanse, getcito and ansvisor are not published on npm at all." }
         },
         {
           "@type": "Question",
