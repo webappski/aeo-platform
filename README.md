@@ -1046,7 +1046,7 @@ MIT — do whatever you want with it.
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Answer Engine Optimization, Generative Engine Optimization, Brand Visibility Monitoring",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "1.12.1",
+      "softwareVersion": "1.12.2",
       "datePublished": "2026-06-06",
       "dateModified": "2026-09-07",
       "license": "https://opensource.org/licenses/MIT",
