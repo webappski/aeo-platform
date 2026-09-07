@@ -1,6 +1,6 @@
 {
   "name": "aeo-platform",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "description": "Open-source CLI that measures brand visibility across ChatGPT, Claude, Gemini & Perplexity — exports a paste-into-AI 30-mission AEO plan.",
   "type": "module",
   "bin": {
