@@ -16,15 +16,37 @@
  * know which half to believe, so the honest fix was to make them derive from
  * each other — and then to pin that they still do.
  *
+ * Second wave of drift, and the reason the last three pins exist (2026-09-07):
+ * a **Webappski (agency)** row was added to the hosted table. That single row
+ * falsified four sentences written when every row but one was a competitor —
+ * "the only row in this table" in our own Portable cell, "the one MIT row",
+ * and the "18 tools" total repeated in the FAQ prose AND in the Schema.org
+ * FAQ answer. A self-inclusive comparison table has a failure mode a purely
+ * competitive one does not: the author's own row quietly breaks the
+ * uniqueness claims the table was built to make. Hence the pins are now
+ * ownership-aware, and ownership is derived from the row's own href rather
+ * than from a hard-coded name list.
+ *
  * The pins deliberately derive the expected numbers from the MARKUP rather
  * than restating them, so the next competitor added cannot re-open the hole:
  *   - the set of ✳ rows must equal the set of names the prose enumerates;
  *   - the re-check total must equal ✳ rows + open-source rows + the projects
- *     the section explicitly excludes.
+ *     the section explicitly excludes;
+ *   - no row of ours may carry a ✳ — the mark means "we read the vendor's
+ *     page live", which is not a claim anyone can make about themselves, and
+ *     a ✳ on our own row would also silently inflate the re-check total above;
+ *   - every counted claim about the hosted table ("N rows in that table",
+ *     "N third-party products in that table") must equal what the table
+ *     actually holds, on every surface that repeats it — prose and JSON-LD;
+ *   - a Yes in the Portable column may only appear on a row of ours, because
+ *     the day a third-party vendor ships one, the wedge sentences elsewhere
+ *     in the README stop being true and must be rewritten, not left standing.
  *
- * MUTATION-SANITY (both verified RED before commit): delete the ✳ from any
- * hosted row, or change "19 tools" to any other number, and the corresponding
- * assertion fails naming both sides of the mismatch.
+ * MUTATION-SANITY (each verified RED before commit): delete the ✳ from any
+ * hosted row, change "19 tools" to any other number, put a ✳ on the Webappski
+ * row, edit either counted claim off the row count, or flip a competitor's
+ * Portable cell to Yes — and the corresponding assertion fails naming both
+ * sides of the mismatch.
  *
  * Pure file read + string parsing — no fixtures, no subprocess, no network
  * and no mocks (R37: a heavier harness would measure nothing extra here).
@@ -62,6 +84,15 @@ function toolRows(sectionText) {
       assert.ok(name, `could not read a tool name out of table row: ${l.slice(0, 80)}`);
       return { name: name.replace(/`/g, '').trim(), row: l };
     });
+}
+
+/** A row is OURS when its link points at something Webappski publishes. Derived
+ *  from the href, not from a name list, so a future rename cannot orphan it. */
+const OURS = /github\.com\/webappski\/|webappski\.com/;
+
+/** Body cells of a markdown table row, in column order. */
+function cells(row) {
+  return row.split('|').slice(1, -1).map(s => s.trim());
 }
 
 test('every ✳ hosted row is named in the prose enumeration, and vice versa', () => {
@@ -110,6 +141,67 @@ test('the re-check total equals what the two sections actually list', () => {
     `${starredHosted + ossPeers + excluded.size}: ${starredHosted} ✳ hosted rows + ` +
     `${ossPeers} open-source peers + ${excluded.size} explicitly excluded projects. ` +
     `A count nobody can decompose is a claim about work, not a record of it.`,
+  );
+});
+
+test('no row of ours is marked ✳ — that mark is a claim about reading someone else\'s page', () => {
+  const selfStarred = toolRows(section(HOSTED))
+    .filter(r => OURS.test(r.row) && r.row.includes('✳'))
+    .map(r => r.name);
+
+  assert.deepEqual(
+    selfStarred, [],
+    `these rows are Webappski's own and carry a ✳: ${selfStarred.join(', ')}. ` +
+    `✳ means "we read the vendor's linked page live on the stamp date" — self-applied ` +
+    `it says nothing, and it would also add our own rows to the audited re-check total.`,
+  );
+});
+
+test('every counted claim about the hosted table equals what the table holds', () => {
+  const rows = toolRows(section(HOSTED));
+  const total = rows.length;
+  const thirdParty = rows.filter(r => !OURS.test(r.row)).length;
+
+  // Both claims are repeated on two surfaces a reader/parser can hit
+  // independently — the FAQ prose and the Schema.org FAQ answer — plus the
+  // note under the table itself. Collect EVERY occurrence: one surface healed
+  // while another stays stale is the exact drift this file exists to stop.
+  const check = (re, expected, label) => {
+    const found = [...README.matchAll(re)].map(m => Number(m[1]));
+    assert.ok(
+      found.length >= 2,
+      `expected the "${label}" claim on at least the prose and the JSON-LD surface, found ${found.length}`,
+    );
+    for (const claimed of found) {
+      assert.equal(
+        claimed, expected,
+        `the README claims ${claimed} ${label}, but the hosted table holds ${expected}. ` +
+        `Occurrences found: ${found.join(', ')} — every surface repeating the number must move together.`,
+      );
+    }
+  };
+
+  check(/(\d+) rows in th(?:at|is) table/g, total, 'rows in that table');
+  check(/(\d+) third-party products in th(?:at|is) table/g, thirdParty,
+    'third-party products in that table');
+});
+
+test('a Yes in the Portable column appears only on rows we own', () => {
+  const hosted = section(HOSTED);
+  const header = hosted.split('\n').find(l => l.startsWith('| Tool |'));
+  const portableIdx = cells(header).findIndex(c => /Portable paste-into-AI plan/.test(c));
+  assert.ok(portableIdx > 0, 'the hosted table must keep a Portable paste-into-AI plan column');
+
+  const foreignYes = toolRows(hosted)
+    .filter(r => !OURS.test(r.row) && /^\*{0,2}Yes\b/.test(cells(r.row)[portableIdx] || ''))
+    .map(r => r.name);
+
+  assert.deepEqual(
+    foreignYes, [],
+    `${foreignYes.join(', ')} now shows Yes in the Portable column. That is allowed to be ` +
+    `true — but the moment it is, the wedge sentences ("no hosted vendor ships", "none of the ` +
+    `N third-party products ... shipped a portable plan") are false and must be rewritten in ` +
+    `the same commit. Update the prose, then this pin.`,
   );
 });
 
