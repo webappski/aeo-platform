@@ -162,22 +162,35 @@ test('every counted claim about the hosted table equals what the table holds', (
   const total = rows.length;
   const thirdParty = rows.filter(r => !OURS.test(r.row)).length;
 
-  // Both claims are repeated on two surfaces a reader/parser can hit
-  // independently — the FAQ prose and the Schema.org FAQ answer — plus the
-  // note under the table itself. Collect EVERY occurrence: one surface healed
-  // while another stays stale is the exact drift this file exists to stop.
+  // Both claims are repeated on three surfaces a reader or a parser can hit
+  // independently: the note under the table, the FAQ answer in prose, and the
+  // Schema.org FAQ answer. Each is checked SEPARATELY rather than by counting
+  // occurrences in the whole file — a total ("at least two") would still pass
+  // after a claim is deleted from one surface, and one surface healed while
+  // another stays stale is the exact drift this file exists to stop.
+  const JSONLD_RE = /```json\n[\s\S]*?\n```/g;
+  const hostedText = section(HOSTED);
+  const surfaces = {
+    'the note under the hosted table': hostedText,
+    'the FAQ answer in prose': README.replace(JSONLD_RE, '').replace(hostedText, ''),
+    'the Schema.org FAQ answer': (README.match(JSONLD_RE) || []).join('\n'),
+  };
+
   const check = (re, expected, label) => {
-    const found = [...README.matchAll(re)].map(m => Number(m[1]));
-    assert.ok(
-      found.length >= 2,
-      `expected the "${label}" claim on at least the prose and the JSON-LD surface, found ${found.length}`,
-    );
-    for (const claimed of found) {
-      assert.equal(
-        claimed, expected,
-        `the README claims ${claimed} ${label}, but the hosted table holds ${expected}. ` +
-        `Occurrences found: ${found.join(', ')} — every surface repeating the number must move together.`,
+    for (const [surface, text] of Object.entries(surfaces)) {
+      const found = [...text.matchAll(re)].map(m => Number(m[1]));
+      assert.ok(
+        found.length >= 1,
+        `the "${label}" claim is missing from ${surface}. Every surface that made this ` +
+        `claim must keep making it, or the one left behind becomes the stale half of a pair.`,
       );
+      for (const claimed of found) {
+        assert.equal(
+          claimed, expected,
+          `${surface} claims ${claimed} ${label}, but the hosted table holds ${expected}. ` +
+          `Occurrences on that surface: ${found.join(', ')}.`,
+        );
+      }
     }
   };
 
