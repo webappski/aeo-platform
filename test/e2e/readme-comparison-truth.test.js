@@ -121,7 +121,13 @@ test('the re-check total equals what the two sections actually list', () => {
 
   const starredHosted = toolRows(hosted).filter(r => r.row.includes('✳')).length;
   // Every row of the open-source table except our own is a tool we checked.
-  const ossPeers = toolRows(oss).filter(r => !r.name.includes('aeo-platform')).length;
+  // Ownership is read from the row's href, exactly as the pins below do it. It
+  // used to be read from the row's NAME, which was true only for as long as our
+  // single open-source row happened to be called `aeo-platform`: the day a
+  // second row of ours lands in this table — the move just made in the hosted
+  // one — a name filter would count it as a peer we had audited and silently
+  // raise the required re-check total by one.
+  const ossPeers = toolRows(oss).filter(r => !OURS.test(r.row)).length;
 
   // Projects the section names and then explicitly leaves out, each with a
   // printed reason — they were checked in order to be excluded, so they count.
@@ -169,10 +175,14 @@ test('every counted claim about the hosted table equals what the table holds', (
   // after a claim is deleted from one surface, and one surface healed while
   // another stays stale is the exact drift this file exists to stop.
   const JSONLD_RE = /```json\n[\s\S]*?\n```/g;
-  const hostedText = section(HOSTED);
+  // Strip the fenced json out of the hosted section BEFORE using it, not after:
+  // if a json fence ever lands inside that section, subtracting the unstripped
+  // text from the already-stripped file would silently match nothing and blur
+  // two surfaces into one. Today the two forms are identical.
+  const hostedProse = section(HOSTED).replace(JSONLD_RE, '');
   const surfaces = {
-    'the note under the hosted table': hostedText,
-    'the FAQ answer in prose': README.replace(JSONLD_RE, '').replace(hostedText, ''),
+    'the note under the hosted table': hostedProse,
+    'the FAQ answer in prose': README.replace(JSONLD_RE, '').replace(hostedProse, ''),
     'the Schema.org FAQ answer': (README.match(JSONLD_RE) || []).join('\n'),
   };
 
