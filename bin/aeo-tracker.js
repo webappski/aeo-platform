@@ -2300,11 +2300,21 @@ async function cmdRun(options = {}) {
   // providerConfig — overrides mutate config.providers in place so downstream
   // provider discovery picks up the user's chosen model. Disk config is not
   // touched; this is per-run only.
+  // AEO_<PROVIDER>_MODEL_PIN env vars are the durable form of the same pin —
+  // a CLI flag only lasts one invocation, but an automated caller (a cron, a
+  // director agent) has no flag to type. CLI flag still wins when both are
+  // set. Added 2026-09-08: GPT generation 6 shipped with exactly one model,
+  // `gpt-6-astra` ($10/$50 per 1M — flagship pricing, no recognised cheap
+  // tier per MAIN_CHEAP_TIER below), so discovery's own "newest generation
+  // always wins" rule (intentional, see lib/providers/discover.js) would pick
+  // it and pay flagship rates. AEO_OPENAI_MODEL_PIN=gpt-5.6-luna holds our own
+  // runs on the cheap tier until a real gpt-6 cheap variant exists — remove
+  // the pin (or extend MAIN_CHEAP_TIER) once one does.
   const cliModelOverrides = {
-    openaiModel:     options.openaiModel,
-    geminiModel:     options.geminiModel,
-    anthropicModel:  options.anthropicModel,
-    perplexityModel: options.perplexityModel,
+    openaiModel:     options.openaiModel     || process.env.AEO_OPENAI_MODEL_PIN,
+    geminiModel:     options.geminiModel     || process.env.AEO_GEMINI_MODEL_PIN,
+    anthropicModel:  options.anthropicModel  || process.env.AEO_ANTHROPIC_MODEL_PIN,
+    perplexityModel: options.perplexityModel || process.env.AEO_PERPLEXITY_MODEL_PIN,
   };
   applyCliModelOverrides(config, cliModelOverrides);
   // Kept SEPARATELY from the config mutation above: once the flag is written
