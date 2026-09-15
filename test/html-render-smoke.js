@@ -278,12 +278,17 @@ test('the retired «Citations earned» label never comes back', () => {
   assert.ok(!/Citations earned/.test(html), 'old «Citations earned» label is back');
 });
 
-test('every hero KPI that counts answers uses the SAME denominator, errors included', () => {
-  // The presence KPI counts out of `history.cells.length`; the lift KPI counts
-  // out of `results.length`. They agree today because a failed cell is still a
-  // cell in both. Two adjacent KPIs printing "of 3" and "of 2" for the same run
-  // would make the reader arbitrate between them, so the agreement is pinned
-  // here rather than left as a coincidence.
+test('every hero KPI that counts answers uses the SAME denominator — valid trials, errors excluded', () => {
+  // Two things are pinned here, and the second one changed in 2026-09 (MEAS-2).
+  //
+  // (1) The two KPIs must AGREE. Two adjacent cards printing "of 3" and "of 2"
+  //     for the same run make the reader arbitrate between them.
+  // (2) The number they agree on is the run's VALID trials, not its attempts.
+  //     Both used to count every cell the run touched — including the one whose
+  //     engine call errored — so the hero said "of 3 answers" for a run that
+  //     produced 2 answers, while the headline score divided by 2. One
+  //     denominator now: lib/score.js. This fixture has 3 cells, one of them an
+  //     error, so the honest denominator is 2.
   const errSnapshot = {
     ...baseSnapshot,
     results: [
@@ -304,8 +309,8 @@ test('every hero KPI that counts answers uses the SAME denominator, errors inclu
     assert.ok(m, `KPI «${label}» not found in the hero`);
     return m[1];
   };
-  assert.equal(denomOf('Answers naming or citing you'), '3',
-    'the presence KPI dropped the errored answer from its denominator');
+  assert.equal(denomOf('Answers naming or citing you'), '2',
+    'the presence KPI counted a failed call as an answer the engines gave');
   assert.equal(denomOf('Lift opportunities'), denomOf('Answers naming or citing you'),
     'two adjacent KPIs disagree about how many answers this run has');
 });

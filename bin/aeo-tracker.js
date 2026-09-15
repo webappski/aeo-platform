@@ -9,7 +9,7 @@
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, resolveRunModels } from '../lib/config.js';
@@ -19,6 +19,10 @@ import { pickClassifyProvider } from '../lib/providers/pick-classify.js';
 import { detectMention, findPosition, extractUrls } from '../lib/mention.js';
 import { brandTerms, textMentionsBrand } from '../lib/brand-match.js';
 import { diff } from '../lib/diff.js';
+// ONE definition of the visibility denominator for every surface (MEAS-2).
+import { aggregateScore, sliceStats } from '../lib/score.js';
+// Stable question identity + declared market + canonical run root (MEAS-1).
+import { queryIdFor, manifestIndex, verifyManifest, normalizeQueryText } from '../lib/basket-manifest.js';
 import { renderMarkdown, parseRawResponse } from '../lib/report/markdown.js';
 import { renderHtml } from '../lib/report/html.js';
 import { buildMcMetadata } from '../lib/report/mc-metadata.js';
@@ -154,6 +158,37 @@ function responsesDirFor(domain) {
 /** `aeo-reports/<slug>` — the per-domain reports root. */
 function reportsDirFor(domain) {
   return join(REPORTS_ROOT, domainSlug(domain));
+}
+
+/**
+ * MEAS-1 — say out loud when this invocation is not standing in the basket's
+ * canonical run root.
+ *
+ * `aeo-responses/<domain>/<date>/` is resolved relative to the CURRENT working
+ * directory. Run the same basket from two directories and you get two parallel
+ * histories under the same dates, and "compare with the baseline" silently
+ * means whichever tree you happen to be standing in. That is exactly what
+ * happened to the webappski basket: identical 2026-08-31 summaries exist in two
+ * trees, and the diff's answer depended on the shell's cwd.
+ *
+ * This warns; it does NOT redirect, move or delete anything. Redirecting the
+ * storage root is a behaviour change for every command and belongs in its own
+ * piece of work. Making the fork visible is what removes the silent part.
+ *
+ * @param {object} config parsed `.aeo-tracker.json`
+ * @param {string} command command name, for the message
+ * @returns {boolean} true when a warning was printed
+ */
+function warnIfNotCanonicalRunRoot(config, command) {
+  const canonical = config?.basketManifest?.runRoot;
+  if (typeof canonical !== 'string' || !canonical.trim()) return false;
+  const here = resolvePath(process.cwd());
+  const there = resolvePath(canonical);
+  if (here === there) return false;
+  console.warn(`${c.yellow}  ${SYM.warn} This basket's canonical run root is ${there}${c.reset}`);
+  console.warn(`${c.dim}    You are running \`${command}\` in ${here}, so results are read from and written to ${join(here, RESPONSES_ROOT)}.${c.reset}`);
+  console.warn(`${c.dim}    Both trees are kept — nothing is moved or deleted — but a comparison only makes sense within ONE of them.${c.reset}`);
+  return true;
 }
 
 const DATE_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -373,9 +408,12 @@ async function deriveActionsWithLLM(latest, prev, category, { providerName, prov
 
   const engineLines = providers.map(p => {
     const rs = latest.results.filter(r => r.provider === p && r.mention !== 'error');
-    const hits = rs.filter(r => r.mention === 'yes' || r.mention === 'src').length;
+    // Same denominator the report publishes (lib/score.js) — a prompt that
+    // quotes different numbers than the report teaches the model a different
+    // run than the one the reader is looking at.
+    const st = sliceStats(rs);
     const perQuery = rs.map(r => `    Q: "${r.queryText || r.query}" → ${r.mention}`).join('\n');
-    return `  ${PLABELS[p] || p}: ${hits}/${rs.length} mentions\n${perQuery}`;
+    return `  ${PLABELS[p] || p}: ${st.hits}/${st.valid} mentions\n${perQuery}`;
   }).join('\n');
 
   const compLines = (latest.topCompetitors || []).slice(0, 8)
@@ -2338,6 +2376,47 @@ async function cmdRun(options = {}) {
   // core/adjacent/aspirational label (AP-FIX-BRANDFIT) into the report so it
   // can segment Score without re-running research.
   const { texts: queries, tags: queryTags, brandFits: queryBrandFits, hasTags } = normalizeQueries(rawQueries);
+
+  // MEAS-1 — basket manifest. Every cell this run writes carries the STABLE id
+  // of its question (hash of the normalised text) and the market the config
+  // DECLARES for it, so a later comparison lines two runs up by question rather
+  // than by array position (`Q12`), and can restrict itself to one market
+  // without re-deriving the market from the answers. The manifest is optional:
+  // without it the ids are still written (identity survives), only the declared
+  // market is unknown.
+  // A config can be marked superseded rather than deleted (`_deprecated`) —
+  // two configs for the same brand is how a basket ends up measured twice under
+  // two different question sets. Say it at the top of the run, before any money
+  // is spent, and name the canonical one.
+  if (config._deprecated) {
+    const d = config._deprecated;
+    console.warn(`\n${c.yellow}  ${SYM.warn} This config is marked superseded${d.since ? ` (since ${d.since})` : ''}.${c.reset}`);
+    if (d.reason) console.warn(`${c.dim}    ${d.reason}${c.reset}`);
+    if (d.canonicalConfig) console.warn(`${c.dim}    Canonical config: ${d.canonicalConfig}${c.reset}`);
+  }
+
+  const basketManifest = config.basketManifest || null;
+  const basketIdx = manifestIndex(basketManifest);
+  if (basketManifest) {
+    const drift = verifyManifest(basketManifest, rawQueries);
+    if (!drift.ok) {
+      console.warn(`${c.yellow}  ${SYM.warn} Basket manifest is out of date: ${drift.missing.length} question${drift.missing.length === 1 ? '' : 's'} not listed, ${drift.extra.length} listed but no longer asked.${c.reset}`);
+      console.warn(`${c.dim}    Declared markets for the unlisted questions will read as unknown. Regenerate with: node scripts/build-basket-manifest.mjs <config>${c.reset}`);
+    }
+  } else if (queries.length > 0) {
+    // No manifest → every declared market reads as unknown, and the report can
+    // only segment by markets it INFERRED from the answers. That is a silent
+    // degradation unless it is said, which is the whole point of this work.
+    // Ids are still written, so comparison by question keeps working.
+    console.log(`${c.dim}  No basket manifest in the config — question ids are still recorded, but declared markets are unknown. Add one: node scripts/build-basket-manifest.mjs ${CONFIG_FILE}${c.reset}`);
+  }
+  // Always, manifest or not: `run` is the command that WRITES into whichever
+  // tree the shell is standing in, so it is the one that most needs to say
+  // when that is not the basket's canonical tree.
+  warnIfNotCanonicalRunRoot(config, 'run');
+  /** Declared market for a question text — from the manifest only, never guessed. */
+  const declaredMarketFor = (text) => basketIdx.byText.get(normalizeQueryText(text))?.market ?? null;
+
   if (hasTags) {
     console.log(`${c.dim}Funnel/intent tags: ${[...new Set(queryTags.filter(Boolean))].join(', ')}${c.reset}`);
   }
@@ -3047,6 +3126,14 @@ async function cmdRun(options = {}) {
               sink({
                 query: `Q${qi + 1}`,
                 queryText: baseQuery,
+                // MEAS-1/MEAS-3 — stable identity + declared market travel WITH
+                // the measurement. `query` stays the ordinal label every
+                // existing consumer reads; `queryId` is what a comparison keys
+                // on. Market is omitted (not null) when the manifest declares
+                // none, so a config without a manifest writes byte-identical
+                // records apart from the id.
+                queryId: queryIdFor(baseQuery),
+                ...(declaredMarketFor(baseQuery) ? { market: declaredMarketFor(baseQuery) } : {}),
                 provider: provider.name,
                 label: provider.label,
                 model: cellModel,
@@ -3133,6 +3220,8 @@ async function cmdRun(options = {}) {
               // --json mode: error is captured in results[].mention='error' below.
               sink({
                 query: `Q${qi + 1}`, queryText: baseQuery,
+                queryId: queryIdFor(baseQuery),
+                ...(declaredMarketFor(baseQuery) ? { market: declaredMarketFor(baseQuery) } : {}),
                 provider: provider.name, label: provider.label,
                 model: cellModel, mode, mention: 'error',
                 position: null, citationCount: 0,
@@ -3277,10 +3366,19 @@ async function cmdRun(options = {}) {
   // skip/merge cache was the cross-domain / edited-query bleed vector).
 
   // ─── Summary ───
-  const total = results.filter(r => r.mention !== 'error').length;
-  const mentions = results.filter(r => r.mention === 'yes' || r.mention === 'src').length;
-  const score = total > 0 ? Math.round((mentions / total) * 100) : 0;
-  const errors = results.filter(r => r.mention === 'error').length;
+  // ONE denominator for the whole report — lib/score.js. `mentions` and `total`
+  // stay as the names every existing consumer reads, but they are now ALIASES
+  // of that single computation (hits / valid trials), not a second count of the
+  // same thing. `attempts` and `errors` are published beside them so a reader
+  // can always tell how many calls were made versus how many produced a
+  // measurement. On single-shot runs (every run before sampling existed) the
+  // alias is exact: one non-error cell = one valid trial.
+  const runScore = aggregateScore(results);
+  const total = runScore.valid;
+  const mentions = runScore.hits;
+  const score = runScore.score;
+  const errors = runScore.errors;
+  const attempts = runScore.attempts;
 
   console.log(`\n${c.bold}${'═'.repeat(60)}${c.reset}`);
   console.log(`${c.bold}  AEO VISIBILITY REPORT — ${brand}${c.reset}`);
@@ -3305,6 +3403,15 @@ async function cmdRun(options = {}) {
   }
 
   console.log(`\n${c.bold}  Score: ${score}%${c.reset} (${mentions}/${total} checks returned a mention)`);
+  // The four numbers, each with one meaning, printed only when they can
+  // actually differ (a clean single-shot run has attempts === valid and zero
+  // errors, so the extra line would repeat the one above). Errors are attempts
+  // that produced no measurement — they are NOT in the score's denominator,
+  // and this line is where the report says so instead of leaving the reader to
+  // infer it from two numbers that don't add up.
+  if (errors > 0 || attempts !== total) {
+    console.log(`  ${c.dim}hits ${mentions} · valid ${total} · attempts ${attempts} · errors ${errors} — the score divides by valid, never by attempts.${c.reset}`);
+  }
   if (errors > 0) console.log(`  ${c.yellow}${errors} checks failed (API errors)${c.reset}`);
 
   // AP-QBAR-ZERO-IS-HYPOTHESIS — when the headline is 0%/very-low AND the basket
@@ -3495,6 +3602,23 @@ async function cmdRun(options = {}) {
     mentions,
     total,
     errors,
+    // The denominator, spelled out. `total` is the historical name and stays
+    // an alias of `valid`; `attempts` is new and is the only place the summary
+    // says how many calls were made. A consumer that wants "how many of our
+    // checks even worked" reads valid/attempts instead of guessing.
+    measurementCounts: {
+      hits: mentions,
+      valid: total,
+      attempts,
+      errors,
+      cells: runScore.cells,
+      definition: 'score = hits / valid; valid = attempts − errors; errors are never in the denominator',
+    },
+    // MEAS-1 — the basket this run measured, carried WITH the measurement.
+    // A snapshot that has to be interpreted against whatever the config says
+    // today is not a record of anything: the config moves, the run does not.
+    // `diff` reads declared markets from here when no config is at hand.
+    ...(basketManifest ? { basketManifest } : {}),
     regressionThreshold,
     sessionCostUsd,
     costByModel,
@@ -3644,9 +3768,11 @@ function buildHtmlSummary(snapshots, rawResponses) {
   // Per-engine visibility + delta + tiny trend series (per provider+model)
   const engines = engineList.map(en => {
     const rows = latest.results.filter(r => r.provider === en.provider && r.model === en.model);
-    const hits = rows.filter(r => r.mention === 'yes' || r.mention === 'src').length;
-    const total = rows.length;
-    const pct = total ? Math.round((hits / total) * 100) : 0;
+    // Per-engine rate through the ONE denominator (lib/score.js). This used to
+    // divide by `rows.length` — every cell including the ones that errored — so
+    // an engine that failed half its calls was reported as half as visible,
+    // with a denominator different from the headline score's on the same page.
+    const { hits, total, rate: pct } = sliceStats(rows);
     // v0.5 — citations to OWN domain only (used by hero copy + engine cards
     // that say "cited YOU N times"). r.citationCount is total-cited-anywhere
     // and would lie when AI cited only competitor pages.
@@ -3657,15 +3783,17 @@ function buildHtmlSummary(snapshots, rawResponses) {
       if (c.mention === 'error' && c.error) return { status: 'error', message: c.error };
       return c.mention;
     });
+    // Same denominator for the history sparkline and the previous-run figure —
+    // a trend drawn with a different denominator than the point it ends at is
+    // a fabricated slope.
     const series = snapshots.map(s => {
       const er = (s.results || []).filter(r => r.provider === en.provider && r.model === en.model);
-      const h = er.filter(r => r.mention === 'yes' || r.mention === 'src').length;
-      return er.length ? Math.round((h / er.length) * 100) : 0;
+      return sliceStats(er).rate;
     });
     const prevPct = prev ? (function () {
       const pr = (prev.results || []).filter(r => r.provider === en.provider && r.model === en.model);
-      const h = pr.filter(r => r.mention === 'yes' || r.mention === 'src').length;
-      return pr.length ? Math.round((h / pr.length) * 100) : null;
+      const st = sliceStats(pr);
+      return st.total > 0 ? st.rate : null;
     })() : null;
     const delta = prevPct == null ? null : pct - prevPct;
     return {
@@ -3676,14 +3804,28 @@ function buildHtmlSummary(snapshots, rawResponses) {
   });
 
   // Coverage buckets for the hero mini-bar
+  // MEAS-2 — the bucket counts describe the grid (how many cells came back
+  // named / cited / absent / failed), but `total` is PUBLISHED as a
+  // denominator: `lib/report/html.js` renders «Named in {yes}/{total} cells».
+  // It used to increment on every cell including the failed ones, so an engine
+  // that errored half its calls was shown as half as visible, against a
+  // denominator different from the headline score's on the same page. The
+  // buckets stay cell-level; `total` is the run's one denominator (valid
+  // trials), and the attempt count is published beside it rather than in its
+  // place.
+  const coverageCounts = aggregateScore(latest.results);
   const coverage = latest.results.reduce((acc, r) => {
-    acc.total += 1;
     if (r.mention === 'yes')        acc.yes += 1;
     else if (r.mention === 'src')   acc.src += 1;
     else if (r.mention === 'error') acc.error += 1;
     else                            acc.no += 1;
     return acc;
-  }, { yes: 0, src: 0, no: 0, error: 0, total: 0 });
+  }, {
+    yes: 0, src: 0, no: 0, error: 0,
+    total: coverageCounts.valid,
+    attempts: coverageCounts.attempts,
+    cells: coverageCounts.cells,
+  });
 
   // Competitors
   const compList = latest.topCompetitors || [];
@@ -3882,6 +4024,12 @@ async function cmdReport(args = {}) {
   if (dates.length === 0) {
     console.error(`${c.red}No compatible runs found for ${activeDomain || 'this project'}. Check ${CONFIG_FILE}'s domain or run: aeo-platform run${c.reset}`);
     process.exit(1);
+  }
+  // MEAS-1 — a report built from the wrong tree is a report about another
+  // history. Warn, never redirect (see warnIfNotCanonicalRunRoot).
+  if (existsSync(CONFIG_FILE)) {
+    try { warnIfNotCanonicalRunRoot(JSON.parse(await readFile(CONFIG_FILE, 'utf-8')), 'report'); }
+    catch { /* unreadable config — the report is still rendered */ }
   }
 
   const snapshots = [];
@@ -4630,6 +4778,9 @@ async function cmdRunManual(argv) {
   const { brand, domain, queries: rawQueriesManual } = config;
   const brandAliasesManual = Array.isArray(config.brandAliases) ? config.brandAliases : [];
   const { texts: queries, tags: queryTagsManual, brandFits: queryBrandFitsManual } = normalizeQueries(rawQueriesManual);
+  // MEAS-1 — same manifest lookup as the live run; declared market only, never guessed.
+  const manualBasketIdx = manifestIndex(config.basketManifest || null);
+  const manualDeclaredMarketFor = (text) => manualBasketIdx.byText.get(normalizeQueryText(text))?.market ?? null;
   const providerCfg = (config.providers || DEFAULT_CONFIG.providers)[providerName] || PROVIDERS[providerName];
   const providerLabel = PROVIDERS[providerName].label;
   const modelUsed = providerCfg.model || 'manual';
@@ -4744,6 +4895,10 @@ async function cmdRunManual(argv) {
     newResults.push({
       query: `Q${qi + 1}`,
       queryText: query,
+      // Same stable identity the live run writes (MEAS-1) — a pasted answer and
+      // an API answer to the same question must compare as the same question.
+      queryId: queryIdFor(query),
+      ...(manualDeclaredMarketFor(query) ? { market: manualDeclaredMarketFor(query) } : {}),
       provider: providerName,
       label: providerLabel,
       model: modelUsed,
@@ -4797,11 +4952,15 @@ async function cmdRunManual(argv) {
   const keptResults = (existing?.results || []).filter(r => r.provider !== providerName);
   const allResults = [...keptResults, ...newResults];
 
-  // Recompute aggregates
-  const total = allResults.filter(r => r.mention !== 'error').length;
-  const mentions = allResults.filter(r => r.mention === 'yes' || r.mention === 'src').length;
-  const score = total > 0 ? Math.round((mentions / total) * 100) : 0;
-  const errors = allResults.filter(r => r.mention === 'error').length;
+  // Recompute aggregates through the SAME helper the live run uses — a merged
+  // day and a live day must not compute their headline two different ways
+  // (lib/score.js).
+  const mergedScore = aggregateScore(allResults);
+  const total = mergedScore.valid;
+  const mentions = mergedScore.hits;
+  const score = mergedScore.score;
+  const errors = mergedScore.errors;
+  const attempts = mergedScore.attempts;
 
   // Same shared aggregator the live run loop uses — including the unverified-only
   // tier, which this command previously never recomputed, so a merge left it
@@ -4843,6 +5002,14 @@ async function cmdRunManual(argv) {
     mentions,
     total,
     errors,
+    measurementCounts: {
+      hits: mentions,
+      valid: total,
+      attempts,
+      errors,
+      cells: mergedScore.cells,
+      definition: 'score = hits / valid; valid = attempts − errors; errors are never in the denominator',
+    },
     regressionThreshold,
     extractorMode: extractionProvidersManual.secondary ? 'dual' : 'single',
     // Which models graded THIS merge's cells. `run-manual` and `run` are two
@@ -5098,15 +5265,62 @@ async function cmdDiff(argv) {
     process.exit(1);
   }
 
-  const result = diff(summaryA, summaryB);
+  // MEAS-1 — the two runs may live in two trees; say which one we are reading.
+  // `diff` runs without a config in some setups (a bare snapshots directory),
+  // so the config is optional here: absent → no manifest, no run-root line.
+  let diffConfig = null;
+  if (existsSync(CONFIG_FILE)) {
+    try { diffConfig = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); }
+    catch { /* unreadable config — the diff still works, just without declared markets */ }
+  }
+  if (diffConfig) warnIfNotCanonicalRunRoot(diffConfig, 'diff');
+
+  // MEAS-3 — the manifest supplies DECLARED markets. Prefer the one each run
+  // recorded (a run is a record of the basket it measured); fall back to the
+  // config's current manifest for snapshots written before this version.
+  const result = diff(summaryA, summaryB, {
+    manifest: summaryB.basketManifest || summaryA.basketManifest || diffConfig?.basketManifest || null,
+  });
 
   console.log(`\n${c.bold}aeo-platform — diff${c.reset}`);
   console.log(`${c.dim}Brand: ${summaryA.brand}${c.reset}`);
   console.log(`${c.dim}From: ${dateA} — score ${summaryA.score}% (${summaryA.mentions}/${summaryA.total})${c.reset}`);
   console.log(`${c.dim}To:   ${dateB} — score ${summaryB.score}% (${summaryB.mentions}/${summaryB.total})${c.reset}`);
-  const deltaColor = result.scoreDelta > 0 ? c.green : result.scoreDelta < 0 ? c.red : c.dim;
-  const deltaSign = result.scoreDelta > 0 ? '+' : '';
-  console.log(`${c.bold}Score delta: ${deltaColor}${deltaSign}${result.scoreDelta}pp${c.reset}\n`);
+
+  // Basket line first: whether these two runs asked the same questions decides
+  // what every number below is allowed to mean.
+  const bk = result.basket;
+  if (bk.changed) {
+    console.log(`\n${c.yellow}${SYM.warn} The basket changed between these runs — the headline scores are not comparable.${c.reset}`);
+    console.log(`  ${c.dim}Comparable questions (asked in both): ${c.reset}${c.bold}${bk.comparable}${c.reset}`);
+    console.log(`  ${c.dim}Asked only on ${dateB} (no baseline): ${c.reset}${bk.incomparable}`);
+    console.log(`  ${c.dim}Asked only on ${dateA} (not asked now): ${c.reset}${bk.retired}`);
+    if (bk.marketChanged > 0) {
+      console.log(`  ${c.dim}Same text, different declared market: ${c.reset}${bk.marketChanged}`);
+    }
+    console.log(`${c.bold}Score delta: ${c.dim}not reported — the two headlines were computed over different question sets.${c.reset}`);
+    if (result.intersection) {
+      const i = result.intersection;
+      const col = i.delta > 0 ? c.green : i.delta < 0 ? c.red : c.dim;
+      const sign = i.delta > 0 ? '+' : '';
+      console.log(`${c.bold}Like-for-like: ${col}${sign}${i.delta}pp${c.reset}${c.dim} (${i.scoreA}% → ${i.scoreB}%) over the ${i.questionsCompared} question${i.questionsCompared === 1 ? '' : 's'} both runs asked — ${i.cellsCompared} cells.${c.reset}`);
+    } else {
+      console.log(`${c.dim}No question was asked in both runs — there is nothing to compare.${c.reset}`);
+    }
+    console.log('');
+  } else {
+    const deltaColor = result.scoreDelta > 0 ? c.green : result.scoreDelta < 0 ? c.red : c.dim;
+    const deltaSign = result.scoreDelta > 0 ? '+' : '';
+    console.log(`${c.dim}Basket: identical — ${bk.comparable} question${bk.comparable === 1 ? '' : 's'} in both runs.${c.reset}`);
+    console.log(`${c.bold}Score delta: ${deltaColor}${deltaSign}${result.scoreDelta}pp${c.reset}\n`);
+  }
+  if (bk.identity === 'label') {
+    console.log(`${c.dim}  Note: at least one run predates per-question ids, so these runs were matched by position (Q1, Q2, …). If the basket was ever reordered, that match is unreliable.${c.reset}`);
+  }
+  if (bk.onlyInNew.length > 0) {
+    console.log(`${c.dim}  New questions with no baseline (showing up to 5 of ${bk.onlyInNew.length}):${c.reset}`);
+    for (const q of bk.onlyInNew.slice(0, 5)) console.log(`    ${c.dim}· ${q.text || q.label || q.id}${c.reset}`);
+  }
 
   if (result.cellChanges.length > 0) {
     console.log(`${c.bold}  Cell changes:${c.reset}`);
@@ -5114,7 +5328,12 @@ async function cmdDiff(argv) {
       const gained = (ch.was === 'no' || ch.was === 'missing') && (ch.now === 'yes' || ch.now === 'src');
       const lost = (ch.was === 'yes' || ch.was === 'src') && (ch.now === 'no' || ch.now === 'missing');
       const arrow = gained ? `${c.green}↑ Gained${c.reset}` : lost ? `${c.red}↓ Lost  ${c.reset}` : `${c.yellow}~ Moved ${c.reset}`;
-      console.log(`    ${arrow}  ${ch.provider.padEnd(10)} ${ch.query.padEnd(4)} ${String(ch.was).padEnd(7)} → ${ch.now}`);
+      // The question TEXT, not only its ordinal label: the label is a position
+      // in whichever basket the run used, and these rows now cross two runs
+      // that may number the same question differently.
+      const qShown = ch.queryText ? ch.queryText.slice(0, 52) : ch.query;
+      const mkt = ch.market ? `[${ch.market}] ` : '';
+      console.log(`    ${arrow}  ${ch.provider.padEnd(10)} ${String(ch.was).padEnd(5)} → ${String(ch.now).padEnd(5)} ${mkt}${qShown}`);
     }
   } else {
     console.log(`${c.dim}  No cell changes between runs.${c.reset}`);
@@ -5150,7 +5369,11 @@ async function cmdDiff(argv) {
 
   const regressionThreshold =
     summaryB.regressionThreshold ?? summaryA.regressionThreshold ?? 10;
-  if (result.scoreDelta < -regressionThreshold) process.exit(1);
+  // Regression exit-1 fires ONLY on a delta that exists. When the basket
+  // changed there is no overall delta (`null`), and a changed basket must never
+  // fail a pipeline as if visibility had dropped — the explicit type check says
+  // that on purpose, rather than relying on `null < -10` being falsy.
+  if (typeof result.scoreDelta === 'number' && result.scoreDelta < -regressionThreshold) process.exit(1);
   process.exit(0);
 }
 

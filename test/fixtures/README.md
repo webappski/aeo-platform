@@ -73,3 +73,36 @@ Re-capture fixtures when any of these is true:
 
 - Don't hand-edit historical-pin fixture files to make tests pass — if an engine changed output, the fixture should reflect it. (This rule does NOT apply to the synthetic E2E sub-directories above.)
 - Don't commit fixtures with PII or API keys — verify before copying.
+
+---
+
+## Real-run projections — `run-2026-08-27.trimmed.json`, `run-2026-08-31.trimmed.json`
+
+Added 2026-09-15 with MEAS-1/2/3 (honest report). Unlike everything above, these
+are **not synthetic**: they are projections of two real `_summary.json` files
+from the webappski basket, kept because the comparison defect they pin was
+produced by exactly this pair and a synthetic stand-in would prove nothing about
+it.
+
+- **Source:** `~/Projects/webappka/aeo-responses/webappski.com/{2026-08-27,2026-08-31}/_summary.json`
+  (the same 08-31 file also exists byte-identically in a second tree — that fork
+  is what `basketManifest.runRoot` exists to make visible). Each file records its
+  own `_provenance`.
+- **Reduction:** `results[]` keeps only `query, queryText, queryId, provider,
+  model, mention, presence, trials, market` — every field `lib/score.js` and
+  `lib/diff.js` read. Answer text, citations, competitors and costs are dropped,
+  which is what keeps them small and keeps a client's answers out of the npm
+  tarball.
+- **Why they are load-bearing:** `test/honest-comparison.test.js` asserts that
+  the 08-31 run still re-scores to the 13 it published, and that the 08-27 →
+  08-31 pair yields 31 comparable questions, 19 with no baseline and 25 retired
+  — so no overall score delta is reportable, only a like-for-like one.
+- **Regenerate (never hand-edit):**
+
+```bash
+node scripts/trim-run-fixture.mjs <path-to>/_summary.json run-YYYY-MM-DD.trimmed
+```
+
+The published headline travels inside `_provenance.publishedHeadline` and is
+asserted by the tests, so a bad regeneration fails loudly instead of quietly
+moving a historical number.

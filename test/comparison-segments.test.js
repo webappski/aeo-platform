@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   segmentCells, findBlankQueries, isPresent, isIndeterminate, cellKey,
-  SEG_LOST, SEG_HELD, SEG_GAINED, SEG_NEVER, SEG_INDETERMINATE,
+  SEG_LOST, SEG_HELD, SEG_GAINED, SEG_NEVER, SEG_INDETERMINATE, SEG_INCOMPARABLE,
 } from '../lib/report/comparison-segments.js';
 
 let passed = 0;
@@ -78,9 +78,35 @@ test('carries both raw rows so the renderer can show before/after detail', () =>
 });
 
 test('handles an empty previous run without throwing', () => {
+  // Contract refined 2026-09-15: the cell is still kept out of every decision
+  // segment, but it is now reported as INCOMPARABLE rather than indeterminate.
+  // The previous run did not ask this question at all — that is not a call that
+  // failed, and calling it indeterminate hid a basket change inside a bucket
+  // that means "the engine errored".
   const seg = segmentCells({ results: [cell('Q1', 'openai', 'yes')] }, { results: [] });
-  assert.equal(seg[SEG_INDETERMINATE].length, 1);
+  assert.equal(seg[SEG_GAINED].length, 0, 'a question with no baseline is not a gain');
+  assert.equal(seg[SEG_INDETERMINATE].length, 0);
+  assert.equal(seg[SEG_INCOMPARABLE].length, 1);
+  assert.equal(seg[SEG_INCOMPARABLE][0].askedIn, 'latest-only');
+});
+
+test('a question dropped from the basket is incomparable, never a loss', () => {
+  // The other direction, and the one that would read as a catastrophe: a
+  // question the previous run answered YES to and the new basket no longer
+  // asks. Keyed by slot, this used to collide with whatever question inherited
+  // the slot; unkeyed it would read as a lost cell.
+  const prev = { results: [{ query: 'Q1', queryText: 'retired question', provider: 'openai', mention: 'yes' }] };
+  const latest = { results: [{ query: 'Q1', queryText: 'a completely different question', provider: 'openai', mention: 'no' }] };
+  const seg = segmentCells(latest, prev);
+  assert.equal(seg[SEG_LOST].length, 0, 'two different questions must not produce a loss');
+  assert.equal(seg[SEG_HELD].length, 0);
   assert.equal(seg[SEG_GAINED].length, 0);
+  assert.equal(seg[SEG_NEVER].length, 0);
+  assert.equal(seg[SEG_INCOMPARABLE].length, 2, 'one retired question + one new question');
+  assert.deepEqual(
+    seg[SEG_INCOMPARABLE].map(e => e.askedIn).sort(),
+    ['latest-only', 'previous-only'],
+  );
 });
 
 console.log('\nfindBlankQueries');

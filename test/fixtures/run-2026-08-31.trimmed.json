@@ -1,0 +1,1077 @@
+{
+  "_provenance": {
+    "source": "~/Projects/webappka/aeo-responses/webappski.com/2026-08-31/_summary.json",
+    "sourceNote": "A measured project's own run directory, outside this repository. Paths are written with $HOME collapsed to ~ because this file ships in a public repo.",
+    "alsoAt": "~/Projects/clients/webappski/aeo-responses/webappski.com/2026-08-31/_summary.json (byte-identical — verified with cmp 2026-09-15; the two-tree fork MEAS-1 names)",
+    "generated": "2026-09-15",
+    "generatedBy": "scripts/trim-run-fixture.mjs",
+    "reduction": "results[] trimmed to query, queryText, queryId, provider, model, mention, presence, trials, market. Every other field (responseExcerpt, citations, competitors, costs) dropped — none of them is read by lib/score.js or lib/diff.js.",
+    "publishedHeadline": {
+      "score": 13,
+      "mentions": 20,
+      "total": 150,
+      "errors": 0,
+      "cells": 150
+    }
+  },
+  "date": "2026-08-31",
+  "brand": "Webappski",
+  "domain": "webappski.com",
+  "score": 13,
+  "mentions": 20,
+  "total": 150,
+  "errors": 0,
+  "regressionThreshold": 10,
+  "results": [
+    {
+      "query": "Q3",
+      "queryText": "konsultanci Answer Engine Optimization (widoczność w AI) dla startupów B2B",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q5",
+      "queryText": "agencja zajmująca się widocznością marki w AI w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q4",
+      "queryText": "najlepsze agencje optymalizacji pod ChatGPT i wyszukiwarki AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q6",
+      "queryText": "najlepsze agencje do monitoringu widoczności marki w odpowiedziach AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q7",
+      "queryText": "najlepsza agencja Answer Engine Optimization dla widoczności w ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q6",
+      "queryText": "najlepsze agencje do monitoringu widoczności marki w odpowiedziach AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q1",
+      "queryText": "najlepsze agencje Answer Engine Optimization (widoczność w AI) 2026",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q8",
+      "queryText": "najlepsza agencja generative engine optimization w Polsce dla widoczności w AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q2",
+      "queryText": "najlepsze narzędzia do monitoringu Answer Engine Optimization (widoczność w AI) 2026",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q9",
+      "queryText": "agencje, które sprawiają, że marki są widoczne w odpowiedziach AI takich jak ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q14",
+      "queryText": "darmowy checker widoczności w AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q4",
+      "queryText": "najlepsze agencje optymalizacji pod ChatGPT i wyszukiwarki AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q5",
+      "queryText": "agencja zajmująca się widocznością marki w AI w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q1",
+      "queryText": "najlepsze agencje Answer Engine Optimization (widoczność w AI) 2026",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q13",
+      "queryText": "doradztwo answer engine optimization w Europie",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q12",
+      "queryText": "agencja answer engine optimization w Polsce dla B2B SaaS",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "yes"
+    },
+    {
+      "query": "Q11",
+      "queryText": "najlepsze agencje promocji marki w AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q3",
+      "queryText": "konsultanci Answer Engine Optimization (widoczność w AI) dla startupów B2B",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q15",
+      "queryText": "najlepsze darmowe narzędzia do sprawdzania widoczności marki w ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q2",
+      "queryText": "najlepsze narzędzia do monitoringu Answer Engine Optimization (widoczność w AI) 2026",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q16",
+      "queryText": "najlepsze darmowe narzędzia do sprawdzenia widoczności marki w AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q10",
+      "queryText": "najlepsze agencje optymalizacji strony pod AI i odpowiedzi ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q17",
+      "queryText": "agencja Answer Engine Optimization Trójmiasto dla firm SaaS",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q20",
+      "queryText": "agencja widoczności marki w Google AI Overview dla firm B2B",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q21",
+      "queryText": "agencja widoczności marki w Perplexity dla polskich firm",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q19",
+      "queryText": "ile kosztuje agencja Answer Engine Optimization w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q22",
+      "queryText": "agencja widoczności marki w Gemini dla firm B2B w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q9",
+      "queryText": "agencje, które sprawiają, że marki są widoczne w odpowiedziach AI takich jak ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q23",
+      "queryText": "najlepsze firmy konsultingowe AI dla widoczności marki w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q11",
+      "queryText": "najlepsze agencje promocji marki w AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q8",
+      "queryText": "najlepsza agencja generative engine optimization w Polsce dla widoczności w AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q27",
+      "queryText": "agencja marketingu AI dla B2B SaaS w Gdyni",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q24",
+      "queryText": "top agencje Answer Engine Optimization dla poprawy widoczności strony w ChatGPT w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q18",
+      "queryText": "najlepsi konsultanci widoczności AI dla startupów SaaS w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "yes"
+    },
+    {
+      "query": "Q10",
+      "queryText": "najlepsze agencje optymalizacji strony pod AI i odpowiedzi ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q25",
+      "queryText": "specjalista Answer Engine Optimization dla startupów w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q26",
+      "queryText": "case study wdrożenia Answer Engine Optimization w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "yes"
+    },
+    {
+      "query": "Q7",
+      "queryText": "najlepsza agencja Answer Engine Optimization dla widoczności w ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q30",
+      "queryText": "agencja widoczności marki w Microsoft Copilot dla firm",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q12",
+      "queryText": "agencja answer engine optimization w Polsce dla B2B SaaS",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "yes"
+    },
+    {
+      "query": "Q34",
+      "queryText": "agencja Answer Engine Optimization dla e-commerce w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q32",
+      "queryText": "topowe darmowe narzędzia do audytu widoczności firmy w ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q33",
+      "queryText": "audyt widoczności AI dla startupu SaaS w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q14",
+      "queryText": "darmowy checker widoczności w AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q29",
+      "queryText": "ranking agencji Generative Engine Optimization i Answer Engine Optimization w Polsce 2026",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q31",
+      "queryText": "czołowe agencje Answer Engine Optimization obsługujące polskie firmy SaaS",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "yes"
+    },
+    {
+      "query": "Q35",
+      "queryText": "najlepsza agencja widoczności AI dla małych firm w Polsce",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q37",
+      "queryText": "Agentur für Markensichtbarkeit in KI in Deutschland",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q13",
+      "queryText": "doradztwo answer engine optimization w Europie",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q28",
+      "queryText": "najlepsze agencje doradcze AI dla widoczności marki w Polsce 2026",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "yes"
+    },
+    {
+      "query": "Q38",
+      "queryText": "beste generative engine optimization Agentur Deutschland für KI-Sichtbarkeit",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q17",
+      "queryText": "agencja Answer Engine Optimization Trójmiasto dla firm SaaS",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "yes"
+    },
+    {
+      "query": "Q40",
+      "queryText": "kostenloser KI-Sichtbarkeits-Checker",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q41",
+      "queryText": "best Answer Engine Optimization agencies 2026",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q15",
+      "queryText": "najlepsze darmowe narzędzia do sprawdzania widoczności marki w ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q19",
+      "queryText": "ile kosztuje agencja Answer Engine Optimization w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "src"
+    },
+    {
+      "query": "Q16",
+      "queryText": "najlepsze darmowe narzędzia do sprawdzenia widoczności marki w AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q23",
+      "queryText": "najlepsze firmy konsultingowe AI dla widoczności marki w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q20",
+      "queryText": "agencja widoczności marki w Google AI Overview dla firm B2B",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q21",
+      "queryText": "agencja widoczności marki w Perplexity dla polskich firm",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q18",
+      "queryText": "najlepsi konsultanci widoczności AI dla startupów SaaS w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q22",
+      "queryText": "agencja widoczności marki w Gemini dla firm B2B w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q25",
+      "queryText": "specjalista Answer Engine Optimization dla startupów w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q27",
+      "queryText": "agencja marketingu AI dla B2B SaaS w Gdyni",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q24",
+      "queryText": "top agencje Answer Engine Optimization dla poprawy widoczności strony w ChatGPT w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q26",
+      "queryText": "case study wdrożenia Answer Engine Optimization w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q39",
+      "queryText": "beste Answer Engine Optimization Agentur für Sichtbarkeit in ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q30",
+      "queryText": "agencja widoczności marki w Microsoft Copilot dla firm",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q28",
+      "queryText": "najlepsze agencje doradcze AI dla widoczności marki w Polsce 2026",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q29",
+      "queryText": "ranking agencji Generative Engine Optimization i Answer Engine Optimization w Polsce 2026",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q43",
+      "queryText": "Answer Engine Optimization consultants for B2B startups",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q31",
+      "queryText": "czołowe agencje Answer Engine Optimization obsługujące polskie firmy SaaS",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "yes"
+    },
+    {
+      "query": "Q36",
+      "queryText": "Answer Engine Optimization Agentur Deutschland für B2B SaaS",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q44",
+      "queryText": "answer engine optimization agency Poland for B2B SaaS",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "yes"
+    },
+    {
+      "query": "Q42",
+      "queryText": "top Answer Engine Optimization monitoring tools 2026",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q50",
+      "queryText": "лучшие бесплатные инструменты для проверки видимости бренда в ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q46",
+      "queryText": "агентство answer engine optimization для B2B SaaS",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q45",
+      "queryText": "free AI visibility checker",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q48",
+      "queryText": "агентство, занимающееся видимостью бренда в AI",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q32",
+      "queryText": "topowe darmowe narzędzia do audytu widoczności firmy w ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q47",
+      "queryText": "лучшее агентство Answer Engine Optimization для видимости в ChatGPT",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q34",
+      "queryText": "agencja Answer Engine Optimization dla e-commerce w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q49",
+      "queryText": "консалтинг answer engine optimization в Европе",
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "mention": "no"
+    },
+    {
+      "query": "Q37",
+      "queryText": "Agentur für Markensichtbarkeit in KI in Deutschland",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q35",
+      "queryText": "najlepsza agencja widoczności AI dla małych firm w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q33",
+      "queryText": "audyt widoczności AI dla startupu SaaS w Polsce",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q39",
+      "queryText": "beste Answer Engine Optimization Agentur für Sichtbarkeit in ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q41",
+      "queryText": "best Answer Engine Optimization agencies 2026",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q38",
+      "queryText": "beste generative engine optimization Agentur Deutschland für KI-Sichtbarkeit",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q40",
+      "queryText": "kostenloser KI-Sichtbarkeits-Checker",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q36",
+      "queryText": "Answer Engine Optimization Agentur Deutschland für B2B SaaS",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q43",
+      "queryText": "Answer Engine Optimization consultants for B2B startups",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q42",
+      "queryText": "top Answer Engine Optimization monitoring tools 2026",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q45",
+      "queryText": "free AI visibility checker",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q44",
+      "queryText": "answer engine optimization agency Poland for B2B SaaS",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "yes"
+    },
+    {
+      "query": "Q46",
+      "queryText": "агентство answer engine optimization для B2B SaaS",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q47",
+      "queryText": "лучшее агентство Answer Engine Optimization для видимости в ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q49",
+      "queryText": "консалтинг answer engine optimization в Европе",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q48",
+      "queryText": "агентство, занимающееся видимостью бренда в AI",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q50",
+      "queryText": "лучшие бесплатные инструменты для проверки видимости бренда в ChatGPT",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "mention": "no"
+    },
+    {
+      "query": "Q1",
+      "queryText": "najlepsze agencje Answer Engine Optimization (widoczność w AI) 2026",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q2",
+      "queryText": "najlepsze narzędzia do monitoringu Answer Engine Optimization (widoczność w AI) 2026",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q3",
+      "queryText": "konsultanci Answer Engine Optimization (widoczność w AI) dla startupów B2B",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q4",
+      "queryText": "najlepsze agencje optymalizacji pod ChatGPT i wyszukiwarki AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q5",
+      "queryText": "agencja zajmująca się widocznością marki w AI w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q6",
+      "queryText": "najlepsze agencje do monitoringu widoczności marki w odpowiedziach AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q7",
+      "queryText": "najlepsza agencja Answer Engine Optimization dla widoczności w ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q8",
+      "queryText": "najlepsza agencja generative engine optimization w Polsce dla widoczności w AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q9",
+      "queryText": "agencje, które sprawiają, że marki są widoczne w odpowiedziach AI takich jak ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q10",
+      "queryText": "najlepsze agencje optymalizacji strony pod AI i odpowiedzi ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q11",
+      "queryText": "najlepsze agencje promocji marki w AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q12",
+      "queryText": "agencja answer engine optimization w Polsce dla B2B SaaS",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q13",
+      "queryText": "doradztwo answer engine optimization w Europie",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q14",
+      "queryText": "darmowy checker widoczności w AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q15",
+      "queryText": "najlepsze darmowe narzędzia do sprawdzania widoczności marki w ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q16",
+      "queryText": "najlepsze darmowe narzędzia do sprawdzenia widoczności marki w AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q17",
+      "queryText": "agencja Answer Engine Optimization Trójmiasto dla firm SaaS",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q18",
+      "queryText": "najlepsi konsultanci widoczności AI dla startupów SaaS w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q19",
+      "queryText": "ile kosztuje agencja Answer Engine Optimization w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q20",
+      "queryText": "agencja widoczności marki w Google AI Overview dla firm B2B",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q21",
+      "queryText": "agencja widoczności marki w Perplexity dla polskich firm",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q22",
+      "queryText": "agencja widoczności marki w Gemini dla firm B2B w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q23",
+      "queryText": "najlepsze firmy konsultingowe AI dla widoczności marki w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q24",
+      "queryText": "top agencje Answer Engine Optimization dla poprawy widoczności strony w ChatGPT w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q25",
+      "queryText": "specjalista Answer Engine Optimization dla startupów w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q26",
+      "queryText": "case study wdrożenia Answer Engine Optimization w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q27",
+      "queryText": "agencja marketingu AI dla B2B SaaS w Gdyni",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q28",
+      "queryText": "najlepsze agencje doradcze AI dla widoczności marki w Polsce 2026",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q29",
+      "queryText": "ranking agencji Generative Engine Optimization i Answer Engine Optimization w Polsce 2026",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q30",
+      "queryText": "agencja widoczności marki w Microsoft Copilot dla firm",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q31",
+      "queryText": "czołowe agencje Answer Engine Optimization obsługujące polskie firmy SaaS",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q32",
+      "queryText": "topowe darmowe narzędzia do audytu widoczności firmy w ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q33",
+      "queryText": "audyt widoczności AI dla startupu SaaS w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q34",
+      "queryText": "agencja Answer Engine Optimization dla e-commerce w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q35",
+      "queryText": "najlepsza agencja widoczności AI dla małych firm w Polsce",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q36",
+      "queryText": "Answer Engine Optimization Agentur Deutschland für B2B SaaS",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q37",
+      "queryText": "Agentur für Markensichtbarkeit in KI in Deutschland",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q38",
+      "queryText": "beste generative engine optimization Agentur Deutschland für KI-Sichtbarkeit",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q39",
+      "queryText": "beste Answer Engine Optimization Agentur für Sichtbarkeit in ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q40",
+      "queryText": "kostenloser KI-Sichtbarkeits-Checker",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q41",
+      "queryText": "best Answer Engine Optimization agencies 2026",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q42",
+      "queryText": "top Answer Engine Optimization monitoring tools 2026",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q43",
+      "queryText": "Answer Engine Optimization consultants for B2B startups",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q44",
+      "queryText": "answer engine optimization agency Poland for B2B SaaS",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "yes"
+    },
+    {
+      "query": "Q45",
+      "queryText": "free AI visibility checker",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q46",
+      "queryText": "агентство answer engine optimization для B2B SaaS",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q47",
+      "queryText": "лучшее агентство Answer Engine Optimization для видимости в ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q48",
+      "queryText": "агентство, занимающееся видимостью бренда в AI",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q49",
+      "queryText": "консалтинг answer engine optimization в Европе",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    },
+    {
+      "query": "Q50",
+      "queryText": "лучшие бесплатные инструменты для проверки видимости бренда в ChatGPT",
+      "provider": "anthropic",
+      "model": "manual",
+      "mention": "no"
+    }
+  ]
+}
