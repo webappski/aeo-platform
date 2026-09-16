@@ -2,7 +2,9 @@
 
 All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
-## [Unreleased]
+## [1.14.0] — 2026-09-16
+
+Минорная, а не патч: команды, флаги и коды возврата не изменились, но отчёт и машинный вывод говорят теперь другое. Что обязан учесть тот, кто читает вывод программно: **`scoreDelta` в `diff` стал обнуляемым** — при разных корзинах он `null`, а причина лежит в `scoreDeltaReason`, и сравнение по пересечению приходит отдельным полем `intersection`. Добавились `measurementCounts` в `_summary.json`, `queryId` и `market` на каждой ячейке, `basketManifest` в конфиге.
 
 ### Changed (2026-09-15)
 
@@ -18,6 +20,8 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 - **New: `scripts/build-basket-manifest.mjs`** stamps the manifest into a config and can prime `validationCache` for the whole basket, so `run` stops sending every question back through a non-deterministic classifier that can abort a paid run mid-flight (basket v3's first live run died exactly there). It refuses to write a market it derived unless the derivation reproduces a ratio a human declared, and it never invents a `confidence` for a verdict nobody recorded.
 
+
+## [Unreleased]
 
 ### Changed (2026-09-08)
 
