@@ -33,6 +33,7 @@ import {
 import { cellCounts, aggregateScore, isMeasuredMention } from '../lib/score.js';
 import { computeComponents, computeUVI } from '../lib/report/visibility-index.js';
 import { buildLiftOpportunity } from '../lib/report/run-metrics.js';
+import { sectionCompetitorIntelligence } from '../lib/report/sections.js';
 
 const CLAUDE_LEG_2026_09_16 = [1, 2, 3, 4, 5, 12, 17, 26, 27, 31, 33, 34, 40, 44, 46];
 const BASKET = 50;
@@ -134,6 +135,38 @@ test('unasked questions stay out of every denominator the report publishes', () 
   assert.equal(lift.absent, 1, 'only the answered-and-unnamed cell is absent');
   assert.equal(lift.notAsked, 3, 'the unasked ones have their own bucket');
   assert.equal(lift.errored, 0);
+});
+
+test('the Competitor Intelligence gap line counts gaps, not unasked questions', () => {
+  // The FIFTH surface of the same class, missed when the other four were fixed
+  // and caught by the 2026-09-20 code review: `N gaps found` counted every cell
+  // that was not a hit, so a declared subsample's unasked cells were published
+  // as competitive gaps — in `renderWhiteLabelMarkdown` too, which is the
+  // client's own document. With the Claude leg running 15 of 50 in production
+  // since 2026-09-16, every report was inflating this number.
+  const asked = [
+    { query: 'Q1', queryText: 'best widgets', provider: 'anthropic', mention: 'no', competitors: ['Acme Corp'] },
+    { query: 'Q2', queryText: 'widget alternatives', provider: 'anthropic', mention: 'no', competitors: [] },
+    { query: 'Q3', queryText: 'who sells widgets', provider: 'anthropic', mention: 'yes', competitors: [] },
+  ];
+  const unasked = [4, 5].map((n) => buildMissingCell({
+    index: n, queryText: `query text ${n}`, provider: 'anthropic', label: 'Claude',
+    model: 'manual', subsetName: 'claude-leg-15of50',
+  }));
+  const md = sectionCompetitorIntelligence([{ results: [...asked, ...unasked] }]);
+
+  assert.match(md, /_2 gaps found/, 'two answered-and-unnamed cells are the only gaps');
+  assert.doesNotMatch(md, /_4 gaps found/, 'the two unasked cells must not be counted');
+  // Mutation-sanity: drop the isMeasuredMention guard and this reads 4.
+
+  // An errored cell is not a gap either — and no longer wears the same status
+  // string as a question nobody asked.
+  const withError = sectionCompetitorIntelligence([{
+    results: [...asked, ...unasked, { query: 'Q6', queryText: 'widget vendors', provider: 'anthropic', mention: 'error', competitors: [] }],
+  }]);
+  assert.match(withError, /_2 gaps found/, 'a failed call is not a competitive gap');
+  assert.match(withError, /data-status="error"/, 'a failed call says so');
+  assert.match(withError, /data-status="missing"/, 'an unasked question says so, separately');
 });
 
 test('a leg with no paste files at all is still nothing to import', () => {
