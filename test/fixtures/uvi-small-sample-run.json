@@ -1,0 +1,187 @@
+{
+  "note": "Shape-only reduction of a real run. See header of test/uvi-small-sample-guard.test.js for provenance.",
+  "domain": "example-brand.eu",
+  "results": [
+    {
+      "query": "q1",
+      "provider": "openai",
+      "mention": "yes",
+      "position": null,
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high"
+      },
+      "canonicalCitations": []
+    },
+    {
+      "query": "q2",
+      "provider": "openai",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q3",
+      "provider": "gemini",
+      "mention": "yes",
+      "position": null,
+      "proseRank": {
+        "rank": 1,
+        "confidence": "med"
+      },
+      "sentiment": {
+        "label": "positive",
+        "confidence": "high"
+      },
+      "canonicalCitations": []
+    },
+    {
+      "query": "q4",
+      "provider": "gemini",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q5",
+      "provider": "gemini",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q6",
+      "provider": "gemini",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q7",
+      "provider": "gemini",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q8",
+      "provider": "gemini",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q9",
+      "provider": "openai",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q10",
+      "provider": "gemini",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q11",
+      "provider": "openai",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q12",
+      "provider": "openai",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q13",
+      "provider": "openai",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q14",
+      "provider": "openai",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q15",
+      "provider": "anthropic",
+      "mention": "yes",
+      "position": null,
+      "sentiment": {
+        "label": "neutral",
+        "confidence": "low"
+      },
+      "canonicalCitations": []
+    },
+    {
+      "query": "q16",
+      "provider": "anthropic",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q17",
+      "provider": "anthropic",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q18",
+      "provider": "anthropic",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q19",
+      "provider": "anthropic",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q20",
+      "provider": "anthropic",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    },
+    {
+      "query": "q21",
+      "provider": "anthropic",
+      "mention": "no",
+      "position": null,
+      "sentiment": null,
+      "canonicalCitations": []
+    }
+  ]
+}

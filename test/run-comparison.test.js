@@ -97,17 +97,25 @@ test('a low-confidence neutral tie-break cell is excluded from like-for-like, no
 
 console.log('\nbuildRunComparison — weight-basis caveat');
 
+// These fixtures are three cells wide, not one, on purpose. An axis needs
+// SMALL_SAMPLE_MIN (3) cells to carry weight under UVI v2 — at one cell every
+// conditional axis is guarded out of the composite in BOTH runs, the weight
+// basis trivially matches, and these tests would be asserting the sample floor
+// instead of the weight-basis logic they are named after. The small-sample
+// semantics have their own file: test/uvi-small-sample-guard.test.js.
+const THREE = ['Q1', 'Q2', 'Q3'];
+
 test('flags weight-basis change when an axis goes from unmeasured to measured', () => {
-  const prev = run('2026-01-01', [cell('Q1', 'openai', 'yes')]); // no position anywhere -> rank null
-  const latest = run('2026-02-01', [cell('Q1', 'openai', 'yes', { position: 3 })]);
+  const prev = run('2026-01-01', THREE.map((q) => cell(q, 'openai', 'yes'))); // no position anywhere -> rank null
+  const latest = run('2026-02-01', THREE.map((q) => cell(q, 'openai', 'yes', { position: 3 })));
   const model = buildRunComparison([prev, latest]);
   assert.equal(model.weightBasis.changed, true);
   assert.ok(model.weightBasis.axes.includes('rank'));
 });
 
 test('nulls out every contributionDelta when the weight basis changed, not just the shifted axis', () => {
-  const prev = run('2026-01-01', [cell('Q1', 'openai', 'yes')]);
-  const latest = run('2026-02-01', [cell('Q1', 'openai', 'yes', { position: 3 })]);
+  const prev = run('2026-01-01', THREE.map((q) => cell(q, 'openai', 'yes')));
+  const latest = run('2026-02-01', THREE.map((q) => cell(q, 'openai', 'yes', { position: 3 })));
   const model = buildRunComparison([prev, latest]);
   for (const comp of model.components) {
     assert.equal(comp.contributionDelta, null, `${comp.key} contributionDelta must be null across a basis shift`);
@@ -119,12 +127,32 @@ test('reports contributionDelta normally when the weight basis is unchanged', ()
   // present both times) so weightSum stays 1.0 and appliedWeight === default
   // weight — the delta below isn't diluted by re-normalisation.
   const extra = { position: 1, canonicalCitations: ['https://example.com/page'] };
-  const prev = run('2026-01-01', [toned('Q1', 'openai', 'positive', extra)]);
-  const latest = run('2026-02-01', [toned('Q1', 'openai', 'neutral', extra)]);
+  const prev = run('2026-01-01', THREE.map((q) => toned(q, 'openai', 'positive', extra)));
+  const latest = run('2026-02-01', THREE.map((q) => toned(q, 'openai', 'neutral', extra)));
   const model = buildRunComparison([prev, latest]);
   assert.equal(model.weightBasis.changed, false);
   const sentiment = model.components.find((c) => c.key === 'sentiment');
   assert.equal(sentiment.contributionDelta, -12.5, 'delta of (50-100) * weight .25');
+});
+
+test('a guarded axis IS a weight-basis change — the v2 seam', () => {
+  // Same axes measured in both runs, but the later run's sentiment rests on one
+  // cell, so it stops carrying weight and the composite re-normalises over a
+  // different denominator. Reading only `excluded` (the v1 test) missed this
+  // and published a contribution delta computed across the shift.
+  const extra = { position: 1, canonicalCitations: ['https://example.com/page'] };
+  const prev = run('2026-01-01', THREE.map((q) => toned(q, 'openai', 'positive', extra)));
+  const latest = run('2026-02-01', [
+    toned('Q1', 'openai', 'positive', extra),
+    cell('Q2', 'openai', 'yes', extra),
+    cell('Q3', 'openai', 'yes', extra),
+  ]);
+  const model = buildRunComparison([prev, latest]);
+  assert.equal(model.weightBasis.changed, true, 'sentiment dropped out of the weighting');
+  assert.ok(model.weightBasis.axes.includes('sentiment'));
+  for (const comp of model.components) {
+    assert.equal(comp.contributionDelta, null, `${comp.key} delta must be withheld across the shift`);
+  }
 });
 
 console.log('\nbuildRunComparison — noise annotation (--samples N)');
@@ -177,27 +205,41 @@ test('lost cells carry newEntrants / droppedOut, and replacements rolls them up'
 console.log('\nregression: real Gcore run pair (2026-06-17 -> 2026-08-24)');
 
 test('reproduces the fixed reference values end to end', () => {
-  // Minimal reconstruction of the real basket's outcome, not the full 18-cell
-  // fixture (house convention: inline, only fields under test). Five cells
-  // held/lost from June, one newly gained neutral mention in August.
+  // Reconstruction of the real basket's outcome, not the full 18-cell fixture
+  // (house convention: inline, only fields under test). Cells held/lost from
+  // June, one newly gained neutral mention in August.
+  //
+  // UVI v2 (AP-UVI-V2-SMALL-SAMPLE-GUARD, 2026-09-20) WIDENED THIS FIXTURE.
+  // The original reconstruction was six cells, which left the August run with a
+  // 2-cell sentiment and a 2-cell rank — below the v2 sample floor, so neither
+  // axis carried weight, the two runs sat on different weight bases, and every
+  // contribution delta was (correctly) withheld. That is a property of the
+  // shrunken fixture, NOT of the real 18-cell pair it stands for: Q7/Q8 are
+  // held cells added so both runs clear the floor the way the real basket did.
+  // The conclusion under test — all movement is compositional, no surviving
+  // answer changed tone — is unchanged.
   const prev = run('2026-06-17', [
     toned('Q1', 'openai', 'positive', { position: 2 }),
-    toned('Q1', 'gemini', 'positive'),
-    toned('Q4', 'gemini', 'positive'),
+    toned('Q1', 'gemini', 'positive', { position: 3 }),
+    toned('Q4', 'gemini', 'positive', { position: 4 }),
     toned('Q5', 'openai', 'positive'),
     toned('Q6', 'openai', 'positive', { position: 10 }),
+    toned('Q7', 'openai', 'positive', { position: 5 }),
+    toned('Q8', 'gemini', 'positive', { position: 6 }),
     cell('Q5', 'anthropic', 'no'),
   ]);
   const latest = run('2026-08-24', [
     cell('Q1', 'openai', 'no'), cell('Q1', 'gemini', 'no'),
     cell('Q4', 'gemini', 'no'), cell('Q6', 'openai', 'no'),
     toned('Q5', 'openai', 'positive', { position: 11 }),
+    toned('Q7', 'openai', 'positive', { position: 5 }),
+    toned('Q8', 'gemini', 'positive', { position: 6 }),
     toned('Q5', 'anthropic', 'neutral', { position: 10 }),
   ]);
   const model = buildRunComparison([prev, latest]);
 
   assert.equal(model.counts.lost, 4);
-  assert.equal(model.counts.held, 1);
+  assert.equal(model.counts.held, 3); // Q5::openai + the two floor-clearing cells
   assert.equal(model.counts.gained, 1); // this mini-basket has one gained cell (Q5::anthropic)
 
   const sentiment = model.components.find((c) => c.key === 'sentiment');

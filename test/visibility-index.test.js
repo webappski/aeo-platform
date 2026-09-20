@@ -123,15 +123,14 @@ test('sentiment: low-confidence neutral tie-breaks excluded from composite', () 
 });
 
 test('sentiment: all low-conf-neutral → sentiment null, UVI re-weights', () => {
-  const c = computeComponents({
-    domain: 'a.com',
-    results: [
-      { mention: 'yes', position: 1, sentiment: { label: 'neutral', confidence: 'low' }, canonicalCitations: [] },
-      { mention: 'yes', position: 1, sentiment: { label: 'neutral', confidence: 'low' }, canonicalCitations: [] },
-    ],
-  });
+  // Three ranked cells, not two: under UVI v2 an axis needs SMALL_SAMPLE_MIN
+  // cells to carry weight, and at n=2 the rank axis would be guarded out as
+  // well — which is a different exclusion from the one under test here.
+  const tieBreak = { mention: 'yes', position: 1, sentiment: { label: 'neutral', confidence: 'low' }, canonicalCitations: [] };
+  const c = computeComponents({ domain: 'a.com', results: [tieBreak, tieBreak, tieBreak] });
   assert.equal(c.sentiment, null);
   assert.equal(c.sentimentSample, 0);
+  assert.equal(c.rankSample, 3, 'rank clears the v2 sample floor, so it still carries weight');
   // presence=100, rank=100, citation=0 — sentiment excluded.
   // (100*0.35 + 100*0.20 + 0*0.20) / 0.75 = 73.33 → 73.
   assert.equal(computeUVI(c), 73);
@@ -260,43 +259,56 @@ test('custom weights respected', () => {
 
 console.log('\ncomputeUVIBreakdown');
 
-test('breakdown: typelessform real-run example (presence 42, sentiment 100/n=2, rank null, citation 42) → UVI 60 with correct per-axis trace', () => {
+test('breakdown: typelessform real-run example (presence 42, sentiment 100/n=2, rank null, citation 42) → UVI 42 under v2 with correct per-axis trace', () => {
   // This mirrors the exact run the user pasted in feedback: 5/12 mentions,
   // 2 high-confidence positives, no measurable rank, 5/12 citations.
+  //
+  // UVI v1 scored it 60 — two high-confidence cells out of twelve carried a
+  // full quarter of the weight and lifted a 42% presence to 60. It is the same
+  // defect as the verawang precedent, one run smaller, so this real example is
+  // kept as the SECOND regression case for the small-sample guard rather than
+  // rewritten: under v2 sentiment is reported (100, n=2) and not counted, and
+  // the composite lands on the two axes measured over the whole basket.
   const components = {
     presence: 42, sentiment: 100, rank: null, citation: 42,
     sample: 12, sentimentSample: 2, rankSample: 0,
   };
   const b = computeUVIBreakdown(components);
 
-  assert.equal(b.uvi, 60, 'composite UVI matches computeUVI()');
+  assert.equal(b.uvi, 42, 'composite UVI matches computeUVI()');
   assert.equal(b.uvi, computeUVI(components), 'breakdown UVI agrees with computeUVI()');
-  assert.deepEqual(b.excluded, ['rank'], 'rank flagged as excluded');
+  assert.deepEqual(b.excluded, ['rank'], 'rank flagged as excluded — never measured');
+  assert.deepEqual(b.guarded.map(g => g.key), ['sentiment'], 'sentiment measured but below the sample floor');
 
-  // weightSum = 0.35 + 0.25 + 0.20 = 0.80 (rank's 0.20 dropped).
-  assert.ok(Math.abs(b.weightSum - 0.80) < 1e-9, `weightSum=${b.weightSum}`);
-  // rawSum = 42*0.35 + 100*0.25 + 42*0.20 = 14.7 + 25 + 8.4 = 48.1.
-  assert.ok(Math.abs(b.rawSum - 48.1) < 1e-9, `rawSum=${b.rawSum}`);
-  // 48.1 / 0.80 = 60.125 → 60.
+  // weightSum = 0.35 + 0.20 = 0.55 (rank never measured, sentiment guarded).
+  assert.ok(Math.abs(b.weightSum - 0.55) < 1e-9, `weightSum=${b.weightSum}`);
+  // rawSum = 42*0.35 + 42*0.20 = 14.7 + 8.4 = 23.1.
+  assert.ok(Math.abs(b.rawSum - 23.1) < 1e-9, `rawSum=${b.rawSum}`);
+  // 23.1 / 0.55 = 42.0.
 
   const byKey = Object.fromEntries(b.rows.map(r => [r.key, r]));
 
-  // Presence: weight 0.35 → applied 0.35/0.80 = 0.4375; contribution 42*0.4375 = 18.375
+  // Presence: weight 0.35 → applied 0.35/0.55 = 0.63636…; contribution 42×that.
   assert.equal(byKey.presence.value, 42);
-  assert.ok(Math.abs(byKey.presence.appliedWeight - 0.4375) < 1e-9);
-  assert.ok(Math.abs(byKey.presence.contribution - 18.375) < 1e-9);
+  assert.equal(byKey.presence.counted, true);
+  assert.ok(Math.abs(byKey.presence.appliedWeight - 0.35 / 0.55) < 1e-9);
+  assert.ok(Math.abs(byKey.presence.contribution - 42 * (0.35 / 0.55)) < 1e-9);
   assert.equal(byKey.presence.sample.n, 12);
   assert.equal(byKey.presence.sample.denominator, 12);
   assert.equal(byKey.presence.meaning, 'share of cells where brand was mentioned');
 
   // Sentiment: sample is n=2 high-confidence cells out of 12 — DIFFERENT
-  // denominator from presence. Applied weight 0.25/0.80 = 0.3125.
+  // denominator from presence, and below the floor, so it is shown but not
+  // weighted. The VALUE survives: «100, n=2, not counted» is the honest render.
   assert.equal(byKey.sentiment.value, 100);
+  assert.equal(byKey.sentiment.counted, false);
+  assert.equal(byKey.sentiment.lowConfidence, true);
+  assert.equal(byKey.sentiment.excludedReason, 'small-sample');
   assert.equal(byKey.sentiment.sample.n, 2, 'sentiment n must reflect high-confidence cells, not total cells');
   assert.equal(byKey.sentiment.sample.denominator, 12);
   assert.ok(byKey.sentiment.sample.basis.includes('high-confidence'));
-  assert.ok(Math.abs(byKey.sentiment.appliedWeight - 0.3125) < 1e-9);
-  assert.ok(Math.abs(byKey.sentiment.contribution - 31.25) < 1e-9);
+  assert.equal(byKey.sentiment.appliedWeight, null);
+  assert.equal(byKey.sentiment.contribution, null);
 
   // Rank: excluded — null value, null applied weight, null contribution.
   // The user-visible meaning string still renders (the popover row still
@@ -304,19 +316,20 @@ test('breakdown: typelessform real-run example (presence 42, sentiment 100/n=2, 
   assert.equal(byKey.rank.value, null);
   assert.equal(byKey.rank.appliedWeight, null);
   assert.equal(byKey.rank.contribution, null);
+  assert.equal(byKey.rank.excludedReason, 'not-measured');
   assert.equal(byKey.rank.weight, 0.20, 'original weight is preserved for the popover «redistributed» note');
   assert.equal(byKey.rank.sample.n, 0);
 
-  // Citation: applied 0.20/0.80 = 0.25; contribution 42*0.25 = 10.5
+  // Citation: applied 0.20/0.55 = 0.36363…; contribution 42×that.
   assert.equal(byKey.citation.value, 42);
-  assert.ok(Math.abs(byKey.citation.appliedWeight - 0.25) < 1e-9);
-  assert.ok(Math.abs(byKey.citation.contribution - 10.5) < 1e-9);
+  assert.equal(byKey.citation.counted, true);
+  assert.ok(Math.abs(byKey.citation.appliedWeight - 0.20 / 0.55) < 1e-9);
 
   // Sanity — contributions sum to the rawSum / weightSum value (= UVI before rounding).
   const sumContribs = b.rows
     .filter(r => r.contribution !== null)
     .reduce((s, r) => s + r.contribution, 0);
-  assert.ok(Math.abs(sumContribs - 60.125) < 1e-9, `sum of contributions = ${sumContribs}`);
+  assert.ok(Math.abs(sumContribs - 42) < 1e-9, `sum of contributions = ${sumContribs}`);
 });
 
 test('breakdown: all components measured → no re-normalisation, applied = default weight', () => {

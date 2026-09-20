@@ -52,12 +52,22 @@ test('no cells changed hands but a held cell genuinely moved -> full body, not t
 
 console.log('\nsectionRunComparison — gain-drag pluralisation');
 
+// Q2/Q3 below are held positives present in BOTH runs. They carry no narrative
+// weight — they are there so the sentiment axis clears the UVI v2 sample floor
+// (SMALL_SAMPLE_MIN) in each run. Without them the axis is measured over one or
+// two cells, stops carrying weight entirely, and the gain-drag sentence these
+// tests are named after is correctly never rendered — which would make these
+// tests assert the sample floor instead of the pluralisation rule.
+const heldPositives = () => [toned('Q2', 'openai', 'positive'), toned('Q3', 'openai', 'positive')];
+
 test('a single dragging cell reads as singular, naming the engine', () => {
   const prev = run('2026-01-01', [
     toned('Q1', 'openai', 'positive'), toned('Q1', 'gemini', 'positive'), cell('Q5', 'anthropic', 'no'),
+    ...heldPositives(),
   ]);
   const latest = run('2026-02-01', [
     cell('Q1', 'openai', 'no'), cell('Q1', 'gemini', 'no'), toned('Q5', 'anthropic', 'neutral'),
+    ...heldPositives(),
   ]);
   const md = sectionRunComparison([prev, latest]);
   assert.match(md, /A newly gained mention on Claude dragged/);
@@ -67,9 +77,11 @@ test('a single dragging cell reads as singular, naming the engine', () => {
 test('two independent dragging cells read as plural, with a count', () => {
   const prev = run('2026-01-01', [
     toned('Q1', 'openai', 'positive'), cell('Q5', 'anthropic', 'no'), cell('Q6', 'gemini', 'no'),
+    ...heldPositives(),
   ]);
   const latest = run('2026-02-01', [
     cell('Q1', 'openai', 'no'), toned('Q5', 'anthropic', 'neutral'), toned('Q6', 'gemini', 'neutral'),
+    ...heldPositives(),
   ]);
   const md = sectionRunComparison([prev, latest]);
   assert.match(md, /2 newly gained mentions dragged/);

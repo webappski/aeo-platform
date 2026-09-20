@@ -327,7 +327,11 @@ test('neither caveat claims the score is scoped to the shared engines', () => {
   // into the first version of that comment.
   assert.equal(buildRunComparison(snapshots).uvi.delta, -18, 'base pair');
   assert.equal(buildRunComparison(droppedPair).uvi.delta, -21, 'perplexity removed from curr');
-  assert.equal(buildRunComparison(addedPair).uvi.delta, -17, 'perplexity removed from prev');
+  // −20, not the −17 of UVI v1: removing perplexity from `prev` leaves that
+  // run's sentiment on two cells, which the v2 small-sample guard reports but
+  // does not weight (AP-UVI-V2-SMALL-SAMPLE-GUARD). Kept in step with the same
+  // three numbers quoted in buildCoverageCaveat's docstring.
+  assert.equal(buildRunComparison(addedPair).uvi.delta, -20, 'perplexity removed from prev');
   const base = buildRunComparison(snapshots).uvi.delta;
   const withDrop = buildRunComparison(droppedPair).uvi.delta;
   const withAdd = buildRunComparison(addedPair).uvi.delta;
