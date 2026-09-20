@@ -23,6 +23,7 @@ import { diff } from '../lib/diff.js';
 import { aggregateScore, sliceStats } from '../lib/score.js';
 // Stable question identity + declared market + canonical run root (MEAS-1).
 import { queryIdFor, manifestIndex, verifyManifest, normalizeQueryText } from '../lib/basket-manifest.js';
+import { parseDeclaredSubset, planSubsetCoverage, buildDeclaredSubsetStamp, buildMissingCell } from '../lib/declared-subset.js';
 import { renderMarkdown, parseRawResponse } from '../lib/report/markdown.js';
 import { renderHtml } from '../lib/report/html.js';
 import { buildMcMetadata } from '../lib/report/mc-metadata.js';
@@ -3815,13 +3816,18 @@ function buildHtmlSummary(snapshots, rawResponses) {
   // place.
   const coverageCounts = aggregateScore(latest.results);
   const coverage = latest.results.reduce((acc, r) => {
-    if (r.mention === 'yes')        acc.yes += 1;
-    else if (r.mention === 'src')   acc.src += 1;
-    else if (r.mention === 'error') acc.error += 1;
-    else                            acc.no += 1;
+    if (r.mention === 'yes')          acc.yes += 1;
+    else if (r.mention === 'src')     acc.src += 1;
+    else if (r.mention === 'error')   acc.error += 1;
+    // A question a declared subsample never asked (AP-RUNMANUAL-DECLARED-SUBSET)
+    // is not a `no`: nothing was answered, so nothing failed to name us. Kept in
+    // step with lib/report/run-metrics.js#buildLiftOpportunity, whose buckets
+    // this reduce is documented to reproduce exactly.
+    else if (r.mention === 'missing') acc.notAsked += 1;
+    else                              acc.no += 1;
     return acc;
   }, {
-    yes: 0, src: 0, no: 0, error: 0,
+    yes: 0, src: 0, no: 0, error: 0, notAsked: 0,
     total: coverageCounts.valid,
     attempts: coverageCounts.attempts,
     cells: coverageCounts.cells,
@@ -4747,13 +4753,18 @@ async function cmdReport(args = {}) {
 // ─── Commands (run-manual) ───
 
 async function cmdRunManual(argv) {
-  // Parse: aeo-platform run-manual <provider> --from-dir <dir>
+  // Parse: aeo-platform run-manual <provider> --from-dir <dir> [--declared-subset=<name>]
   let providerName = null;
   let fromDir = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--from-dir' && argv[i + 1]) { fromDir = argv[i + 1]; i++; }
+    else if (argv[i] === '--declared-subset' && argv[i + 1] && !argv[i + 1].startsWith('--')) { i++; }
+    else if (argv[i].startsWith('--declared-subset=')) { /* consumed below */ }
     else if (!argv[i].startsWith('--') && !providerName) { providerName = argv[i]; }
   }
+  // AP-RUNMANUAL-DECLARED-SUBSET — a leg that covers part of the basket ON
+  // PURPOSE (see lib/declared-subset.js). Absent this flag nothing changes.
+  const declaredSubset = parseDeclaredSubset(argv);
 
   if (!providerName) {
     console.error(`${c.red}Usage: aeo-platform run-manual <provider> --from-dir <dir>${c.reset}`);
@@ -4790,13 +4801,27 @@ async function cmdRunManual(argv) {
   // contaminates the weekly trend. Hard-fail BEFORE any heavy work
   // (buildExtractionProviders, mkdir, etc.) so the operator gets an instant
   // diagnostic instead of waiting for an unrelated API-key error.
-  const expectedFiles = queries.map((_, i) => join(fromDir, `q${i + 1}.txt`));
-  const missingFiles = expectedFiles.filter(f => !existsSync(f));
-  if (missingFiles.length > 0) {
+  //
+  // AP-RUNMANUAL-DECLARED-SUBSET: with `--declared-subset=<name>` the operator
+  // states up front that this leg covers part of the basket, and the uncovered
+  // questions become `missing` cells instead of a hard fail. The refusal above
+  // is unchanged for every undeclared import — silence is still not allowed,
+  // only a DECLARED gap is.
+  const { covered: coveredQueries, uncovered: uncoveredQueries } = planSubsetCoverage({
+    queries,
+    hasFile: (n) => existsSync(join(fromDir, `q${n}.txt`)),
+  });
+  if (uncoveredQueries.length > 0 && !declaredSubset) {
     console.error(`\n${c.red}${SYM.err} Missing query response files in ${fromDir}:${c.reset}`);
-    missingFiles.forEach(f => console.error(`  ${c.red}✗${c.reset} ${f}`));
+    uncoveredQueries.forEach(n => console.error(`  ${c.red}✗${c.reset} ${join(fromDir, `q${n}.txt`)}`));
     console.error(`\n${c.dim}Each query needs its own paste file (q1.txt for query 1, q2.txt for query 2, …).${c.reset}`);
     console.error(`${c.dim}Paste the AI engine's response into the missing file(s) and re-run.${c.reset}`);
+    console.error(`${c.dim}If this leg covers part of the basket on purpose, name the subsample:${c.reset}`);
+    console.error(`${c.dim}  aeo-platform run-manual ${providerName} --from-dir ${fromDir} --declared-subset=<name>${c.reset}`);
+    process.exit(1);
+  }
+  if (coveredQueries.length === 0) {
+    console.error(`\n${c.red}${SYM.err} No query response files found in ${fromDir} — nothing to import.${c.reset}`);
     process.exit(1);
   }
 
@@ -4834,10 +4859,31 @@ async function cmdRunManual(argv) {
   // spinner this reads as a hang for however long those calls take.
   const runManualSpinner = createSpinner();
   const newResults = [];
+  const uncoveredSet = new Set(uncoveredQueries);
   for (let qi = 0; qi < queries.length; qi++) {
     const query = queries[qi];
     const queryFile = join(fromDir, `q${qi + 1}.txt`);
     const tag = `Q${qi + 1}/${providerName}`;
+
+    // Declared subsample — this question was never put to the engine. Record
+    // the gap as a cell and spend nothing on it: no paste to read, so no
+    // classify-tier call to make.
+    if (uncoveredSet.has(qi + 1)) {
+      newResults.push(buildMissingCell({
+        index: qi + 1,
+        queryText: query,
+        queryId: queryIdFor(query),
+        provider: providerName,
+        label: providerLabel,
+        model: modelUsed,
+        market: manualDeclaredMarketFor(query),
+        tag: queryTagsManual[qi],
+        brandFit: queryBrandFitsManual[qi],
+        subsetName: declaredSubset,
+      }));
+      console.log(`  ${c.dim}—   ${tag} (not in subsample "${declaredSubset}")${c.reset}`);
+      continue;
+    }
 
     const text = await readFile(queryFile, 'utf-8');
     const citations = extractUrls(text);
@@ -5026,6 +5072,21 @@ async function cmdRunManual(argv) {
     topCanonicalSources,
     topDomains,
     adsDetected: summariseAdsAcrossResults(allResults),
+    // AP-RUNMANUAL-DECLARED-SUBSET — keyed by provider, because a day can hold
+    // a full API leg and a declared-partial manual one side by side, and the
+    // stamp belongs to the leg that was partial, not to the day. Absent on a
+    // full import, so an undeclared run's summary keeps its previous shape.
+    ...(declaredSubset ? {
+      declaredSubsets: {
+        ...(existing?.declaredSubsets || {}),
+        [providerName]: buildDeclaredSubsetStamp({
+          name: declaredSubset,
+          provider: providerLabel,
+          covered: coveredQueries,
+          total: queries.length,
+        }),
+      },
+    } : {}),
   };
   await atomicWriteJson(summaryPath, summary);
 
