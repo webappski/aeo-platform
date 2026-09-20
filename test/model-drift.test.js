@@ -3,10 +3,11 @@
 // R37: a unit test (not E2E) is correct here because both functions are pure
 // deterministic reducers with NO UI surface and NO behavioural mocks — the
 // test feeds real strings/objects and asserts the real return value. The
-// answer-surface WIRING (warn line, provenance stamp, exit code) is NOT yet
-// covered by an E2E — tracked in board card AP-MODELDRIFT-RUNLOOP-E2E (add
-// test/e2e/run-model-drift.test.js before publish). Each block carries a
-// mutation-sanity assertion (the test fails if the logic is inverted).
+// answer-surface WIRING (warn line, provenance stamp, exit code) is covered
+// separately, end to end, by test/e2e/run-model-drift.test.js — until
+// 2026-09-20 this header named that file as the coverage while it did not
+// exist. Each block carries a mutation-sanity assertion (the test fails if
+// the logic is inverted).
 
 import test from 'node:test';
 import assert from 'node:assert';
