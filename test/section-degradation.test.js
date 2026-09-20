@@ -97,16 +97,33 @@ test('a clean run gets no caveat — silence is the correct output', () => {
   assert.strictEqual(buildSectionDegradationCaveat(undefined), null);
 });
 
-test('the caveat names the count, the engine, the typed cause — and what NOT to conclude', () => {
+test('the caveat names the count and the typed cause — and what NOT to conclude', () => {
   const caveat = buildSectionDegradationCaveat([cellWithParseFailure(), cellWithParseFailure()]);
   assert.match(caveat.title, /2 answers were classified by one model instead of two/);
   const body = caveat.sentences.join(' ');
   assert.match(body, /Competitor cross-check: 2 answers could not be cross-checked/);
-  assert.match(body, /Gemini/, 'the engine is named in the words a client reads, not as an id');
   assert.match(body, /not valid JSON/, 'the cause comes from the typed kind');
   // The sentence that stops the reader drawing a market conclusion from a
   // failed API call — the actual damage this card was filed about.
   assert.match(body, /not a finding that the market changed/);
+});
+
+test('the GRADING model is never named in the sentence, on any surface', () => {
+  // The grading vendors are the same names this report uses for ANSWER ENGINES.
+  // "Gemini returned unparseable JSON" in a note about the competitor list reads
+  // as "your Gemini measurement is broken" — a second wrong conclusion inside
+  // the copy written to prevent the first. It is also extractor plumbing, and
+  // --white-label exists precisely to carry none of that.
+  const caveat = buildSectionDegradationCaveat([
+    cellWithParseFailure('gemini'),
+    { degraded: [{ section: 'sentiment', provider: 'anthropic', model: 'm3', kind: 'parse', recovered: true, retriedOn: 'anthropic' }] },
+  ]);
+  const body = `${caveat.title} ${caveat.sentences.join(' ')}`;
+  for (const vendor of [/Gemini/, /ChatGPT/, /Claude/, /Perplexity/, /gemini/, /openai/, /anthropic/]) {
+    assert.doesNotMatch(body, vendor, `the caveat must not name a grading vendor; matched ${vendor}`);
+  }
+  // …but the vendor IS still in the data, for whoever debugs the run.
+  assert.deepStrictEqual(collectDegradations([cellWithParseFailure('gemini')])[0].providers, ['gemini']);
 });
 
 test('an unnamed cause is reported as unnamed', () => {
@@ -155,6 +172,19 @@ test('the SAME sentence reaches the markdown report and the HTML report', () => 
   // Mutation-sanity: delete either render site and exactly one of these two
   // goes red. That asymmetry IS the bug class — the markdown warned and the
   // page the founder prints did not.
+});
+
+test('the caveat reaches the public and white-label deliverables too, still naming no grader', () => {
+  // Deliberate, not an accident of placement: a client reading a thin competitor
+  // list is exactly the reader who must know a call failed. What white-label
+  // strips is tool-internal detail — which is why the sentence carries none.
+  for (const opts of [{ public: true }, { whiteLabel: true }]) {
+    const html = renderHtml(SUMMARY, [SNAPSHOT], opts);
+    const label = JSON.stringify(opts);
+    assert.ok(html.includes('could not be cross-checked'), `caveat missing from ${label} HTML`);
+    assert.doesNotMatch(html.slice(html.indexOf('could not be cross-checked') - 400, html.indexOf('could not be cross-checked') + 400),
+      /Gemini|gemini/, `${label} HTML names the grading vendor next to the caveat`);
+  }
 });
 
 test('a clean run adds nothing to either surface', () => {
