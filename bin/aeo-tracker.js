@@ -43,6 +43,7 @@ import { classifyResponseQuality } from '../lib/report/response-quality.js';
 import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
 import { extractProseRankWithTwoModels, proseRankField } from '../lib/report/prose-rank.js';
+import { classifyMentionRoleWithTwoModels, mentionRoleField, needsMentionRole, mentionRoleEnabled } from '../lib/report/mention-role.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
 import { aggregateCompetitorCounts } from '../lib/report/competitor-counts.js';
 import { addCostEntry, sumCostUsd } from '../lib/report/cost-telemetry.js';
@@ -2809,6 +2810,15 @@ async function cmdRun(options = {}) {
     ? `${extractionProviders.primary.model} + ${extractionProviders.secondary.model} (parallel cross-check)`
     : `${extractionProviders.primary.model} (single-model — competitor mentions will be unverified)`}${c.reset}\n`);
 
+  // AP-MENTION-ROLE-VENDOR-VS-SOURCE — OFF unless `.aeo-tracker.json` turns it
+  // on. It adds a classify-tier call per mentioned cell, and a run must not
+  // start spending on a pass nobody asked for. Announced when on, so the
+  // operator sees the extra line item before the first call, not in the bill.
+  const roleClassificationOn = mentionRoleEnabled(config);
+  if (roleClassificationOn) {
+    console.log(`${c.dim}  Mention-role classification: ON (one extra classify call per mentioned cell)${c.reset}\n`);
+  }
+
   // NOTE — the automatic same-day skip/resume cache was removed deliberately.
   // It keyed "already done" cells by POSITION (`Q1:region:provider:model:mode`)
   // with no query text and no domain, so a second run in the same working
@@ -3023,7 +3033,7 @@ async function cmdRun(options = {}) {
               // downstream code already handles (verified/unverified arrays both
               // empty → `storeSources` is false → no source-list bloat;
               // sentiment=null is already guarded everywhere it's read).
-              let extraction, sentiment, proseRank;
+              let extraction, sentiment, proseRank, mentionRole;
               if (replaySrcDate) {
                 extraction = {
                   verified: [],
@@ -3036,6 +3046,7 @@ async function cmdRun(options = {}) {
                 };
                 sentiment = null;
                 proseRank = null;
+                mentionRole = null;
               } else {
                 const sentimentTask = (mention === 'yes' || mention === 'src')
                   ? classifySentimentWithTwoModels({
@@ -3056,7 +3067,21 @@ async function cmdRun(options = {}) {
                       secondary: extractionProviders.secondary,
                     })
                   : Promise.resolve(null);
-                [extraction, sentiment, proseRank] = await Promise.all([
+                // AP-MENTION-ROLE-VENDOR-VS-SOURCE — fire on every cell that
+                // NAMED or CITED the brand, because that is exactly the
+                // population whose role is ambiguous: a mention can be «hire
+                // them» or «they published the ranking about the others», and
+                // until 2026-09-20 the score counted both the same. Same
+                // classify tier and same parallel batch as the two above, so it
+                // adds a call only where there is a mention to explain.
+                const mentionRoleTask = roleClassificationOn && needsMentionRole(mention)
+                  ? classifyMentionRoleWithTwoModels({
+                      text, brand, domain,
+                      primary: extractionProviders.primary,
+                      secondary: extractionProviders.secondary,
+                    })
+                  : Promise.resolve(null);
+                [extraction, sentiment, proseRank, mentionRole] = await Promise.all([
                   extractWithTwoModels({
                     text, brand, domain,
                     category: config.category || '',
@@ -3065,6 +3090,7 @@ async function cmdRun(options = {}) {
                   }),
                   sentimentTask,
                   proseRankTask,
+                  mentionRoleTask,
                 ]);
               }
               const competitors = extraction.verified;
@@ -3154,6 +3180,7 @@ async function cmdRun(options = {}) {
                 // Shared field-builder with run-manual (lib/report/prose-rank.js)
                 // so the two sinks can never drift.
                 ...proseRankField(proseRank),
+                ...mentionRoleField(mentionRole),
                 ...(queryTags[qi] ? { tag: queryTags[qi] } : {}),
                 ...(queryBrandFits[qi] ? { brandFit: queryBrandFits[qi] } : {}),
                 ...(region ? { region: region.code, regionLabel: region.label } : {}),
@@ -4854,6 +4881,13 @@ async function cmdRunManual(argv) {
     ? `${extractionProvidersManual.primary.model} + ${extractionProvidersManual.secondary.model} (parallel)`
     : `${extractionProvidersManual.primary.model} (single-model — competitor mentions will be unverified)`}${c.reset}\n`);
 
+  // Same switch as the live run — a pasted leg and an API leg of one run must
+  // be classified alike, or the two halves disagree about what a mention meant.
+  const roleClassificationOnManual = mentionRoleEnabled(config);
+  if (roleClassificationOnManual) {
+    console.log(`${c.dim}  Mention-role classification: ON (one extra classify call per mentioned cell)${c.reset}\n`);
+  }
+
   // Real LLM calls per iteration (extraction + sentiment + prose-rank, in
   // parallel) with no live-status manager unlike cmdRun's loop — without a
   // spinner this reads as a hang for however long those calls take.
@@ -4908,9 +4942,19 @@ async function cmdRunManual(argv) {
     const isTTY = !!process.stdout.isTTY;
     runManualSpinner.start(`[${tag}] classifying extracted response...`);
     if (!isTTY) console.log(`${c.dim}  [${tag}] classifying extracted response...${c.reset}`);
-    let extractionManual, sentimentManual, proseRankManual;
+    // AP-MENTION-ROLE-VENDOR-VS-SOURCE — same gate and same batch as the live
+    // loop; a pasted answer and an API answer must be classified alike or the
+    // two legs of one run disagree about what a mention meant.
+    const mentionRoleTaskManual = roleClassificationOnManual && needsMentionRole(mention)
+      ? classifyMentionRoleWithTwoModels({
+          text, brand, domain,
+          primary:   extractionProvidersManual.primary,
+          secondary: extractionProvidersManual.secondary,
+        })
+      : Promise.resolve(null);
+    let extractionManual, sentimentManual, proseRankManual, mentionRoleManual;
     try {
-      [extractionManual, sentimentManual, proseRankManual] = await Promise.all([
+      [extractionManual, sentimentManual, proseRankManual, mentionRoleManual] = await Promise.all([
         extractWithTwoModels({
           text, brand, domain,
           category: config.category || '',
@@ -4919,6 +4963,7 @@ async function cmdRunManual(argv) {
         }),
         sentimentTaskManual,
         proseRankTaskManual,
+        mentionRoleTaskManual,
       ]);
     } finally {
       runManualSpinner.stop();
@@ -4960,6 +5005,7 @@ async function cmdRunManual(argv) {
       // Shared field-builder with the live run loop (lib/report/prose-rank.js)
       // so the manual and live sinks can never drift.
       ...proseRankField(proseRankManual),
+      ...mentionRoleField(mentionRoleManual),
       ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
       ...(queryBrandFitsManual[qi] ? { brandFit: queryBrandFitsManual[qi] } : {}),
       responseQuality,
