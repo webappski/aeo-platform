@@ -42,6 +42,7 @@ import { runTwoStageValidation, formatValidationResult, hasBlockers } from '../l
 import { classifyResponseQuality } from '../lib/report/response-quality.js';
 import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
 import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
+import { degradationsFor } from '../lib/report/section-degradation.js';
 import { extractProseRankWithTwoModels, proseRankField } from '../lib/report/prose-rank.js';
 import { classifyMentionRoleWithTwoModels, mentionRoleField, needsMentionRole, mentionRoleEnabled } from '../lib/report/mention-role.js';
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
@@ -762,7 +763,12 @@ async function buildExtractionProviders(providerConfig) {
   if (built.length === 0) {
     throw new Error('Competitor extraction needs at least ONE research-capable API key (OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY). Set one and re-run — see README for setup.');
   }
-  return { primary: built[0], secondary: built[1] || null };
+  // `fallbacks` is what the two seats did not take. Until 1.15 built[2] was
+  // discarded: a third research-capable key bought nothing. It is now the
+  // preferred answerer for a re-ask when one of the two returns un-parseable
+  // JSON (lib/report/classify-retry.js). With the usual two keys this is empty
+  // and the re-ask goes back to the same model — the house pattern.
+  return { primary: built[0], secondary: built[1] || null, fallbacks: built.slice(2) };
 }
 
 /**
@@ -3048,11 +3054,17 @@ async function cmdRun(options = {}) {
                 proseRank = null;
                 mentionRole = null;
               } else {
+                // `fallbacks` is passed to the two sections that carry the
+                // degradation marker (competitors + sentiment). prose-rank and
+                // mention-role deliberately do NOT get the re-ask yet: both are
+                // days old, mention-role is off by default, and a retry helper
+                // proves itself on the two long-standing sections first.
                 const sentimentTask = (mention === 'yes' || mention === 'src')
                   ? classifySentimentWithTwoModels({
                       text, brand, domain,
                       primary: extractionProviders.primary,
                       secondary: extractionProviders.secondary,
+                      fallbacks: extractionProviders.fallbacks,
                     })
                   : Promise.resolve(null);
                 // AP-PROSE-RANK — fire ONLY when the brand is named in the body
@@ -3087,6 +3099,7 @@ async function cmdRun(options = {}) {
                     category: config.category || '',
                     primary: extractionProviders.primary,
                     secondary: extractionProviders.secondary,
+                    fallbacks: extractionProviders.fallbacks,
                   }),
                   sentimentTask,
                   proseRankTask,
@@ -3150,6 +3163,13 @@ async function cmdRun(options = {}) {
               const storeSources = competitorsUnverified.length > 0
                 || !!extraction.sources.primary?.error
                 || !!extraction.sources.secondary?.error;
+              // AP-FAILBRANCH-TAIL2 #2 — why this cell's LLM sections are
+              // thinner than usual, in the typed form the report renders. Empty
+              // on a clean cell, and then the field is omitted entirely.
+              const cellDegradations = degradationsFor({
+                extractionSources: extraction.sources,
+                sentiment,
+              });
               sink({
                 query: `Q${qi + 1}`,
                 queryText: baseQuery,
@@ -3172,6 +3192,7 @@ async function cmdRun(options = {}) {
                 competitors,
                 competitorsUnverified,
                 ...(storeSources ? { extractionSources: extraction.sources } : {}),
+                ...(cellDegradations.length ? { degraded: cellDegradations } : {}),
                 ...(sentiment ? { sentiment: { label: sentiment.label, confidence: sentiment.confidence, rationale: sentiment.rationale } } : {}),
                 // AP-PROSE-RANK — persist only when the prose pass produced a
                 // usable ordinal (rank present). A null-rank verdict carries no
@@ -4929,6 +4950,7 @@ async function cmdRunManual(argv) {
           text, brand, domain,
           primary:   extractionProvidersManual.primary,
           secondary: extractionProvidersManual.secondary,
+          fallbacks: extractionProvidersManual.fallbacks,
         })
       : Promise.resolve(null);
     // AP-PROSE-RANK — same gate as the live path: prose body-mention only.
@@ -4960,6 +4982,7 @@ async function cmdRunManual(argv) {
           category: config.category || '',
           primary:   extractionProvidersManual.primary,
           secondary: extractionProvidersManual.secondary,
+          fallbacks: extractionProvidersManual.fallbacks,
         }),
         sentimentTaskManual,
         proseRankTaskManual,
@@ -4983,6 +5006,10 @@ async function cmdRunManual(argv) {
     const storeManualSources = competitorsUnverified.length > 0
       || !!extractionManual.sources.primary?.error
       || !!extractionManual.sources.secondary?.error;
+    const manualDegradations = degradationsFor({
+      extractionSources: extractionManual.sources,
+      sentiment: sentimentManual,
+    });
     newResults.push({
       query: `Q${qi + 1}`,
       queryText: query,
@@ -5001,6 +5028,10 @@ async function cmdRunManual(argv) {
       competitors,
       competitorsUnverified,
       ...(storeManualSources ? { extractionSources: extractionManual.sources } : {}),
+      // Same degradation record as the live sink — a pasted leg that lost a
+      // cross-check must say so in the same words, or one run's report carries
+      // two standards of honesty.
+      ...(manualDegradations.length ? { degraded: manualDegradations } : {}),
       ...(sentimentManual ? { sentiment: { label: sentimentManual.label, confidence: sentimentManual.confidence, rationale: sentimentManual.rationale } } : {}),
       // Shared field-builder with the live run loop (lib/report/prose-rank.js)
       // so the manual and live sinks can never drift.
