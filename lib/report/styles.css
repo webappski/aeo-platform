@@ -2688,7 +2688,7 @@ body::before {
 }
 
 /* ─── Section helpers — competitor intelligence / sentiment / domain SoV /
-   competitor radar / domain categories / funnel / actionable gaps / geo /
+   competitor radar / domain categories / intent / actionable gaps / geo /
    UVI / discoverability / topic clusters.
    Replaces v0.3/v0.4/v0.5 inline-styled Tailwind hex palette in
    sectionCompetitorIntelligence + sectionSentiment + sectionDomainShareOfVoice
@@ -2852,7 +2852,7 @@ body::before {
   font-size: 11px;
 }
 
-/* Domain share-of-voice + topic-cluster + funnel — single-bar primitive
+/* Domain share-of-voice + topic-cluster + intent — single-bar primitive
    bound to report tokens. tone drives colour, width inline via --bar-w. */
 .share-bar {
   display: inline-block;
@@ -2868,7 +2868,7 @@ body::before {
 .share-bar[data-tone="bad"]   { --bar-c: var(--error-color-strong); }
 .share-bar[data-tone="muted"] { --bar-c: var(--ink-4); }
 
-/* Tone-tinted inline rate text used in funnel / UVI component / topic
+/* Tone-tinted inline rate text used in intent / UVI component / topic
    cluster tables. Pairs with .share-bar. */
 .rate-text {
   font-weight: 700;

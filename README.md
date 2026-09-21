@@ -676,9 +676,9 @@ jobs:
   "domain": "YOURDOMAIN.COM",
   "category": "Short description of your competitive space",
   "queries": [
-    "best YOURCATEGORY services 2026",
-    "top YOURCATEGORY monitoring tools 2026",
-    "YOURCATEGORY consultants for B2B startups"
+    { "q": "best YOURCATEGORY services 2026",          "tag": "commercial" },
+    { "q": "top YOURCATEGORY monitoring tools 2026",   "tag": "commercial" },
+    { "q": "YOURCATEGORY consultants for B2B startups", "tag": "vertical" }
   ],
   "regressionThreshold": 10,
   "providers": {
@@ -694,6 +694,7 @@ Fields:
 
 - `brand`, `domain`, `category` — what the tool measures
 - `queries` — exactly 3, unbranded, commercial-intent. Methodological queries («how to X») are rejected by the validator
+- `queries[].tag` — the intent class `init` already worked out for that question (`comparison`, `problem`, `commercial`, `informational`, `vertical`); the report uses it to show which KIND of question you lose. Edit or delete it by hand — a plain string instead of an object is still valid and simply carries no breakdown
 - `regressionThreshold` — exit code `1` fires when score drops by more than this many percentage points week-over-week (default 10)
 - `providers[].env` — name of the env var that holds the key (override for non-standard names like `OPENAI_API_KEY_DEV`)
 - `providers[].model` — auto-discovered at run start (newest available); override here to pin a specific model

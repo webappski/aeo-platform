@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { domainStorageSlug } from '../../lib/util/domain-storage.js';
 import { degradationsFor } from '../../lib/report/section-degradation.js';
+import { queryText } from '../../lib/config/queries-normalize.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const BIN = join(REPO_ROOT, 'bin', 'aeo-tracker.js');
@@ -288,8 +289,17 @@ export function seedReplayProject(tmpDir, opts = {}) {
         env: 'OPENAI_API_KEY',
       },
     },
+    // Keyed by query TEXT, via the same reader the product uses. A basket entry
+    // may be a bare string or `{q, tag, brandFit}`; the validator matches its
+    // cache on `verdict.query === candidate.text`, so seeding the raw entry put
+    // an OBJECT in that slot for a tagged basket, every lookup missed, and the
+    // run fell through to the LIVE validator. Measured 2026-09-21: a tagged-
+    // basket probe made a real paid OpenAI call (~$0.0022) because of this line.
+    // `spawnCli` only substitutes a fake OPENAI_API_KEY when the environment has
+    // none, so on any machine that carries a real key a cache miss here spends
+    // money. Read the text; never seed the entry.
     validationCache: queries.map(q => ({
-      query: q,
+      query: queryText(q),
       valid: true,
       confidence: 0.9,
       search_behavior: 'retrieval-triggered',

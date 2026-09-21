@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
+import { normalizeQueries, attachBrandFit, attachIntentTag, stampQueryAxes, queryText } from '../lib/config/queries-normalize.js';
 
 let passed = 0;
 let failed = 0;
@@ -192,6 +192,101 @@ test('ROUND-TRIP: stamped basket → normalizeQueries recovers the label per ind
   const norm = normalizeQueries(saved);
   assert.deepEqual(norm.texts, ['core q', 'asp q', 'plain q'], 'texts unchanged — run loop iterates these');
   assert.deepEqual(norm.brandFits, ['core', 'aspirational', null], 'labels recovered, plain stays null (dormant for that cell)');
+});
+
+// ── attachIntentTag — the `tag` axis, stamped by init from what it classified ─
+//
+// E2E covers the OBSERVABLE half of this feature (a tagged config segments the
+// rendered report; a string-only one still runs) — see
+// test/e2e/report-intent-tags.test.js. It cannot cover the WRITE half: the only
+// path that produces intents is `init --auto`'s research pipeline, which makes
+// paid LLM calls, and this repository forbids spending money from a test.
+// These assertions are the R37 exception — a pure function from the real module,
+// no behavioural mocks, exercising the exact contract both config writers rely on.
+
+console.log('\nattachIntentTag');
+
+test('bare string with a recognised intent becomes {q, tag}', () => {
+  assert.deepEqual(
+    attachIntentTag(['a vs b'], { 'a vs b': 'comparison' }),
+    [{ q: 'a vs b', tag: 'comparison' }],
+  );
+});
+
+test('unclassified query stays a BARE STRING — never a guessed tag', () => {
+  const out = attachIntentTag(['plain q', 'other q'], { 'plain q': '' });
+  assert.deepEqual(out, ['plain q', 'other q'], 'a basket nothing classified is byte-identical to the historical shape');
+});
+
+test('intent outside the five classes is refused', () => {
+  // Guards the actual regression risk: a caller passing a funnel stage, or the
+  // `|| "commercial"` ranking fallback that lives at the queries-only selection
+  // site. Either would publish a judgement as a measured class.
+  assert.deepEqual(attachIntentTag(['q'], { q: 'bofu' }), ['q']);
+  assert.deepEqual(attachIntentTag(['q'], { q: 'ToFu' }), ['q']);
+});
+
+test('recognised intent is case/space-normalised', () => {
+  assert.deepEqual(attachIntentTag(['q'], { q: '  Comparison ' }), [{ q: 'q', tag: 'comparison' }]);
+});
+
+test('pre-existing object keeps every field it had', () => {
+  assert.deepEqual(
+    attachIntentTag([{ q: 'q', brandFit: 'core', note: 'keep me' }], { q: 'problem' }),
+    [{ q: 'q', brandFit: 'core', note: 'keep me', tag: 'problem' }],
+  );
+});
+
+test('Map lookup works as well as a plain object', () => {
+  assert.deepEqual(
+    attachIntentTag(['q'], new Map([['q', 'vertical']])),
+    [{ q: 'q', tag: 'vertical' }],
+  );
+});
+
+test('pure — input is not mutated', () => {
+  const input = [{ q: 'q', brandFit: 'core' }];
+  const snapshot = JSON.parse(JSON.stringify(input));
+  attachIntentTag(input, { q: 'commercial' });
+  assert.deepEqual(input, snapshot, 'input untouched');
+});
+
+test('non-array → []', () => {
+  assert.deepEqual(attachIntentTag(null, { q: 'commercial' }), []);
+});
+
+// ── stampQueryAxes — what every config writer must call ──────────────────────
+
+console.log('\nstampQueryAxes');
+
+test('both axes land on one entry without clobbering each other', () => {
+  assert.deepEqual(
+    stampQueryAxes(['q'], { q: 'core' }, { q: 'comparison' }),
+    [{ q: 'q', brandFit: 'core', tag: 'comparison' }],
+  );
+});
+
+test('either axis alone still works; neither leaves the string alone', () => {
+  assert.deepEqual(stampQueryAxes(['q'], { q: 'core' }, {}), [{ q: 'q', brandFit: 'core' }]);
+  assert.deepEqual(stampQueryAxes(['q'], {}, { q: 'problem' }), [{ q: 'q', tag: 'problem' }]);
+  assert.deepEqual(stampQueryAxes(['q'], {}, {}), ['q']);
+});
+
+test('ROUND-TRIP: stamped basket → normalizeQueries recovers BOTH axes per index', () => {
+  // The live wiring: init stamps, `run` reads back and hangs tag+brandFit on
+  // each result, the report segments. A recovery-substituted query resolves by
+  // TEXT, which is why the maps are keyed that way — position would be wrong
+  // the moment validator-recovery swaps a slot.
+  const saved = stampQueryAxes(
+    ['best x 2026', 'x vs y', 'untouched q'],
+    { 'best x 2026': 'core' },
+    { 'best x 2026': 'commercial', 'x vs y': 'comparison' },
+  );
+  const norm = normalizeQueries(saved);
+  assert.deepEqual(norm.texts, ['best x 2026', 'x vs y', 'untouched q'], 'run loop still iterates the same texts');
+  assert.deepEqual(norm.tags, ['commercial', 'comparison', null]);
+  assert.deepEqual(norm.brandFits, ['core', null, null]);
+  assert.equal(norm.hasTags, true, 'hasTags is what gates the report section');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -210,7 +210,9 @@ Remember that a real `run` spends money; while developing, use `run --replay`.
 a list in this file: it carries every command, every flag, the env-var table and
 a worked example, and duplicating any of that here would only give it somewhere
 to rot. The shape of a session: `init` writes
-`.aeo-tracker.json`; `run` asks the engines and writes
+`.aeo-tracker.json`, saving each question as `{q, tag}` where `tag` is the intent
+class it already classified — it costs nothing extra and asks nothing, and a
+hand-written plain string stays valid everywhere; `run` asks the engines and writes
 `aeo-responses/<domain>/<date>/_summary.json`; `report` renders
 `aeo-reports/<domain>/<date>/report.{md,html}`; `diff A B` compares two dates.
 `run --replay` re-runs everything after the network, from cache, for free — that

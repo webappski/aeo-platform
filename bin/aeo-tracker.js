@@ -48,7 +48,7 @@ import { classifyMentionRoleWithTwoModels, mentionRoleField, needsMentionRole, m
 import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
 import { aggregateCompetitorCounts } from '../lib/report/competitor-counts.js';
 import { addCostEntry, sumCostUsd } from '../lib/report/cost-telemetry.js';
-import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
+import { normalizeQueries, stampQueryAxes, queryText } from '../lib/config/queries-normalize.js';
 import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
 import { computeTopDomains } from '../lib/report/top-domains.js';
 import { aggregateCanonicalSources } from '../lib/report/canonical-url.js';
@@ -1152,6 +1152,17 @@ async function cmdInit(opts = {}) {
         queriesOnlyBrandFits.set(text, fit.trim().toLowerCase());
       }
     };
+    // AP-INTENT-PERSIST: query-text → intent class for the re-suggested basket.
+    // Mirror of cmdInit's config_queryIntentTags, scoped to this early-return
+    // branch — `--queries-only` is the documented update path for an existing
+    // client, so it has to stamp tags too or a re-suggested basket silently
+    // loses the segmentation a fresh `init` would have given it.
+    const queriesOnlyIntents = new Map();
+    const noteQOnlyIntent = (text, intent) => {
+      if (typeof text === 'string' && text.trim() && typeof intent === 'string' && intent.trim()) {
+        queriesOnlyIntents.set(text, intent.trim().toLowerCase());
+      }
+    };
     const queriesOnlySpinner = createSpinner();
     try {
       const researchResult = await research({
@@ -1247,6 +1258,14 @@ async function cmdInit(opts = {}) {
       // and recovery-substituted queries alike.
       for (const s of selectResult.selected) noteQOnlyFit(s.candidate?.text, s.candidate?.brandFit);
       for (const a of selectResult.alternatives) noteQOnlyFit(a?.text, a?.brandFit);
+      // Intent axis. Read `s.candidate.intent`, NOT `s.intent`: the selection
+      // objects a few lines up are built as `{ intent: c.intent || 'commercial',
+      // candidate: c }` — that `|| 'commercial'` is a ranking fallback for the
+      // substitution block, and persisting it would label an unclassified
+      // question "commercial" in the client's report. The candidate's own
+      // intent is the classification; absent means absent.
+      for (const s of selectResult.selected) noteQOnlyIntent(s.candidate?.text, s.candidate?.intent);
+      for (const a of selectResult.alternatives) noteQOnlyIntent(a?.text, a?.intent);
       if (selectResult.alternatives.length > 0) {
         newCandidatePool = selectResult.alternatives.slice(0, 5).map(a => ({
           text: a.text,
@@ -1320,11 +1339,11 @@ async function cmdInit(opts = {}) {
     let finalQueries;
     let basketUpdate;
     if (mode === 'add') {
-      // AP-SEGMENT-LIVE: stamp the new queries BEFORE merge so the brand-fit
-      // label rides into the active basket; mergeQueries dedups by text (object-
-      // aware) and preserves prior entries' shapes, so existing tagged queries
-      // keep their labels and unclassified ones stay bare strings.
-      finalQueries = mergeQueries(existing.queries || [], attachBrandFit(newQueries, queriesOnlyBrandFits));
+      // AP-SEGMENT-LIVE / AP-INTENT-PERSIST: stamp the new queries BEFORE merge
+      // so both axes ride into the active basket; mergeQueries dedups by text
+      // (object-aware) and preserves prior entries' shapes, so existing tagged
+      // queries keep their labels and unclassified ones stay bare strings.
+      finalQueries = mergeQueries(existing.queries || [], stampQueryAxes(newQueries, queriesOnlyBrandFits, queriesOnlyIntents));
       // First time touching basket logic on a legacy config — synthesise v1
       // entry from existing queries before recording the v2 expansion. History
       // mirrors the active basket shape so a later dedup compares like-for-like.
@@ -1335,8 +1354,8 @@ async function cmdInit(opts = {}) {
       basketUpdate = recordExpansion(baseConfig, finalQueries, today);
     } else {
       // Replace mode forks history — stamp the fresh basket so the new era
-      // carries brand-fit from query one.
-      finalQueries = attachBrandFit(newQueries, queriesOnlyBrandFits);
+      // carries both axes from query one.
+      finalQueries = stampQueryAxes(newQueries, queriesOnlyBrandFits, queriesOnlyIntents);
       basketUpdate = recordReplacement(existing, finalQueries, today);
     }
 
@@ -1696,6 +1715,20 @@ async function cmdInit(opts = {}) {
   const noteBrandFit = (text, fit) => {
     if (typeof text === 'string' && text.trim() && typeof fit === 'string' && fit.trim()) {
       config_queryBrandFits.set(text, fit.trim().toLowerCase());
+    }
+  };
+  // query-text → intent class, the SAVED counterpart of `config_queryIntents`
+  // above. That array stays exactly as it was (positional, consumed by
+  // validator-recovery); this map is what reaches the config. Two separate
+  // structures because they answer different questions at different moments:
+  // recovery asks "what intent sat in slot 2 before I swapped it", the config
+  // asks "what is the intent of the query that ENDED UP in the basket" — and
+  // recovery substitutes by text (see runValidationWithRecovery), after which
+  // position means nothing. Keyed by text for the same reason brand-fit is.
+  const config_queryIntentTags = new Map();
+  const noteIntent = (text, intent) => {
+    if (typeof text === 'string' && text.trim() && typeof intent === 'string' && intent.trim()) {
+      config_queryIntentTags.set(text, intent.trim().toLowerCase());
     }
   };
   // 1.0.6: count of commercial candidates passing both validator stages.
@@ -2101,6 +2134,18 @@ async function cmdInit(opts = {}) {
                 for (const s of selectResult.selected) noteBrandFit(s.candidate?.text, s.candidate?.brandFit);
                 for (const a of selectResult.alternatives) noteBrandFit(a?.text, a?.brandFit);
 
+                // Same recording, the intent axis. Selected AND pool, because
+                // the pool is validator-recovery's swap source: a query that
+                // arrives in the basket as a substitute must resolve its own
+                // intent, or the saved basket comes out half-tagged.
+                // Read `candidate.intent` straight — no `|| 'commercial'`
+                // fallback like the one at the queries-only selection site.
+                // That fallback is about ranking; borrowed here it would stamp
+                // "commercial" on a question nothing classified, publishing a
+                // guess as a measurement.
+                for (const s of selectResult.selected) noteIntent(s.candidate?.text, s.candidate?.intent);
+                for (const a of selectResult.alternatives) noteIntent(a?.text, a?.intent);
+
                 // Persist candidate pool for future swap-without-LLM (D3).
                 // 1.0.4 Fix A.1b: include search_behavior + confidence when
                 // pool-validation succeeded so the recovery panel filter and
@@ -2267,7 +2312,13 @@ async function cmdInit(opts = {}) {
   // and attaches `brandFit` to each result → the report's core/aspirational
   // segment block wakes. The headline UVI is untouched: brandFit never enters
   // the score math, only the additive representativeness display.
-  const queriesToSave = attachBrandFit(queries, config_queryBrandFits);
+  // AP-INTENT-PERSIST: and the intent axis alongside it. `init` has always
+  // classified every query it selects; until now the result died with the
+  // process, which is why the report's by-tag section — shipped in v0.4 — had
+  // never once rendered. Stamping it costs nothing: no prompt, no call, no
+  // question at install time. Unclassified queries stay bare strings, so a
+  // basket nothing classified is byte-identical to what earlier versions wrote.
+  const queriesToSave = stampQueryAxes(queries, config_queryBrandFits, config_queryIntentTags);
 
   // Persist provider defaults. `selectedProviders` was seeded from FALLBACK
   // constants in lib/providers/discover.js — these defaults are the safety net
@@ -2444,7 +2495,7 @@ async function cmdRun(options = {}) {
   const declaredMarketFor = (text) => basketIdx.byText.get(normalizeQueryText(text))?.market ?? null;
 
   if (hasTags) {
-    console.log(`${c.dim}Funnel/intent tags: ${[...new Set(queryTags.filter(Boolean))].join(', ')}${c.reset}`);
+    console.log(`${c.dim}Intent tags: ${[...new Set(queryTags.filter(Boolean))].join(', ')}${c.reset}`);
   }
 
   // v0.4 — parse --geo / --regions flag here; the cost-warn line is emitted
@@ -5541,6 +5592,12 @@ ${c.bold}aeo-platform${c.reset} — Track brand visibility in AI answer engines
 ${c.bold}Usage:${c.reset}
   aeo-platform init                    Create .aeo-tracker.json config
   aeo-platform init --queries-only     Re-suggest queries without changing brand/domain/providers
+                                       Both forms of init save each question as
+                                       {"q": "...", "tag": "comparison"} — the intent class init
+                                       already worked out (comparison / problem / commercial /
+                                       informational / vertical), which the report then segments
+                                       visibility by. Edit or delete a tag by hand at any time;
+                                       a plain string stays a plain string and runs as before.
   aeo-platform init --no-key-check     Skip the live authentication probe (offline/CI); format checks still run
   aeo-platform run          Run visibility audit (reads config, calls APIs)
   aeo-platform run --json   Same, but print structured JSON to stdout (for CI pipelines)

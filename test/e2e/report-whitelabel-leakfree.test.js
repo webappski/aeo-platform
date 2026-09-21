@@ -196,20 +196,26 @@ const ARCHITECTURE_TELLS = [
   { re: /a second ask/i,             in: ['html', 'md'] },
   { re: /classifier model/i,         in: ['md'] },
   { re: /cross-checked by two/i,     in: ['md'] },
-  // Funnel-stage blurb. Not an architecture tell — a different leak class on the
-  // same two-sided mechanism, so it lives in the same list rather than in a
+  // Intent-breakdown blurb. Not an architecture tell — a different leak class on
+  // the same two-sided mechanism, so it lives in the same list rather than in a
   // near-identical second one. The default blurb does two things a white-label
-  // deliverable must not: it reads the table FOR the client ("means AI knows
-  // your category but not why to choose you"), which is advice in a document
-  // that carries statistics only, and it names our config file by filename,
-  // which is a tool fingerprint in a document that ships under someone else's
-  // legend. The TABLE stays in both modes — withholding figures reads as a
-  // broken report, not a reserved one.
+  // deliverable must not: it reads the table FOR the client ("means AI explains
+  // your category without putting you in the shortlist"), which is advice in a
+  // document that carries statistics only, and it names our config file by
+  // filename, which is a tool fingerprint in a document that ships under
+  // someone else's legend. The TABLE stays in both modes — withholding figures
+  // reads as a broken report, not a reserved one.
   //
   // This pair only became testable when the seed above gained tags: the section
   // is skipped outright when no cell carries one, so the ban had nothing to
   // read and would have passed over an empty render.
-  { re: /why to choose you/i,        in: ['html', 'md'] },
+  //
+  // The phrase moved once (1.15.1): the blurb used to read a ToFu→BoFu funnel
+  // story out of intent classes we measure but do not map onto a funnel, so it
+  // was rewritten. Pin whatever advisory sentence the default blurb currently
+  // carries — the leak class is "advice in a statistics-only document", not any
+  // particular wording.
+  { re: /in the shortlist/i,         in: ['html', 'md'] },
   { re: /\.aeo-tracker\.json/i,      in: ['html', 'md'] },
 ];
 
