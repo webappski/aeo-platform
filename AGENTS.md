@@ -119,6 +119,11 @@ There is no CI workflow in this repo. The pre-commit hook and `prepublishOnly`
   for `declaredSubsets` produced a phantom leak and a product change on a false
   premise: the field is named `provider` but a real run fills it with the display
   *label*, not the id. A fixture whose shape was never checked agrees with itself.
+- **Measure the markup, not the file.** A regex run over a whole rendered page
+  matches the inlined CSS and JS too: `data-sentiment-scored="(\d+)"` read `0`
+  out of a stylesheet selector while the actual attribute said `1`. Anchor the
+  match to the element that carries it, and strip `<style>`/`<script>` before
+  counting words.
 - **To survey rendered copy, grep the rendered artifact, not the source.** Nearly
   all copy here lives in template literals, so a source grep anchored to one
   quoting style silently sees a fraction of the file. Render the report and scan
