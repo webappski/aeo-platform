@@ -32,42 +32,40 @@ highlighting, and the backtick-in-CSS-comment bug class is eliminated.
 
 ---
 
-### 2. Funnel-stage tags are a feature with no way in
+### 2. ~~Funnel-stage tags are a feature with no way in~~ — RESOLVED 1.15.1
 
-**Source:** found 2026-09-21 while wiring `sectionFunnelBreakdown` into the HTML
-page. The section now renders there (maintainer approved it from a sample the
-same day) and its white-label wording is fixed — what remains is that nothing
-can produce the data it needs.
+**Closed 2026-09-21** (`c985265`). The way in existed all along and was being
+discarded: `init` classifies every question it selects
+(`lib/init/research/classify-intent.js`) and threw the verdict away, so the
+by-tag section — shipped in v0.4 — had never rendered in any run anywhere.
 
-**Scope.** `sectionFunnelBreakdown` (`lib/report/sections.js`) groups visibility
-by funnel stage and renders only for cells carrying a `tag`. Tags reach a cell
-from the `{q, tag}` query form in `.aeo-tracker.json`, supported by
-`normalizeQueries` since v0.4. Nothing produces that form:
+The authoring question the entry left open answered itself once that was seen.
+No new prompt, no new call, no new required question, so `init` stays never-fail:
+both config writers now stamp the class they already computed, via
+`stampQueryAxes` (`lib/config/queries-normalize.js`). Keyed by query TEXT, not
+position — validator-recovery substitutes a blocked question by text, after which
+the positional intent array describes a basket that no longer exists. A question
+the classifier declined to place stays a bare string, so a config of plain
+strings is byte-identical to what earlier versions wrote and runs untouched.
 
-- `init` writes queries as plain strings (`queries: allFive.map(c => c.text)`);
-- `--help` does not mention tags;
-- README does not mention tags;
-- zero stored runs carry one — checked across every run tree on disk.
+One thing changed beyond wiring: the section no longer claims to measure a
+funnel. What we compute is the intent of each question
+(`comparison` / `problem` / `commercial` / `informational` / `vertical`), and the
+default blurb went further and read a "high ToFu, zero BoFu" story out of it.
+Mapping intents onto a funnel model is a judgement about someone's market;
+printing it beside real percentages presents that judgement as measurement
+(maintainer ruling, same day). Heading, card label, both blurbs, the run's
+terminal line and three comments inlined into the client HTML via `styles.css`
+now say what they count.
 
-So the section is reachable only by hand-editing the config after reading the
-source. Every surface now renders it — markdown in both modes, and the HTML page
-— and every surface renders it as nothing.
-
-**Already fixed, so it does not have to be remembered later.** The blurb had two
-things a white-label deliverable must not carry: it read the table for the
-client ("high ToFu, zero BoFu — means AI knows your category but not why to
-choose you") and named our config file. Both are now withheld under
-`--white-label` from one builder, and the table itself stays in both modes. That
-leak existed in the markdown white-label renderer already and had simply never
-fired, because no run could trigger the section — it is closed before tags make
-it reachable rather than after.
-
-**What is left, and why it is one entry rather than a ticket saying "add tags".**
-The remaining decision is how a tag gets authored, and it has a hard constraint:
-`init` must stay never-fail, so it cannot grow a new required question. The
-plausible routes — a rule over the query wording, an LLM label in a call `init`
-already makes, or an optional prompt — differ in cost and in how wrong they can
-be, and an existing config of plain strings has to keep working untouched.
+**Known limit, not debt:** `brainstorm.js` narrowed `INTENT_BUCKETS` to
+`['commercial']` on purpose, so across the 14 configs on disk (284 questions) the
+breakdown skews heavily commercial — roughly a fifth of a basket lands in
+`vertical` / `informational` / `comparison`. The section earns its place on that
+fifth. Separately, the Polish `commercial` pattern matches `najlepsze`/`najlepszy`
+but not the feminine `najlepsza`, which is the form real Polish client baskets
+use; fixing it changes classification, so it belongs in a batch that can measure
+before and after.
 
 ## Recently resolved (2026-05 editorial redesign)
 
@@ -88,8 +86,8 @@ be, and an existing config of plain strings has to keep working untouched.
   / `.radar-card-name` / `.radar-card-meta` driven by `data-tone="you|competitor"`,
   radar SVG inherits via `currentColor`
 - ✓ Tailwind palette in `sectionDomainCategories` — muted "+N more" via `.dom-more`
-- ✓ Tailwind palette in `sectionFunnelBreakdown` — `.share-bar[data-tone]` +
-  `.rate-text[data-tone]`
+- ✓ Tailwind palette in the intent breakdown (`sectionFunnelBreakdown`) —
+  `.share-bar[data-tone]` + `.rate-text[data-tone]`
 - ✓ Tailwind palette in `sectionActionableGaps` — competitor chips use
   `.cell-badge[data-tone="bad"]`
 - ✓ Tailwind palette in `sectionGeoComparison` — `.geo-table` / `.geo-cell[data-tone]`
