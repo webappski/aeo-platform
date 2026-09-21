@@ -139,6 +139,35 @@ test('a tagged basket segments the report by intent, and never calls it a funnel
   });
 });
 
+test('a basket where every question carries the SAME tag hides the section', async () => {
+  // One class is a table with one row at 100%: it looks like a measurement and
+  // carries none, because "all your questions are commercial" describes the
+  // basket, not the visibility. Reachable, not hypothetical — when the site
+  // language is one the classifier cannot read, every question keeps the
+  // brainstorm tag, and brainstorm only ever emits `commercial`.
+  await withTmpProject('aeo-e2e-intent-single-', async (dir) => {
+    const { domain } = seedReplayProject(dir, {
+      variant: 'stable',
+      queries: QUERY_TEXTS.map(q => ({ q, tag: 'commercial' })),
+    });
+    const { summary, md, html } = runAndReport(dir, domain);
+
+    // CONTROL — the tags DID reach the results. Without this the test would
+    // pass on a basket whose tags were silently dropped, which is a different
+    // bug wearing the same green.
+    assert.deepEqual(
+      [...new Set(summary.results.map(r => r.tag))], ['commercial'],
+      'fixture must produce exactly one tag, or this test is not testing what it says',
+    );
+
+    assert.doesNotMatch(md, /^## Visibility by Intent$/m,
+      'a single-class breakdown must not render in markdown');
+    assert.doesNotMatch(html, /By intent/,
+      'a single-class breakdown must not render in the HTML page');
+    assert.match(html, /<\/html>/, 'the rest of the report must still render');
+  });
+});
+
 test('a string-only basket still runs, and simply carries no intent section', async () => {
   await withTmpProject('aeo-e2e-intent-legacy-', async (dir) => {
     // Exactly the shape every config written before 1.15.1 has on disk.

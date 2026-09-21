@@ -96,8 +96,21 @@ test('every surface that publishes a share divides by the SAME 2', () => {
   assert.equal(lift.valid, expected, 'lift aggregate (hero KPI + markdown run verdict)');
   assert.equal(lift.total, 3, 'the attempt count stays available, it is just not the denominator');
 
-  const funnel = sectionFunnelBreakdown([{ results: RUN }]);
-  assert.match(funnel, /\| 1\/2 \|/, `funnel/intent table must print 1/${expected}, not 1/3`);
+  // The intent table renders only when there are at least two classes to
+  // compare: a single-bucket breakdown is one row at 100%, which states a fact
+  // about the basket rather than measuring visibility, so it is withheld (see
+  // sectionFunnelBreakdown). RUN is deliberately single-class everywhere else
+  // in this fixture, so the denominator is checked on RUN plus one cell of a
+  // second class — the `bofu` row must still divide by the same 2. The added
+  // cell is outside RUN on purpose: folding it in would change the headline
+  // aggregate the assertions above pin.
+  const SECOND_CLASS = {
+    query: 'Q4', queryText: 'what is answer engine optimization',
+    provider: 'openai', tag: 'informational', brandFit: 'core', mention: 'no',
+  };
+  const funnel = sectionFunnelBreakdown([{ results: [...RUN, SECOND_CLASS] }]);
+  assert.match(funnel, /\| \*\*bofu\*\* \| 1\/2 \|/,
+    `funnel/intent table must print 1/${expected} for the bofu row, not 1/3`);
 
   const fit = segmentByBrandFit(RUN);
   assert.equal(fit.core.total, expected, 'brand-fit segment');
