@@ -98,13 +98,22 @@ import { createSpinner } from '../lib/util/spinner.js';
 import { sanitizeForFilename } from '../lib/util/safe-filename.js';
 import { canonicalDomainIdentity, domainStorageSlug } from '../lib/util/domain-storage.js';
 import { aggregateCellTrials, resolveSamples, MAX_SAMPLES } from '../lib/sampling.js';
+import { setOfflineMode, isOfflineMode } from '../lib/util/fetch-with-timeout.js';
 
 /**
  * Safely extract a human-readable message from any caught value.
  * `catch (err)` receives an `unknown` — err may be a string, a number, null,
  * or a proper Error. `.message` is only defined on Error subclasses, so guard.
  */
-const errMsg = (err) => (err instanceof Error ? err.message : String(err));
+// One place, so every progress row says the same honest thing about `--offline`:
+// the field is missing because we DECLINED to ask, not because a request failed.
+// Rendering "fetch failed" for a request that was never made is the "never label
+// a cause you did not observe" trap with the sign reversed.
+const errMsg = (err) => (
+  (err && typeof err === 'object' && err.code === 'EOFFLINE')
+    ? 'not fetched (--offline, nothing cached)'
+    : (err instanceof Error ? err.message : String(err))
+);
 
 // ─── ANSI colors (zero-dep) ───
 // Disable ANSI when stdout is not a TTY (piped to file, CI logs) or NO_COLOR is set (no-color.org convention).
@@ -370,6 +379,15 @@ async function cleanupStaleReportArtifacts(latestDate, domain) {
 // here so the random suffix is unique across pid+ms+random (avoids collisions on
 // double-press) and the helper is one line to call.
 async function persistSnapshot(latest) {
+  // `--offline` writes nothing, and the gate is here rather than at the eleven
+  // call sites for the same reason the fetch gate is in one place. Two of those
+  // callers are pure derivations — `regionContext` and `responseFreshness`
+  // recompute from the stored results and persist on EVERY report — which is
+  // why a re-render rewrote the source summary even on a warm cache that made
+  // no request at all (measured 2026-09-21: sha256 b44c01f2… → e02347e3…).
+  // Nothing was fetched, so there is nothing to cache; the run still renders
+  // from the in-memory values.
+  if (isOfflineMode()) return;
   // `sessionCostUsd` is DERIVED from `costByModel` — never a separately-tracked
   // number. Re-deriving at the single write chokepoint makes the invariant
   // unbreakable by any future writer, and heals snapshots written before it held:
@@ -5571,8 +5589,18 @@ ${c.bold}Usage:${c.reset}
   aeo-platform report [--no-authority] [--no-entity-graph] [--no-page-signals] [--no-pricing]
                            Skip optional fetch-heavy checks (Wikipedia/Reddit/GitHub authority,
                            sameAs reciprocity, own-domain HTML crawl, competitor pricing pages).
-                           Use behind a corp VPN, when rate-limited, or for a fully offline report.
-                           Cached results still load.
+                           Use behind a corp VPN or when rate-limited. Cached results still load.
+                           These four do NOT add up to an offline report: three more fetchers
+                           (citation classification, LLM actions, crawlability) have no flag here
+                           and still call out — including PAID ones. Use --offline for that.
+  aeo-platform report --offline          Render from what is on disk and make no request at all.
+                           A report flag only — run has its own free path, --replay.
+                           Enforced at the fetch layer, so it covers every fetcher, not a list of
+                           them. Anything missing from the cache is marked as not fetched rather
+                           than guessed. Writes nothing: the source _summary.json is left untouched
+                           (a normal report re-writes it even when every value came from cache).
+                           Use it to re-render an old date without spending money or editing a
+                           record that was already delivered.
   aeo-platform report --refresh-cache=<fields>
                            Force-refresh cached fields before report runs. Use when client's site
                            changed and you want fresh signals without rerunning a full snapshot.
@@ -5735,6 +5763,15 @@ const { values, positionals } = parseArgs({
     // `report` at aeo-responses/<date>/_summary.json so an older proof report
     // can be regenerated from data still on disk. See cmdReport --for-date block.
     'for-date':      { type: 'string' },
+    // v1.15.1 — render from what is already on disk and make no request at all.
+    // The four --no-* flags below each silence ONE fetcher; three more fetchers
+    // (citation classification, LLM actions, crawlability) never had a flag, so
+    // "all four --no-* set" was never the same thing as "offline" and a
+    // re-render of an old date still spent money. This flag is enforced in one
+    // place — lib/util/fetch-with-timeout.js — so it covers fetchers nobody has
+    // written yet. It also writes nothing: with no fetch there is no cache to
+    // persist, and the source _summary.json is left byte-for-byte alone.
+    'offline':         { type: 'boolean', default: false },
     // Optional `report` fetches — skip when offline / behind corp VPN / rate-limited
     'no-authority':    { type: 'boolean', default: false },
     'no-entity-graph': { type: 'boolean', default: false },
@@ -5807,6 +5844,17 @@ if (VERSIONED_COMMANDS.has(command) && !values.json) {
 const { createPrompter } = await import('../lib/util/prompt.js');
 const prompter = createPrompter({ nonInteractive: values.yes });
 
+// `--offline` is a `report` flag, and the options table is global — so without
+// this, `run --offline` parses cleanly and is silently ignored. An explicit
+// request answered by a no-op is the same defect the flag was written to close
+// (`--help` claimed four skip-flags gave "a fully offline report" while three
+// fetchers called out regardless). `run` has its own free path — `--replay`.
+if (values.offline && command !== 'report') {
+  console.error(`${c.red}--offline applies to \`report\` only.${c.reset}`);
+  console.error(`${c.dim}  To re-run a snapshot without spending: aeo-platform run --replay${c.reset}`);
+  process.exit(2);
+}
+
 try {
   if (values.help || (!command && !values.version)) {
     console.log(HELP);
@@ -5855,7 +5903,17 @@ try {
   } else if (command === 'diff') {
     await cmdDiff(process.argv.slice(3));
   } else if (command === 'report') {
+    // Armed BEFORE the command runs, so the refusal covers every path inside
+    // it — including any fetcher added later that nobody remembered to gate.
+    if (values.offline) setOfflineMode(true);
+    if (values.offline && values['refresh-cache']) {
+      console.error(`${c.red}--offline and --refresh-cache contradict each other.${c.reset}`);
+      console.error(`${c.dim}  --refresh-cache clears cached fields so their fetchers re-run; --offline makes no request, so they would clear to nothing and the report would lose sections it can still show.${c.reset}`);
+      console.error(`${c.dim}  Run one or the other.${c.reset}`);
+      process.exit(2);
+    }
     await cmdReport({
+      offline:        values.offline,
       output: values.output,
       noOpen: values['no-open'],
       noHtml: values['no-html'],

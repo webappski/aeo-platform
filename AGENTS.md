@@ -78,8 +78,10 @@ There is no CI workflow in this repo. The pre-commit hook and `prepublishOnly`
   then run `node scripts/sync-readme-version.mjs` in the same commit (the
   README's Schema.org `softwareVersion` is pinned to `package.json` by a test).
 - **Never make a paid API call to try something out.** Use `run --replay`
-  (rebuilds a summary from cached raw responses, zero cost) or the offline E2E
-  seam: `test/e2e/_helpers.js` stubs `/v1/models` and OpenAI's Responses endpoint
+  (rebuilds a summary from cached raw responses, zero cost), `report --offline`
+  (renders from disk, makes no request and writes nothing — the four `--no-*`
+  flags are NOT equivalent: three fetchers have no flag and one of them is paid),
+  or the offline E2E seam: `test/e2e/_helpers.js` stubs `/v1/models` and OpenAI's Responses endpoint
   and fails every other request closed at 401. If a change cannot be verified
   without spending, say so and stop — do not spend.
 - **Never commit a key.** `.env` is gitignored; `.aeo-tracker.json` carries the
@@ -212,7 +214,10 @@ to rot. The shape of a session: `init` writes
 `aeo-responses/<domain>/<date>/_summary.json`; `report` renders
 `aeo-reports/<domain>/<date>/report.{md,html}`; `diff A B` compares two dates.
 `run --replay` re-runs everything after the network, from cache, for free — that
-is the command to use while developing.
+is the command to use while developing. `report` is NOT free by default, even
+with `--for-date` on an old run: it fills cold cache fields, some of them paid,
+and writes its cache back into the source `_summary.json`. `report --offline`
+does neither.
 
 ## Finishing a change
 

@@ -552,7 +552,8 @@ Every flag `aeo-platform` accepts, grouped by which command consumes it.
 | `--refresh-cache <fields>` | `report` | Force-refresh cached fields before report. CSV list or `all` |
 | `--no-html` | `report` | Markdown only — skip HTML write + browser auto-open |
 | `--no-open` | `report` | Write files but don't auto-open the browser |
-| `--no-authority` / `--no-page-signals` / `--no-entity-graph` / `--no-pricing` | `report` | Skip optional fetch-heavy checks (use behind a VPN, offline, or to dodge rate limits) |
+| `--offline` | `report` | Render from what is already on disk: makes no request at all and writes nothing (a normal `report` re-writes the run's `_summary.json` even when every value came from cache). Missing signals are marked as not fetched, never guessed |
+| `--no-authority` / `--no-page-signals` / `--no-entity-graph` / `--no-pricing` | `report` | Skip individual fetch-heavy checks (behind a VPN, or to dodge rate limits). These four are not an offline mode — other fetchers have no flag here; use `--offline` for that |
 | `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from the default `gpt-5.6-luna` to another model available to your OpenAI project |
 | `--add-queries "q1,q2,q3"` | `init` | Add queries to an existing config without re-running brainstorm; preserves prior basket history |
 | `--replace-queries "q1,q2,q3"` | `init` | Replace queries in an existing config (forks basket version); preserves prior versions in `basketHistory` |
