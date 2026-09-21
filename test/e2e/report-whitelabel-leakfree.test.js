@@ -167,6 +167,28 @@ const ADVISORY_DENYLIST = [
 // `in` field is not decoration: the degradation caveat renders on both surfaces,
 // the sentiment legend is markdown-only, and a blanket two-sided loop would
 // false-pass on whichever surface never had the copy.
+//
+// WHY THE SENTIMENT LEGEND IS `in: ['md']` — not an oversight, and not because
+// the fixture is thin. `html.js` builds eight markdown blocks into `sectionsRaw`
+// (:271) and reads back only four: there is no `S.sentiment` / `S.funnel` /
+// `S.utm` / `S.ads` anywhere in the file, so `sectionSentiment` is computed and
+// discarded and the legend HAS NO HTML SURFACE AT ALL. Verified on rendered
+// output with a control: sentiment MD=true HTML=false, while authority (which
+// IS read back) is MD=true HTML=true. Banning the tell in white-label HTML would
+// therefore assert against copy that cannot appear — a vacuous green of exactly
+// the kind this file exists to stop. `renderHtml` still threads `{ whiteLabel }`
+// into that dead call so the block is correct the day it is wired up, but this
+// test must not be read as covering an HTML surface. Whether those four blocks
+// get revived or deleted is card AP-HTML-DEAD-SECTION-BLOCKS, deliberately not
+// this release: reviving one changes the client-facing document.
+//
+// The LIVE HTML sentiment surface is a different thing — the matrix view, built
+// inline from `positionMatrix`, not from this block. Checked separately for this
+// same class 2026-09-21, by dumping every `sentiment`-bearing line of the
+// RENDERED white-label HTML (tags/style/script stripped): its copy is
+// measurement scope ("only classified for cells where AI named or cited your
+// brand", "classifies how AI framed your brand") and names no grading model, no
+// vendor, no JSON and no re-ask. Clean.
 const ARCHITECTURE_TELLS = [
   { re: /grading model/i,            in: ['html', 'md'] },
   { re: /one model instead of two/i, in: ['html', 'md'] },
