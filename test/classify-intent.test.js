@@ -2,8 +2,8 @@
  * Intent classification — language tag handling and the morphological forms a
  * real buyer types.
  *
- * Why this file exists. Two defects lived here undetected because nothing
- * tested the module at all, and both are the same shape: a pattern that cannot
+ * Why this file exists. Three defects lived here undetected because nothing
+ * tested the module at all, and all three are the same shape: a pattern that cannot
  * match, failing silently as "unclassified" rather than as an error.
  *
  *   1. The table is keyed by base subtag (`pl`), but the `lang` handed to it is
@@ -17,7 +17,12 @@
  *      buyer types the one that agrees with the noun. "najlepsza agencja" — the
  *      commonest shape in real Polish baskets — matched nothing.
  *
- * And a third that would have been introduced writing the Russian set: `\b` is
+ *   3. A basket is built per MARKET and mixes languages; the site declares one,
+ *      and every question was read under it. On disk, webappka holds 30 Polish,
+ *      15 English and 5 Russian questions while the site declares `lang="en"`,
+ *      so three questions in four were read with the wrong pattern set.
+ *
+ * And a fourth that would have been introduced writing the Russian set: `\b` is
  * ASCII-only in JavaScript, so `/\bлучший\b/` never matches. A Cyrillic pattern
  * in the older style would have been dead on arrival and looked like "Russian
  * queries are simply unclassified".
@@ -27,7 +32,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  classifyIntent, reconcileIntent, normalizeLang, INTENT_PATTERNS,
+  classifyIntent, reconcileIntent, normalizeLang, detectQueryLang, INTENT_PATTERNS,
 } from '../lib/init/research/classify-intent.js';
 
 let passed = 0;
@@ -162,6 +167,93 @@ test('a query that is both superlative and vertical stays commercial', () => {
   // and it is pinned here so the move is a decision, not a surprise.
   assert.equal(classifyIntent('best CRM for startups', 'en'), 'commercial');
   assert.equal(classifyIntent('najlepsza agencja dla małych firm', 'pl'), 'commercial');
+});
+
+console.log('\ndetectQueryLang — a basket mixes languages, the site declares one');
+
+// The defect this closes: a basket is built per MARKET, the site declares one
+// language, and every question was read under it. Measured on the baskets on
+// disk — webappka carries 30 Polish, 15 English and 5 Russian questions while
+// the site declares `lang="en"`, so 3 questions in 4 were read with the wrong
+// pattern set and fell back to the brainstorm tag.
+
+const DETECT = [
+  // [query, site language (fallback), expected]
+  ['лучшие агентства AEO 2026', 'en', 'ru', 'Cyrillic decides alone'],
+  ['najlepsza agencja widoczności AI', 'en', 'pl', 'Polish diacritics'],
+  ['beste AEO Agentur für SaaS', 'en', 'de', 'German umlaut'],
+  ['porównanie narzędzi AEO', 'en', 'pl', 'ó is Polish within this set — German writes ö'],
+  // The case diacritics cannot catch: plain ASCII Polish. This exact question
+  // is in a live client basket.
+  ['ile kosztuje agencja Answer Engine Optimization w Polsce', 'en', 'pl', 'function words, no diacritic in sight'],
+  ['Answer Engine Optimization Agentur Deutschland', 'en', 'de', 'German function word, no umlaut'],
+  // No evidence → the SITE language, which is what the pipeline used for every
+  // question before this existed. Never 'en' by default.
+  ['AEO monitoring platform', 'pl', 'pl', 'no evidence falls back to the site, not to English'],
+  ['best AEO agencies 2026', 'en', 'en', 'English is the absence of evidence, not a word list'],
+  // A guess would be worse than the fallback.
+  ['najlepsza Agentur für widoczności', 'en', 'en', 'two scripts at once is ambiguous — fall back, do not pick'],
+];
+
+for (const [query, site, expected, why] of DETECT) {
+  test(`detectQueryLang [site=${site}] "${query.slice(0, 44)}" → ${expected} (${why})`, () => {
+    assert.equal(detectQueryLang(query, site), expected);
+  });
+}
+
+test('detectQueryLang is never-fail', () => {
+  // It runs inside init, which must not throw on a hand-edited config.
+  for (const junk of [null, undefined, '', 42, {}, [], '   ', '!!! ???']) {
+    assert.equal(typeof detectQueryLang(junk, 'pl'), 'string');
+  }
+  assert.equal(detectQueryLang(null, 'de-DE'), 'de', 'the fallback is normalised too');
+  assert.equal(detectQueryLang('   ', undefined), 'en', 'no fallback at all still returns something usable');
+});
+
+test('English terms that look foreign are NOT claimed by a word list', () => {
+  // The risk the word lists carry: a term shared with English sends an English
+  // question to a foreign pattern set. "top" and "ranking" are Polish words too
+  // and are deliberately absent from the detector for exactly this reason.
+  assert.equal(detectQueryLang('top ranking AEO tools', 'en'), 'en');
+  assert.equal(detectQueryLang('best AEO platform for firms', 'en'), 'en');
+});
+
+console.log('\nreconcileIntent classifies per question, not per site');
+
+test('a Polish question in an English-declaring basket is read as Polish', () => {
+  // Before: site lang 'en' → English patterns → no match → brainstorm tag.
+  const r = reconcileIntent(
+    { text: 'agencja answer engine optimization w Polsce dla B2B SaaS', intent: 'commercial' },
+    'en',
+  );
+  assert.equal(r.intentLang, 'pl', 'the question is Polish regardless of what the site declares');
+  assert.equal(r.intentFinal, 'vertical', 'and reading it as Polish is what makes it classifiable');
+});
+
+test('a Russian question in an English-declaring basket is read as Russian', () => {
+  const r = reconcileIntent(
+    { text: 'лучшие агентства Answer Engine Optimization 2026', intent: 'commercial' },
+    'en',
+  );
+  assert.equal(r.intentLang, 'ru');
+  assert.equal(r.intentFinal, 'commercial');
+  assert.equal(r.intentAgreement, 'match');
+});
+
+test('CONTROL — a question in the site language is untouched by detection', () => {
+  // The guarantee that makes this change safe: a single-language basket cannot
+  // move. Verified over the real baskets on disk (2026-09-21) — every
+  // monolingual one reported zero changed classifications AND zero changed
+  // tags; only the four mixed baskets moved.
+  for (const [text, site, expected] of [
+    ['best AEO agencies 2026', 'en', 'commercial'],
+    ['najlepsza agencja AEO', 'pl', 'commercial'],
+    ['porównanie narzędzi AEO', 'pl', 'comparison'],
+  ]) {
+    const r = reconcileIntent({ text, intent: 'commercial' }, site);
+    assert.equal(r.intentLang, site, `${text} must stay on the site language`);
+    assert.equal(r.intentFinal, expected);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
