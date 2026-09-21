@@ -23,6 +23,10 @@
  *   - drop the `smallSampleGuard` call so `guardFired` is always false → the
  *     "guard fired / did not fire" pair fails.
  *   - make `findSummaries` non-recursive → the nested-tree count fails.
+ *   - compute v1 as `computeUVI(components)` (forgetting the zero floor) → the
+ *     v1 delegation test and the negative-delta test both fail.
+ *   - remove the `minSample` passthrough from `computeUVI` so the third
+ *     argument is ignored → v1 collapses onto v2 and every delta reads 0.
  */
 import test from 'node:test';
 import assert from 'node:assert';
@@ -87,7 +91,60 @@ test('the stored headline is carried through untouched and never mixed into the 
   // moment anything subtracts it from `v2` the table is comparing a rate with
   // an index, which is the error this column's label exists to prevent.
   assert.equal(row.storedHeadline, 30);
-  assert.ok(!('delta' in row), 'a v1↔v2 delta cannot be computed from a stored mention rate');
+  assert.equal(row.delta, row.v1 - row.v2, 'the delta is between the two composites and nothing else');
+  assert.notEqual(row.delta, row.storedHeadline - row.v2);
+});
+
+test('v1 is the same module with the guard floor at zero — never a second formula', () => {
+  for (const summary of [summaryWithThinSentiment(), summaryWithFullSentiment()]) {
+    const components = computeComponents(summary);
+    assert.equal(rowFor(summary).v1, computeUVI(components, undefined, 0),
+      'the pre-v2 composite must be recovered through the canonical module');
+  }
+});
+
+test('a run the guard never matched scores identically under both versions', () => {
+  const row = rowFor(summaryWithFullSentiment());
+  assert.equal(row.guardFired, false);
+  assert.equal(row.delta, 0, 'no guarded axis means no re-normalisation means no movement');
+  assert.equal(row.v1, row.v2);
+});
+
+test('dropping a WEAK axis raises the composite — the delta sign is not fixed', () => {
+  // The claim this file exists to disprove: "the guard fired, so the client was
+  // shown an inflated number." The guard re-normalises over what is left, so a
+  // thin axis scoring BELOW the rest pulls the composite down while it counts
+  // and releases it when excluded. Here sentiment is measured on two cells and
+  // both are negative, so v2 must come out ABOVE v1.
+  const s = summaryWithThinSentiment();
+  s.results[0].sentiment = { label: 'negative', confidence: 'high' };
+  s.results[1].sentiment = { label: 'negative', confidence: 'high' };
+  const row = rowFor(s);
+  assert.equal(row.guardFired, true, 'two sentiment cells must still trip the guard');
+  assert.ok(row.delta < 0,
+    `excluding a negative-sentiment axis must raise the score; got v1=${row.v1} v2=${row.v2}`);
+});
+
+test('the axes the guard can touch are never the ones that always count', () => {
+  // Why this is worth pinning: `resolveAxes` carries a stand-down branch for
+  // "the guard matched every measured axis", and a row hitting it would be
+  // flagged while scoring identically under both versions — which would make
+  // the guard column mean something different from the delta column. It cannot
+  // happen: the guard only ever considers sentiment and rank, while presence
+  // and citation come out of `computeComponents` as numbers on every path
+  // (0 with no cells at all), so a measured axis the guard cannot touch always
+  // survives. A single-cell run — the most guarded a run can be — still moves.
+  const summary = {
+    date: '2026-01-01', domain: 'tiny.example', brand: 'Tiny', score: 50,
+    results: [cell(1, { mention: 'yes', position: 1, sentiment: { label: 'positive', confidence: 'high' } })],
+  };
+  const components = computeComponents(summary);
+  assert.equal(typeof components.presence, 'number', 'presence must never be null');
+  assert.equal(typeof components.citation, 'number', 'citation must never be null');
+
+  const row = rowFor(summary);
+  assert.deepEqual(row.uncounted.map(u => u.split(' ')[0]).sort(), ['rank', 'sentiment']);
+  assert.notEqual(row.delta, 0, 'with two axes dropped and two kept, the composite has to move');
 });
 
 test('every summary in a nested tree is found, and nothing else is', () => {

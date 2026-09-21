@@ -56,7 +56,16 @@ export function findSummaries(dir) {
 export function rowFor(summary) {
   const components = computeComponents(summary);
   const guarded = smallSampleGuard(components);
+  const v2 = computeUVI(components);
+  const v1 = computeUVI(components, undefined, 0);
   return {
+    // What the client's document showed minus what it would show today.
+    // The SIGN IS NOT FIXED, and assuming it was is an error this script made
+    // in its first version: the guard removes an axis and re-normalises over
+    // the rest, so dropping a WEAK axis raises the composite. "The guard fired"
+    // therefore does not mean "the delivered number was inflated" — only the
+    // sign of this column says which way a given run moved.
+    delta: v1 - v2,
     date: summary.date || '?',
     domain: summary.domain || '?',
     // The run's own stored headline. It is a plain MENTION RATE, not the
@@ -66,10 +75,16 @@ export function rowFor(summary) {
     // differencing the two would compare a rate with an index.
     storedHeadline: typeof summary.score === 'number' ? summary.score : null,
     v2: computeUVI(components),
-    // The ONLY runs where v1 and v2 differ, by construction: v2 is v1 plus the
-    // small-sample guard, so a run the guard never touched scores identically
-    // under both. Where it did fire, the delivered number was HIGHER — those
-    // axes counted then and do not now.
+    // The v1 composite, recovered rather than read: v2 is v1 plus the guard, so
+    // the same module with the floor at 0 computes the pre-v2 number exactly.
+    // This is what the client was actually shown, and the only way to get it —
+    // `scores` was never persisted.
+    v1: computeUVI(components, undefined, 0),
+    // Which axes the guard MATCHED. Not the same question as "did the number
+    // move": `resolveAxes` stands the guard down entirely when it matches every
+    // measured axis (publishing 0 because nothing survived would be a louder
+    // lie than the one being fixed), so a row can be flagged here and still
+    // score identically under both versions. `delta` is the authority.
     uncounted: [...guarded.values()].map(g => `${g.key} (n=${g.n})`),
     guardFired: guarded.size > 0,
     cells: (summary.results || []).length,
@@ -96,30 +111,33 @@ function main(dirs) {
 
   const ok = rows.filter(r => !r.error);
   ok.sort((a, b) => (a.who || '').localeCompare(b.who || '') || String(a.date).localeCompare(String(b.date)));
-  const affected = ok.filter(r => r.guardFired);
+  const moved = ok.filter(r => r.delta !== 0);
 
   console.log(`# Каждый сохранённый прогон под UVI v${UVI_VERSION} — ${ok.length} прогонов\n`);
   console.log('Считано из сохранённых `_summary.json` чистым модулем `lib/report/visibility-index.js`.');
   console.log('Ни одного сетевого вызова, ни одной записи, ни одного перегенерированного отчёта.\n');
-  console.log('**Чего в этой таблице нет и почему.** Числа v1, которое видел клиент, на диске НЕ существует:');
-  console.log('поле `scores` пусто во всех 32 сводках — композит считался в момент рендера и нигде не сохранялся.');
-  console.log('Столбец «сохранённый заголовок» — это доля упоминаний, ДРУГАЯ величина; вычитать её из UVI нельзя,');
-  console.log('получится разность ставки и индекса. Поэтому колонки Δ здесь нет.\n');
-  console.log('**Что зато выводится строго.** v2 — это v1 плюс гейт малой выборки, значит прогон, которого гейт не коснулся,');
-  console.log('под обеими версиями даёт ОДНО число. Расходятся ровно те строки, где столбец гейта непустой, и расходятся');
-  console.log('в одну сторону: отданный документ показывал БОЛЬШЕ, потому что тогда эти оси считались.\n');
-  console.log('| ⚠ | Кто | Дата | v2 (UVI) | сохранённый заголовок (доля упоминаний, не композит) | Оси, снятые гейтом малой выборки | Ячеек | Выборка |');
-  console.log('|---|---|---|---:|---:|---|---:|---:|');
+  console.log('**Откуда взялся столбец v1.** На диске его нет: поле `scores` пусто во всех сводках — композит считался');
+  console.log('в момент рендера и нигде не сохранялся. Но v2 это в точности v1 плюс гейт малой выборки, поэтому тот же');
+  console.log('модуль с порогом выборки 0 воспроизводит доv2-е число ровно. Это НЕ пересчёт «по памяти»: гейт пуст,');
+  console.log('считаются все измеренные оси, арифметика та же самая.\n');
+  console.log('**Что НЕ надо читать как v1.** Столбец «сохранённый заголовок» — доля упоминаний, ДРУГАЯ величина.');
+  console.log('Вычитать её из UVI нельзя: получится разность ставки и индекса.\n');
+  console.log('**Знак Δ не предопределён.** Гейт снимает ось и перенормирует по остатку, поэтому снятая СЛАБАЯ ось');
+  console.log('композит поднимает. «Гейт сработал» не равно «клиенту показали завышенное»; куда сдвинулся прогон,');
+  console.log('говорит только знак Δ.\n');
+  console.log('| Δ | Кто | Домен | Дата | v1 (что видел клиент) | v2 (сегодня) | Δ | сохранённый заголовок (доля упоминаний, не композит) | Оси, накрытые гейтом | Ячеек | Выборка |');
+  console.log('|---|---|---|---|---:|---:|---:|---:|---|---:|---:|');
   for (const r of ok) {
-    console.log(`| ${r.guardFired ? '⚠' : ''} | ${r.who} | ${r.date} | ${r.v2 ?? '—'} | ${r.storedHeadline ?? '—'} | ${r.uncounted.length ? r.uncounted.join(', ') : '—'} | ${r.cells} | ${r.sample ?? '—'} |`);
+    const mark = r.delta > 0 ? '↓' : r.delta < 0 ? '↑' : '';
+    console.log(`| ${mark} | ${r.who} | ${r.domain} | ${r.date} | ${r.v1 ?? '—'} | ${r.v2 ?? '—'} | ${r.delta > 0 ? '−' + r.delta : r.delta < 0 ? '+' + -r.delta : '0'} | ${r.storedHeadline ?? '—'} | ${r.uncounted.length ? r.uncounted.join(', ') : '—'} | ${r.cells} | ${r.sample ?? '—'} |`);
   }
   const bad = rows.filter(r => r.error);
   if (bad.length) {
     console.log(`\n## Не прочитано (${bad.length})\n`);
     for (const r of bad) console.log(`- ${r.error}`);
   }
-  console.log(`\n⚠ — ${affected.length} прогонов, где гейт малой выборки сработал: ТОЛЬКО по ним отданный клиенту документ показывает завышенное число.`);
-  console.log('Остальные ' + (ok.length - affected.length) + ' под v1 и v2 дают одно и то же, пересматривать их незачем.');
+  console.log(`\n**${moved.length} из ${ok.length} прогонов меняют число между версиями** — ↓ значит сегодня ниже, чем было отдано, ↑ значит выше.`);
+  console.log('Остальные ' + (ok.length - moved.length) + ' под v1 и v2 дают одно и то же, пересматривать их незачем.');
 }
 
 // Only run when invoked directly — importable for the test.
