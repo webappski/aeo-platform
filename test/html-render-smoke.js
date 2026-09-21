@@ -127,7 +127,7 @@ test('renders the verdict hero with a headline sentence and the index KPI', () =
   const html = renderHtml(baseSummary, [baseSnapshot]);
   assert.ok(/class="lr-hero-title"/.test(html), 'verdict headline missing');
   assert.ok(/class="lr-kpi-num"/.test(html), 'headline KPI number missing');
-  assert.ok(/Visibility index/.test(html), 'index KPI label missing');
+  assert.ok(/Share of answers naming or citing you/.test(html), 'share KPI label missing');
 });
 
 test('the verdict headline is a sentence, not a bare number', () => {

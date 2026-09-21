@@ -32,7 +32,7 @@ function test(name, fn) {
 
 /** The index metric as buildRunMetrics builds it, from a score series. */
 const indexFor = (history) => buildMetric({
-  id: 'index', label: 'Visibility index', unit: 'points',
+  id: 'index', label: 'Share of answers naming or citing you', unit: 'points',
   history, unitLabel: 'points', unitLabelOne: 'point',
 });
 
@@ -46,13 +46,13 @@ test('run 1 states the score and calls it the baseline, never a change', () => {
   assert.equal(m.kind, 'baseline');
   assert.equal(m.direction, null, 'there is no direction on a first run');
   assert.equal(m.points, null);
-  assert.match(plain(m), /^50 of 100 on the first run\./);
+  assert.match(plain(m), /^50% of answers named or cited you on the first run\./);
   assert.match(plain(m), /This is the baseline\./);
 });
 
 test('a first run falls back to the summary score when the series carries none', () => {
   const m = buildVerdictHeadline({ index: indexFor([]), changedCell: null, fallbackScore: 42 });
-  assert.match(plain(m), /^42 of 100 on the first run/);
+  assert.match(plain(m), /^42% of answers named or cited you on the first run/);
 });
 
 test('nothing changed hands -> the magnitude, then "every answer held its ground"', () => {
@@ -269,7 +269,7 @@ function snap(index, score, mentionAt) {
 test('a first run prints the baseline headline, not a delta', () => {
   const md = sectionRunVerdict([snap(1, 50, () => 'yes')]);
   assert.match(md, /## The run in one page/);
-  assert.match(md, /\*\*50 of 100 on the first run\. This is the baseline\.\*\*/);
+  assert.match(md, /\*\*50% of answers named or cited you on the first run\. This is the baseline\.\*\*/);
 });
 
 test('a held run prints the magnitude and says every answer held', () => {

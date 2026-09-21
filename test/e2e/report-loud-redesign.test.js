@@ -337,7 +337,7 @@ test('a first run reads as a baseline on both surfaces, not as a change', async 
     const latest = seedRuns(dir, 1, { mentionAt: () => 'yes' });
     const { html, md } = renderReport(dir, latest);
     assert.equal(htmlHeadline(html), mdHeadline(md));
-    assert.match(htmlHeadline(html), /^\d+ of 100 on the first run\. This is the baseline\.$/);
+    assert.match(htmlHeadline(html), /^\d+% of answers named or cited you on the first run\. This is the baseline\.$/);
   });
 });
 

@@ -232,7 +232,7 @@ test('the caveat states the delta rather than withholding it, on HTML too', () =
   // block that names competitors.
   const html = renderPair(snapshots);
   const lede = text(html.match(/<p class="lr-hero-lede">([\s\S]*?)<\/p>/)?.[1] || '');
-  assert.match(lede, /scored 50 of 100 on 2026-09-01 — 42 points below the 2026-08-13 run/,
+  assert.match(lede, /was named or cited in 50% of answers on 2026-09-01 — 42 points below the 2026-08-13 run/,
     `the movement must still be stated in full; hero lede was:\n${lede}`);
   assert.match(text(html), /A note on the measurement/,
     'the same report must now also say the two runs were not measured the same way');

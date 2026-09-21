@@ -196,6 +196,21 @@ const ARCHITECTURE_TELLS = [
   { re: /a second ask/i,             in: ['html', 'md'] },
   { re: /classifier model/i,         in: ['md'] },
   { re: /cross-checked by two/i,     in: ['md'] },
+  // Funnel-stage blurb. Not an architecture tell — a different leak class on the
+  // same two-sided mechanism, so it lives in the same list rather than in a
+  // near-identical second one. The default blurb does two things a white-label
+  // deliverable must not: it reads the table FOR the client ("means AI knows
+  // your category but not why to choose you"), which is advice in a document
+  // that carries statistics only, and it names our config file by filename,
+  // which is a tool fingerprint in a document that ships under someone else's
+  // legend. The TABLE stays in both modes — withholding figures reads as a
+  // broken report, not a reserved one.
+  //
+  // This pair only became testable when the seed above gained tags: the section
+  // is skipped outright when no cell carries one, so the ban had nothing to
+  // read and would have passed over an empty render.
+  { re: /why to choose you/i,        in: ['html', 'md'] },
+  { re: /\.aeo-tracker\.json/i,      in: ['html', 'md'] },
 ];
 
 // Seed designed to FORCE every advisory branch to render in the DEFAULT report:
@@ -255,6 +270,10 @@ function seedSummary(dir) {
       {
         query: 'Q1', queryText: 'best test brands 2026', provider: 'openai', label: 'ChatGPT',
         model: 'gpt-5-search-api', mode: 'web', mention: 'yes', position: 1, citationCount: 1,
+        // Tagged so the funnel section RENDERS: it is skipped entirely when no
+        // cell carries a tag, and a ban over a section that never renders
+        // reads as clean while proving nothing (AP-LEAKTEST-BLIND-FIXTURES).
+        tag: 'ToFu',
         canonicalCitations: ['https://g2.com/categories/test'], competitors: ['RivalCo'], competitorsUnverified: [],
         responseQuality: 'ok', hasBrandInCitations: true, responseExcerpt: 'TestBrand is a strong option for teams.',
         elapsedMs: 100, inputTokens: 10, outputTokens: 10, costUsd: 0.54,
@@ -262,6 +281,7 @@ function seedSummary(dir) {
       {
         query: 'Q2', queryText: 'best rival brands 2026', provider: 'openai', label: 'ChatGPT',
         model: 'gpt-5-search-api', mode: 'web', mention: 'src', position: null, citationCount: 1,
+        tag: 'BoFu',
         canonicalCitations: ['https://capterra.com/p/test'], competitors: ['RivalCo'], competitorsUnverified: [],
         responseQuality: 'ok', hasBrandInCitations: true, responseExcerpt: 'RivalCo leads, though others appear.',
         elapsedMs: 100, inputTokens: 10, outputTokens: 10, costUsd: 0.54,
@@ -470,6 +490,10 @@ function seedRevealProject(dir, { fullText, withRawFile = true } = {}) {
       {
         query: 'Q1', queryText: 'best test brands 2026', provider: 'openai', label: 'ChatGPT',
         model: 'gpt-5-search-api', mode: 'web', mention: 'yes', position: 1, citationCount: 1,
+        // Tagged so the funnel section RENDERS: it is skipped entirely when no
+        // cell carries a tag, and a ban over a section that never renders
+        // reads as clean while proving nothing (AP-LEAKTEST-BLIND-FIXTURES).
+        tag: 'ToFu',
         canonicalCitations: ['https://testbrand.com/page'], competitors: ['RivalCo'], competitorsUnverified: [],
         responseQuality: 'ok', hasBrandInCitations: true,
         // A SHORT excerpt — distinct from the full answer so the "full not

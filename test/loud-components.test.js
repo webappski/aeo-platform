@@ -332,8 +332,8 @@ test('the verdict hero leads with a sentence, then the numbers', () => {
   const html = verdictHero({
     kicker: 'Run 3 · 2026-03-01',
     headlineHtml: 'Down 8 points. Gemini dropped an answer.',
-    ledeHtml: 'Brand scored 92 of 100.',
-    kpis: [kpiCard({ label: 'Visibility index', value: 92, denom: '/ 100', chipHtml: chip('▼ 8', 'bad') })],
+    ledeHtml: 'Brand was named or cited in 92% of answers.',
+    kpis: [kpiCard({ label: 'Share of answers naming or citing you', value: '92%', chipHtml: chip('▼ 8', 'bad') })],
   });
   const headlineAt = html.indexOf('lr-hero-title');
   const numberAt = html.indexOf('lr-kpi-num');
