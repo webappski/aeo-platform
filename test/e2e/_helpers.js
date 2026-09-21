@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { domainStorageSlug } from '../../lib/util/domain-storage.js';
+import { degradationsFor } from '../../lib/report/section-degradation.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const BIN = join(REPO_ROOT, 'bin', 'aeo-tracker.js');
@@ -309,6 +310,114 @@ export function seedReplayProject(tmpDir, opts = {}) {
 export function todayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
+
+// ─── Conditional report surfaces (AP-LEAKTEST-BLIND-FIXTURES) ───────────────
+//
+// A leak denylist checks not what it lists, but what the FIXTURE is able to
+// produce. The leak E2Es seeded runs carrying none of the fields that gate the
+// report's CONDITIONAL surfaces — no `extractionSources`, no `degraded`, no
+// `errorKind`, no `declaredSubsets`, no per-cell `sentiment`, no `modelDrift` /
+// `resolvedModel`, no `costTracked:false` — so those surfaces never rendered
+// and the denylists never touched them. Whole blocks of client-facing copy were
+// green because they were ABSENT, not because they were clean.
+//
+// This is the one seed that closes that: ONE CELL PER CONDITION, appended to
+// whatever results a host test already tuned, so each test's own preconditions
+// (the advisory branches in white-label, the cost card in public) stay intact.
+//
+// `degraded` is NOT hand-written here. It is derived by the SAME
+// `degradationsFor()` the live run and the run-manual path call
+// (bin/aeo-tracker.js — grep `degradationsFor`), from `extractionSources` /
+// `sentiment` shaped exactly as extract-competitors-llm.js and
+// sentiment-classify.js write them. A hand-typed `degraded` array would be a
+// fixture agreeing with itself.
+
+/** The classify-tier seats a real run records — cross-check grading, not the answer engines. */
+const GRADER_PRIMARY = { provider: 'openai', model: 'gpt-5-nano' };
+const GRADER_SECONDARY = { provider: 'gemini', model: 'gemini-3.1-flash-lite' };
+
+/**
+ * One result cell per conditional surface, built on the host test's own cell
+ * shape so nothing else about its run changes.
+ *
+ * @param {Object} template a representative result row from the host fixture
+ * @returns {Array<Object>} cells to append to `summary.results`
+ */
+export function conditionalSurfaceCells(template) {
+  const base = (n, extra) => ({
+    ...template,
+    query: `C${n}`,
+    queryText: `conditional surface probe ${n}`,
+    mention: 'no',
+    position: null,
+    citationCount: 0,
+    canonicalCitations: [],
+    competitors: [],
+    competitorsUnverified: [],
+    responseExcerpt: `Conditional surface probe ${n}.`,
+    ...extra,
+  });
+
+  // C1 — a classify seat that came back unreadable: `extractionSources` with a
+  // typed `errorKind`, which is what makes the degradation caveat name a cause.
+  const c1Sources = {
+    primary: { ...GRADER_PRIMARY, brands: [], error: 'unparseable response', errorKind: 'parse' },
+    secondary: { ...GRADER_SECONDARY, brands: ['RivalCo'] },
+  };
+  // C2 — the seat that failed once and was recovered by a re-ask. Same field,
+  // different branch: the caveat's "recovered" half only renders from this.
+  const c2Sources = {
+    primary: { ...GRADER_PRIMARY, brands: ['RivalCo'], retriedOn: GRADER_SECONDARY.provider },
+    secondary: { ...GRADER_SECONDARY, brands: ['RivalCo'] },
+  };
+  // C3 — a scored cell whose OTHER grading seat was unreachable: carries both a
+  // per-cell `sentiment.label` (the sentiment section renders only from this)
+  // and `sentiment.slots` with the second typed cause a real run records.
+  const c3Sentiment = {
+    label: 'negative',
+    confidence: 'single-model',
+    rationale: 'The answer lists the brand below two rivals.',
+    slots: {
+      primary: { ...GRADER_PRIMARY },
+      secondary: { ...GRADER_SECONDARY, error: 'connection reset', errorKind: 'provider' },
+    },
+  };
+
+  return [
+    base(1, { extractionSources: c1Sources, degraded: degradationsFor({ extractionSources: c1Sources }) }),
+    base(2, { extractionSources: c2Sources, degraded: degradationsFor({ extractionSources: c2Sources }) }),
+    base(3, {
+      mention: 'yes', position: 3,
+      sentiment: c3Sentiment,
+      degraded: degradationsFor({ sentiment: c3Sentiment }),
+    }),
+    // C4 — a floating alias served a different model than requested.
+    base(4, { resolvedModel: 'gpt-5-search-api-2026-09-01', modelDrift: true }),
+    // C5 — a model with no pricing-table entry: its $0 is "not tracked", not free.
+    base(5, { costTracked: false, costUsd: 0 }),
+  ];
+}
+
+/**
+ * `summary.declaredSubsets` — an engine that deliberately answered part of the
+ * basket. Gates the first block of the representativeness section (markdown
+ * only; the HTML report has no site for it).
+ */
+// Shape checked against the real writer, not invented: run-manual keys the map
+// by provider id and fills the stamp's `provider` field with
+// `PROVIDERS[name].label` — the DISPLAY name (`Claude`), not the id. The field
+// name says id and the value is a label; getting that backwards here would have
+// made this fixture agree with itself instead of with the product.
+export const CONDITIONAL_DECLARED_SUBSETS = Object.freeze({
+  anthropic: {
+    name: 'claude-manual-15',
+    provider: 'Claude',
+    covered: 2,
+    total: 5,
+    questions: [1, 3],
+    warning: 'The subsample was chosen by hand, so it is not a random sample of the basket.',
+  },
+});
 
 export function installFromPack(tarballPath, intoDir) {
   // Minimal stub package.json so `npm install` has a target.

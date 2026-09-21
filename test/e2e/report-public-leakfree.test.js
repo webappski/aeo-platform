@@ -22,9 +22,23 @@
  * be absent in both). The UVI FORMULA (Σ(value × applied_weight)) MUST survive
  * in both modes — only the file-path provenance is dropped.
  *
+ * (4) run-internal per-cell fields in the EMBEDDED BRIDGE PAYLOAD (added
+ *     2026-09-21, AP-LEAKTEST-BLIND-FIXTURES). `--public` KEEPS the
+ *     Mission-Control bridge (R8) and the bridge embeds its metadata JSON
+ *     straight into the served HTML, so the strict allow-list in
+ *     lib/report/mc-metadata.js `perCell` is a load-bearing leak guard — it
+ *     drops `extractionSources` / `degraded` / `errorKind` / `slots` /
+ *     `resolvedModel` / `modelDrift` / `costTracked` by NOT naming them. Until
+ *     the seed carried those fields the guard had nothing to drop: the test
+ *     made no assertion about payload contents at all.
+ *
  * Mutation-sanity (run by hand to confirm teeth): delete the `&& !publicMode`
  * guard on the cost card in lib/report/html.js, OR make the formulaNote /
  * weightsNote ignore opts.public — this test MUST go RED.
+ * For (4), name any one of those fields in `perCell` → RED. Verified 2026-09-21
+ * for `extractionSources` and `costTracked`, both against the pre-seed file too
+ * (`git show HEAD:<this file>`), which stayed GREEN under the same mutation —
+ * that green is the whole reason this block exists.
  *
  * Rendering precondition: the Session-cost card only renders when the latest
  * _summary.json carries `costByModel` with engine labels (ChatGPT/Gemini/…).
@@ -44,6 +58,8 @@ import {
   responsesDateDir,
   reportsDateDir,
   todayDateString,
+  conditionalSurfaceCells,
+  CONDITIONAL_DECLARED_SUBSETS,
 } from './_helpers.js';
 
 const KEYS = { GEMINI_API_KEY: 'test-key-do-not-use-real', OPENAI_API_KEY: 'test-key-do-not-use-real' };
@@ -93,9 +109,32 @@ function seedSummaryWithCost(dir) {
       },
     ],
   };
+  // One cell per CONDITIONAL surface. In `--public` the Mission-Control bridge
+  // SURVIVES (R8) and embeds its metadata payload straight into the served
+  // HTML, so the strict allow-list in lib/report/mc-metadata.js `perCell` is a
+  // load-bearing leak guard — and with no such fields in the fixture it had
+  // nothing to drop and nothing to prove (AP-LEAKTEST-BLIND-FIXTURES).
+  summary.results.push(...conditionalSurfaceCells(summary.results[0]));
+  summary.declaredSubsets = CONDITIONAL_DECLARED_SUBSETS;
   writeFileSync(join(dd, '_summary.json'), JSON.stringify(summary));
   return today;
 }
+
+// Run-internal per-cell fields that must never reach a hosted page. They are
+// dropped by OMISSION — `perCell` names every field it keeps — so the only way
+// to test the guard is to have the fields in the run and look for them in the
+// served file. Matched as JSON keys: the payload is embedded verbatim, and a
+// bare word would collide with ordinary prose.
+const PAYLOAD_INTERNALS = [
+  'extractionSources',
+  'degraded',
+  'errorKind',
+  'slots',
+  'resolvedModel',
+  'modelDrift',
+  'costTracked',
+];
+const keyRe = (k) => new RegExp(`"${k}"\\s*:`);
 
 function reportHtml(dir, today, extraArgs = []) {
   const r = spawnCli(['report', '--no-open', ...extraArgs], { cwd: dir, env: KEYS });
@@ -146,5 +185,28 @@ test('report --public omits the cost card, telemetry and every internal source p
     // R8 funnel-invariant preserved: the public-name anchor <article id="mc-bridge">
     // is NOT a leak and must survive (the commerce CTA lives there).
     assert.match(html, /<article[^>]*\bid="mc-bridge"/, '--public must keep the <article id="mc-bridge"> anchor (R8)');
+  });
+});
+
+test('report --public embeds the bridge payload without a single run-internal per-cell field', async () => {
+  await withTmpProject('aeo-e2e-public-payload-', async (dir) => {
+    const today = seedSummaryWithCost(dir);
+
+    // TWO-SIDED: the fields are genuinely IN this run. Without this half, the
+    // absence below would prove only that the fixture never had them — the
+    // exact false-pass this test existed with for months.
+    const summaryRaw = readFileSync(join(responsesDateDir(dir, DOMAIN, today), '_summary.json'), 'utf-8');
+    for (const k of PAYLOAD_INTERNALS) {
+      assert.match(summaryRaw, keyRe(k), `the seeded run must carry "${k}" for its absence downstream to mean anything`);
+    }
+
+    const html = reportHtml(dir, today, ['--public']);
+    // The bridge is present — so the payload really is embedded and the
+    // assertions below are scanning something, not an omitted block.
+    assert.match(html, /<article[^>]*\bid="mc-bridge"/, '--public must keep the bridge (R8) — otherwise there is no payload to scan');
+    assert.match(html, /"queryText"\s*:/, 'the embedded payload must carry the allow-listed per-cell fields');
+    for (const k of PAYLOAD_INTERNALS) {
+      assert.doesNotMatch(html, keyRe(k), `--public served HTML must not carry the run-internal field "${k}"`);
+    }
   });
 });

@@ -174,17 +174,34 @@ test('the SAME sentence reaches the markdown report and the HTML report', () => 
   // page the founder prints did not.
 });
 
-test('the caveat reaches the public and white-label deliverables too, still naming no grader', () => {
+test('the caveat reaches the public deliverable unchanged, still naming no grader', () => {
   // Deliberate, not an accident of placement: a client reading a thin competitor
-  // list is exactly the reader who must know a call failed. What white-label
-  // strips is tool-internal detail — which is why the sentence carries none.
-  for (const opts of [{ public: true }, { whiteLabel: true }]) {
-    const html = renderHtml(SUMMARY, [SNAPSHOT], opts);
-    const label = JSON.stringify(opts);
-    assert.ok(html.includes('could not be cross-checked'), `caveat missing from ${label} HTML`);
-    assert.doesNotMatch(html.slice(html.indexOf('could not be cross-checked') - 400, html.indexOf('could not be cross-checked') + 400),
-      /Gemini|gemini/, `${label} HTML names the grading vendor next to the caveat`);
+  // list is exactly the reader who must know a call failed. `--public` is our
+  // own page under our own name, so it keeps the full wording.
+  const html = renderHtml(SUMMARY, [SNAPSHOT], { public: true });
+  assert.ok(html.includes('could not be cross-checked'), 'caveat missing from public HTML');
+  assert.doesNotMatch(html.slice(html.indexOf('could not be cross-checked') - 400, html.indexOf('could not be cross-checked') + 400),
+    /Gemini|gemini/, 'public HTML names the grading vendor next to the caveat');
+});
+
+test('white-label keeps the caveat and drops the instrument architecture, not the warning', () => {
+  // This test used to assert that the SAME sentence reaches white-label, on the
+  // reasoning that it "carries no tool-internal detail". It does: a two-model
+  // cross-check, an unparseable JSON reply and a re-ask are all how the tool is
+  // built, and a self-made local stats tool has none of them. Corrected
+  // 2026-09-21 (AP-LEAKTEST-BLIND-FIXTURES). The warning is what the client is
+  // owed and it stays; the machinery is what breaks the legend and it goes.
+  const html = renderHtml(SUMMARY, [SNAPSHOT], { whiteLabel: true });
+  assert.ok(html.includes('classified at reduced confidence'),
+    'white-label HTML must still tell the client those answers are weaker evidence');
+  for (const re of [/grading model/i, /one model instead of two/i, /not valid JSON/i, /a second ask/i, /could not be cross-checked/]) {
+    assert.doesNotMatch(html, re, `white-label HTML leaks the instrument architecture: ${re}`);
   }
+  // Vendor check stays WINDOWED, as above: "Gemini" is a legitimate answer
+  // engine all over this page — the leak would be naming it as the grader.
+  const at = html.indexOf('classified at reduced confidence');
+  assert.doesNotMatch(html.slice(at - 400, at + 400), /Gemini|gemini/,
+    'white-label HTML names the grading vendor next to the caveat');
 });
 
 test('a clean run adds nothing to either surface', () => {

@@ -19,6 +19,14 @@
  * `if (!args.output)` (drop `&& !args.public`) — the "survives under --public"
  * test MUST go RED. Restore → green.
  *
+ * NOT A LEAK TEST, despite the company it keeps. Its three assertions are
+ * `existsSync`, `!existsSync` and one stdout regex — it never reads a rendered
+ * report, so no denylist and no fixture enrichment changes anything it proves.
+ * It was grouped with the two leak E2Es in the AP-LEAKTEST-BLIND-FIXTURES card
+ * (2026-09-20) and deliberately left alone when that card was closed: a content
+ * assertion here would only duplicate report-public-leakfree. Read it as a test
+ * of FILE BEHAVIOUR under `--public`, not as a third line of leak defence.
+ *
  * Pure file-write + subprocess; no network, no live API, no product test hooks.
  */
 import test from 'node:test';

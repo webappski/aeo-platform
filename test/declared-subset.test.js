@@ -90,6 +90,21 @@ test('the stamp names the subsample, its coverage, and why the number is not a p
   assert.equal(buildDeclaredSubsetCaveat(null), null, 'a full leg carries no caveat');
 });
 
+test('the caveat names the engine the rest of the report names, whichever shape the stamp holds', () => {
+  // run-manual fills the stamp's `provider` with `PROVIDERS[name].label`, so
+  // today it arrives as «Claude» and passes straight through (asserted above).
+  // The hazard is the FIELD NAME: `provider` means an id everywhere else in
+  // this codebase, and a caller who trusts the name hands over `anthropic` —
+  // which would put a second name for one engine on a page whose every table
+  // says Claude. Both shapes must land on the same word.
+  const stampWithId = { name: 'claude-leg-15of50', provider: 'anthropic', covered: 15, total: 50, warning: 'w' };
+  assert.match(buildDeclaredSubsetCaveat(stampWithId).title, /^Claude answered 15 of 50/,
+    'a raw provider id must be normalised to the engine label, not printed');
+  const stampUnknown = { ...stampWithId, provider: 'some-new-engine' };
+  assert.match(buildDeclaredSubsetCaveat(stampUnknown).title, /^some-new-engine answered/,
+    'an unmapped engine passes through — hiding which one is worse than printing a slug');
+});
+
 test('an unasked cell is neither a hit nor a miss nor a failed call', () => {
   const cell = buildMissingCell({
     index: 6, queryText: 'query text 6', queryId: 'qid-6',
