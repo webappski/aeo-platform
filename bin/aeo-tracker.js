@@ -5820,7 +5820,7 @@ const { values, positionals } = parseArgs({
     // `report` at aeo-responses/<date>/_summary.json so an older proof report
     // can be regenerated from data still on disk. See cmdReport --for-date block.
     'for-date':      { type: 'string' },
-    // v1.15.1 — render from what is already on disk and make no request at all.
+    // v1.16.0 — render from what is already on disk and make no request at all.
     // The four --no-* flags below each silence ONE fetcher; three more fetchers
     // (citation classification, LLM actions, crawlability) never had a flag, so
     // "all four --no-* set" was never the same thing as "offline" and a

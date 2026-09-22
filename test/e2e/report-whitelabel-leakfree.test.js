@@ -210,7 +210,7 @@ const ARCHITECTURE_TELLS = [
   // is skipped outright when no cell carries one, so the ban had nothing to
   // read and would have passed over an empty render.
   //
-  // The phrase moved once (1.15.1): the blurb used to read a ToFu→BoFu funnel
+  // The phrase moved once (1.16.0): the blurb used to read a ToFu→BoFu funnel
   // story out of intent classes we measure but do not map onto a funnel, so it
   // was rewritten. Pin whatever advisory sentence the default blurb currently
   // carries — the leak class is "advice in a statistics-only document", not any

@@ -32,7 +32,7 @@ highlighting, and the backtick-in-CSS-comment bug class is eliminated.
 
 ---
 
-### 2. ~~Funnel-stage tags are a feature with no way in~~ — RESOLVED 1.15.1
+### 2. ~~Funnel-stage tags are a feature with no way in~~ — RESOLVED 1.16.0
 
 **Closed 2026-09-21** (`c985265`). The way in existed all along and was being
 discarded: `init` classifies every question it selects
@@ -62,10 +62,10 @@ now say what they count.
 `['commercial']` on purpose, so across the 14 configs on disk (284 questions) the
 breakdown skews heavily commercial — roughly a fifth of a basket lands in
 `vertical` / `informational` / `comparison`. The section earns its place on that
-fifth. Separately, the Polish `commercial` pattern matches `najlepsze`/`najlepszy`
-but not the feminine `najlepsza`, which is the form real Polish client baskets
-use; fixing it changes classification, so it belongs in a batch that can measure
-before and after.
+fifth. The Polish superlative gap noted here when this entry was written
+(`najlepsza`, the feminine form real client baskets use, matched nothing) was
+closed later in the SAME release by `e52893a`, together with the language-tag
+and Cyrillic-boundary defects found alongside it — see the 1.16.0 changelog.
 
 ## Recently resolved (2026-05 editorial redesign)
 

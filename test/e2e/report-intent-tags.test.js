@@ -2,7 +2,7 @@
  * E2E — intent tags travel from `.aeo-tracker.json` to the rendered report, and
  * the report never dresses them up as a funnel.
  *
- * Why this file exists. The by-tag section shipped in v0.4 and, until 1.15.1,
+ * Why this file exists. The by-tag section shipped in v0.4 and, until 1.16.0,
  * had never rendered in any run on any machine: `init` classified every query it
  * selected (lib/init/research/classify-intent.js) and then dropped the result,
  * so no config ever carried a `tag`, so `r.tag` was always absent and the
@@ -170,7 +170,7 @@ test('a basket where every question carries the SAME tag hides the section', asy
 
 test('a string-only basket still runs, and simply carries no intent section', async () => {
   await withTmpProject('aeo-e2e-intent-legacy-', async (dir) => {
-    // Exactly the shape every config written before 1.15.1 has on disk.
+    // Exactly the shape every config written before 1.16.0 has on disk.
     const { domain } = seedReplayProject(dir, { variant: 'stable', queries: QUERY_TEXTS });
     const { summary, md, html } = runAndReport(dir, domain);
 
