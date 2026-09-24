@@ -237,7 +237,9 @@ test('English evidence does not claim words that are also Polish or German', () 
   // carry no other evidence, so only the site language may decide them.
   assert.equal(detectQueryLang('audyt widocznosci w AI na rok 2026', 'pl'), 'pl');
   assert.equal(detectQueryLang('co my mamy do SEO', 'pl'), 'pl');
-  assert.equal(detectQueryLang('KI Sichtbarkeit in Europa was die Marke braucht', 'de'), 'de');
+  assert.equal(detectQueryLang('co to jest AEO', 'pl'), 'pl');
+  assert.equal(detectQueryLang('KI in Europa was die Marke braucht', 'de'), 'de');
+  assert.equal(detectQueryLang('SEO so gut wie AEO', 'de'), 'de');
 });
 
 console.log('\nreconcileIntent classifies per question, not per site');
