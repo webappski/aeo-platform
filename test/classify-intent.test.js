@@ -190,7 +190,18 @@ const DETECT = [
   // No evidence → the SITE language, which is what the pipeline used for every
   // question before this existed. Never 'en' by default.
   ['AEO monitoring platform', 'pl', 'pl', 'no evidence falls back to the site, not to English'],
-  ['best AEO agencies 2026', 'en', 'en', 'English is the absence of evidence, not a word list'],
+  ['best AEO agencies 2026', 'en', 'en', 'an English site reads an English question as English'],
+  // English evidence — an English question in a Polish or German basket. It
+  // used to fall back to the site language and meet the Polish pattern set.
+  ['how to fix AI search visibility for my startup', 'pl', 'en', 'English function words on a Polish site'],
+  ['Answer Engine Optimization consultants for B2B startups', 'de-DE', 'en', 'English function word on a German site'],
+  ['AEO monitoring platform', 'de', 'de', 'still no evidence — the site, not English'],
+  // English never decides against another language: English words inside a
+  // foreign question are common, the reverse is rare. Plain ASCII on purpose,
+  // so no diacritic decides first, and an English site, so a tie falling back
+  // would silently read it as English.
+  ['najlepsze agencje AEO for SaaS', 'en', 'pl', 'a Polish word beats an English one — English never ties'],
+  ['beste AEO Anbieter for SaaS', 'en', 'de', 'a German word beats an English one'],
   // A guess would be worse than the fallback.
   ['najlepsza Agentur für widoczności', 'en', 'en', 'two scripts at once is ambiguous — fall back, do not pick'],
 ];
@@ -216,6 +227,17 @@ test('English terms that look foreign are NOT claimed by a word list', () => {
   // and are deliberately absent from the detector for exactly this reason.
   assert.equal(detectQueryLang('top ranking AEO tools', 'en'), 'en');
   assert.equal(detectQueryLang('best AEO platform for firms', 'en'), 'en');
+});
+
+test('English evidence does not claim words that are also Polish or German', () => {
+  // The English list is the new false-positive risk, in the other direction:
+  // a word it shares with Polish or German would pull a foreign question to
+  // English patterns. `do`, `to`, `na`, `my` (Polish) and `in`, `was`, `die`,
+  // `so` (German) are left out for that reason — these plain-ASCII questions
+  // carry no other evidence, so only the site language may decide them.
+  assert.equal(detectQueryLang('audyt widocznosci w AI na rok 2026', 'pl'), 'pl');
+  assert.equal(detectQueryLang('co my mamy do SEO', 'pl'), 'pl');
+  assert.equal(detectQueryLang('KI Sichtbarkeit in Europa was die Marke braucht', 'de'), 'de');
 });
 
 console.log('\nreconcileIntent classifies per question, not per site');
