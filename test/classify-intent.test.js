@@ -32,7 +32,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  classifyIntent, reconcileIntent, normalizeLang, detectQueryLang, INTENT_PATTERNS,
+  classifyIntent, reconcileIntent, normalizeLang, detectQueryLang, INTENT_PATTERNS, EN_EXCLUDED,
 } from '../lib/init/research/classify-intent.js';
 
 let passed = 0;
@@ -229,17 +229,61 @@ test('English terms that look foreign are NOT claimed by a word list', () => {
   assert.equal(detectQueryLang('best AEO platform for firms', 'en'), 'en');
 });
 
-test('English evidence does not claim words that are also Polish or German', () => {
-  // The English list is the new false-positive risk, in the other direction:
-  // a word it shares with Polish or German would pull a foreign question to
-  // English patterns. `do`, `to`, `na`, `my` (Polish) and `in`, `was`, `die`,
-  // `so` (German) are left out for that reason — these plain-ASCII questions
-  // carry no other evidence, so only the site language may decide them.
-  assert.equal(detectQueryLang('audyt widocznosci w AI na rok 2026', 'pl'), 'pl');
-  assert.equal(detectQueryLang('co my mamy do SEO', 'pl'), 'pl');
-  assert.equal(detectQueryLang('co to jest AEO', 'pl'), 'pl');
-  assert.equal(detectQueryLang('KI in Europa was die Marke braucht', 'de'), 'de');
-  assert.equal(detectQueryLang('SEO so gut wie AEO', 'de'), 'de');
+// The English list is the new false-positive risk, in the other direction: a
+// word it shares with Polish or German would pull a foreign question to English
+// patterns. The words left out for that reason are EN_EXCLUDED in
+// lib/init/research/classify-intent.js, with the reason for each; this table
+// only supplies one question per word. Every question is plain ASCII and
+// carries no evidence for any language, so the site language decides it —
+// unless its word is put back into the English list.
+const EXCLUDED_PROBES = {
+  do: ['pl', 'audyt SEO do sklepu internetowego'],
+  to: ['pl', 'co to jest AEO'],
+  no: ['pl', 'no dobrze, ktory tracker AI wybrac'],
+  a: ['pl', 'SEO a AEO roznice'],
+  i: ['pl', 'SEO i AEO w sklepie internetowym'],
+  on: ['pl', 'konsultant AEO co on wlasciwie robi'],
+  in: ['de', 'SEO Beratung in Berlin'],
+  was: ['de', 'was bringt AEO fuer kleine Firmen'],
+  will: ['de', 'meine Firma will bei ChatGPT erscheinen'],
+  die: ['de', 'die Marke bei ChatGPT sichtbar machen'],
+  an: ['de', 'Fragen an ChatGPT zur Marke'],
+  am: ['de', 'welche KI Suche nutzen Kunden am meisten'],
+  so: ['de', 'SEO so gut wie AEO'],
+  my: ['pl', 'czego my potrzebujemy od trackera AI'],
+  most: ['pl', 'firma remontujaca most kolejowy'],
+  vs: ['pl', 'Senuto vs Semrush opinie'],
+  tools: ['de', 'kostenlose AEO Tools'],
+  software: ['pl', 'software house Krakow opinie'],
+  engine: ['de', 'Answer Engine Ranking Faktoren'],
+  optimization: ['pl', 'AI Search Optimization szkolenie Warszawa'],
+};
+
+test('every word left out of the English list has a probe', () => {
+  assert.deepEqual(Object.keys(EXCLUDED_PROBES).sort(), [...EN_EXCLUDED].sort());
+});
+
+for (const [word, [site, question]] of Object.entries(EXCLUDED_PROBES)) {
+  test(`excluded "${word}": [site=${site}] "${question}" stays ${site}`, () => {
+    assert.ok(new RegExp(`(?<!\\p{L})${word}(?!\\p{L})`, 'iu').test(question), `the probe must contain "${word}" as a word`);
+    assert.equal(detectQueryLang(question, site), site);
+  });
+}
+
+test('English evidence counts only on a site whose language has patterns', () => {
+  // EN_WORDS was checked against Polish and German, not Dutch: "of" is Dutch
+  // for "or". On an nl site the question keeps the site language and the
+  // brainstorm tag, as it did before English had evidence of its own.
+  const nl = reconcileIntent({ text: 'AEO tool of dienst voor bedrijven', intent: 'commercial' }, 'nl');
+  assert.equal(nl.intentLang, 'nl');
+  assert.equal(nl.intentAgreement, 'lang-unsupported');
+  assert.equal(nl.intentFinal, 'commercial');
+});
+
+test('CONTROL — the same kind of evidence still decides on a Polish site', () => {
+  const pl = reconcileIntent({ text: 'how to fix AI search visibility for my startup', intent: 'commercial' }, 'pl');
+  assert.equal(pl.intentLang, 'en');
+  assert.equal(pl.intentFinal, 'problem');
 });
 
 console.log('\nreconcileIntent classifies per question, not per site');
