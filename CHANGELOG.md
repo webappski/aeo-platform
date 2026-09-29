@@ -2,7 +2,7 @@
 
 All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
-## [Unreleased]
+## [1.16.1] — 2026-09-29
 
 ### Fixed
 
