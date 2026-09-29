@@ -144,34 +144,34 @@ test('the documented mention taxonomy is the taxonomy detectMention emits', () =
     assert.ok(SECTION.includes(label), `the mention table must document the ${label} label`);
   }
 
-  const brand = 'Gcore';
-  const domain = 'gcore.com';
+  const brand = 'Acore';
+  const domain = 'acore.com';
 
   // yes — named in the body.
-  assert.equal(detectMention('We suggest Gcore for edge delivery.', [], brand, domain), 'yes');
-  // yes — separator-tolerant spelling, the documented gcore ≈ G-Core ≈ G Core rule.
-  assert.equal(detectMention('Try G-Core Labs.', [], brand, domain), 'yes');
-  assert.equal(detectMention('Try G Core Labs.', [], brand, domain), 'yes');
+  assert.equal(detectMention('We suggest Acore for edge delivery.', [], brand, domain), 'yes');
+  // yes — separator-tolerant spelling, the documented acore ≈ A-Core ≈ A Core rule.
+  assert.equal(detectMention('Try A-Core Labs.', [], brand, domain), 'yes');
+  assert.equal(detectMention('Try A Core Labs.', [], brand, domain), 'yes');
   // yes — the domain in the body counts as being named.
-  assert.equal(detectMention('See gcore.com for pricing.', [], brand, domain), 'yes');
+  assert.equal(detectMention('See acore.com for pricing.', [], brand, domain), 'yes');
   // src — present ONLY in a cited source URL.
   assert.equal(
-    detectMention('Consider Fastly or Bunny.', ['https://gcore.com/blog/cdn'], brand, domain),
+    detectMention('Consider Fastly or Bunny.', ['https://acore.com/blog/cdn'], brand, domain),
     'src',
   );
   // no — absent in every spelling.
   assert.equal(detectMention('Consider Fastly or Bunny.', [], brand, domain), 'no');
   // no — the documented «does not fire inside a longer word / across a seam» rule.
-  assert.equal(detectMention('They run a big core network.', [], brand, domain), 'no');
-  assert.equal(detectMention('Ask the gcorehouse team.', [], brand, domain), 'no');
+  assert.equal(detectMention('They run an extra core team.', [], brand, domain), 'no');
+  assert.equal(detectMention('Ask the acorehouse team.', [], brand, domain), 'no');
   // The documented dot-is-significant rule.
   assert.equal(detectMention('Built with nodejs.', [], 'Node.js', 'nodejs-example.dev'), 'no');
   assert.equal(detectMention('Built with Node.js.', [], 'Node.js', 'nodejs-example.dev'), 'yes');
 
   // The documented no-fuzzy-matching limit — an engine misspelling is an absence
   // until the operator adds an alias, and the alias then makes it a hit.
-  assert.equal(detectMention('We like Gcoore.', [], brand, domain), 'no');
-  assert.equal(detectMention('We like Gcoore.', [], brand, domain, ['Gcoore']), 'yes');
+  assert.equal(detectMention('We like Acoore.', [], brand, domain), 'no');
+  assert.equal(detectMention('We like Acoore.', [], brand, domain, ['Acoore']), 'yes');
 });
 
 test('«yes and src both count as one for Presence» is literally true', () => {
