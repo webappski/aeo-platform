@@ -25,7 +25,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  applyCliModelOverrides, cliModelPins, cliClassifyPins, resolveRunModels, resolveClassifyChoice,
+  applyCliModelOverrides, cliModelPins, cliClassifyPins, resolveRunModels, resolveClassifyChoice, lastRunModelFromSummary,
 } from '../lib/config.js';
 
 test('cliModelPins reports only what the operator actually typed', () => {
@@ -84,10 +84,73 @@ test('applyCliModelOverrides still writes the flag into the config it is given',
   assert.deepEqual(bare.providers, {});
 });
 
-// ─── The cheap tier (2026-10-13) ────────────────────────────────────────────
+// ─── The newest generation ships no recognised cheap tier (2026-10-13) ───────
 // Pure decision functions — same R37 carve-out as above; the wiring (a real run
-// that honours the pin, refuses before a paid call, labels its source) is
-// end-to-end in test/e2e/run-model-selection-safety.test.js.
+// that reads its own last summary, refuses before a paid call, labels its
+// source) is end-to-end in test/e2e/run-model-selection-safety.test.js.
+
+test('discoveryUnsafe: the pick is not taken — last run, then config, then a refusal', () => {
+  const base = { discovered: ['gpt-6.1-sol'], discoveryUnsafe: true };
+  assert.deepEqual(
+    resolveRunModels({ ...base, lastRunModel: 'gpt-6-luna', cfgModel: 'gpt-5-search-api' }),
+    { models: ['gpt-6-luna'], source: 'last-run' },
+    'the project\'s last run outranks the config: they disagree in practice',
+  );
+  assert.deepEqual(
+    resolveRunModels({ ...base, cfgModel: 'gpt-5.6-luna' }),
+    { models: ['gpt-5.6-luna'], source: 'config' },
+  );
+  assert.deepEqual(
+    resolveRunModels(base),
+    { models: null, source: 'none', refused: 'no-cheap-tier' },
+  );
+});
+
+test('rejectedIds: a CONFIG model that is the turned-down pick is refused; a LAST-RUN model that is it is kept and flagged', () => {
+  const base = { discovered: ['gpt-6.1-sol'], discoveryUnsafe: true, rejectedIds: ['gpt-6.1-sol'] };
+  // config == the flagship: not taken — and the caller is told why (it can name the flag).
+  assert.deepEqual(
+    resolveRunModels({ ...base, cfgModel: 'gpt-6.1-sol' }),
+    { models: null, source: 'none', refused: 'no-cheap-tier', configIsRejectedPick: true },
+  );
+  // last run == the flagship: kept (an earlier run was pinned to it on purpose),
+  // with `isRejectedPick` so the log can say the model SENT is that id.
+  assert.deepEqual(
+    resolveRunModels({ ...base, lastRunModel: 'gpt-6.1-sol', cfgModel: 'gpt-5.6-luna' }),
+    { models: ['gpt-6.1-sol'], source: 'last-run', isRejectedPick: true },
+  );
+  // last run != the flagship: no flag, ordinary last-run.
+  assert.deepEqual(
+    resolveRunModels({ ...base, lastRunModel: 'gpt-6-luna' }),
+    { models: ['gpt-6-luna'], source: 'last-run' },
+  );
+  // A config model of the same rejected GENERATION (any id in the pool) is out too.
+  assert.deepEqual(
+    resolveRunModels({ discovered: ['gpt-6.1-sol'], discoveryUnsafe: true, rejectedIds: ['gpt-6.1-sol', 'gpt-6.1-x'], cfgModel: 'gpt-6.1-x' }),
+    { models: null, source: 'none', refused: 'no-cheap-tier', configIsRejectedPick: true },
+  );
+  // A config model that is something else is the fallback, as before.
+  assert.deepEqual(
+    resolveRunModels({ ...base, cfgModel: 'gpt-5.6-luna' }),
+    { models: ['gpt-5.6-luna'], source: 'config' },
+  );
+});
+
+test('discoveryUnsafe never overrides a pin, and is inert when discovery was safe', () => {
+  assert.deepEqual(
+    resolveRunModels({ pinnedModel: 'gpt-6.1-sol', discovered: ['gpt-6.1-sol'], discoveryUnsafe: true, lastRunModel: 'gpt-6-luna' }),
+    { models: ['gpt-6.1-sol'], source: 'cli-pin' },
+  );
+  assert.deepEqual(
+    resolveRunModels({ discovered: ['gpt-6-luna'], discoveryUnsafe: false, lastRunModel: 'gpt-5.6-luna' }),
+    { models: ['gpt-6-luna'], source: 'discovery' },
+  );
+  // Silence from discovery is not "unsafe": the old chain, untouched.
+  assert.deepEqual(
+    resolveRunModels({ discovered: null, discoveryUnsafe: true, cfgModel: 'gemini-3.5-flash' }),
+    { models: ['gemini-3.5-flash'], source: 'config' },
+  );
+});
 
 test('cliClassifyPins reports only the cheap-tier pins the operator typed', () => {
   assert.deepEqual(cliClassifyPins({ openaiClassifyModel: 'gpt-4.1-mini' }), { openai: 'gpt-4.1-mini' });
@@ -135,4 +198,19 @@ test('resolveClassifyChoice: pin > safe discovery > config > fallback; refusal o
   assert.deepEqual(
     resolveClassifyChoice({ discovered: null, selection: null, cfgModel: 'gpt-5-nano', fallbackModel: 'gpt-5-nano' }),
     { model: 'gpt-5-nano', source: 'config' });
+});
+
+test('lastRunModelFromSummary: the model the run ASKED for, web cells only, per provider', () => {
+  const summary = { results: [
+    { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'web' },
+    { provider: 'openai', model: 'gpt-5', mode: 'training' },                       // derived id, not asked for
+    { provider: 'openai', model: 'gpt-6-luna', requestedModel: 'gpt-6-luna', resolvedModel: 'gpt-6-luna-2026-10-01', mode: 'web' },
+  ] };
+  assert.equal(lastRunModelFromSummary(summary, 'openai'), 'gpt-6-luna');
+  assert.equal(lastRunModelFromSummary(summary, 'gemini'), 'gemini-3.8-flash');
+  assert.equal(lastRunModelFromSummary(summary, 'anthropic'), null);
+  // Older summaries carry `model` only, and no `mode` on web cells.
+  assert.equal(lastRunModelFromSummary({ results: [{ provider: 'openai', model: 'gpt-5.4-mini' }] }, 'openai'), 'gpt-5.4-mini');
+  assert.equal(lastRunModelFromSummary({}, 'openai'), null);
+  assert.equal(lastRunModelFromSummary(null, 'openai'), null);
 });

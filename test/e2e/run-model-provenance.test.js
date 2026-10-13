@@ -76,10 +76,13 @@ test('a finished run records requested + served model per cell, and flags an inc
       })),
     }));
 
-    // The key also lists a search SKU and a cheap chat model, as every real key
-    // does: the cheap tier (extraction) resolves from the catalogue, and a
-    // catalogue holding only an unrecognised generation has no usable extractor.
-    const r = spawnCli(['run'], {
+    // Pinned, because since 2026-10-13 a run no longer takes an unrecognised
+    // newest generation on its own (it would otherwise stop and ask for exactly
+    // this flag — see run-model-selection-safety.test.js). The pin is how an
+    // operator actually measures on a model this table has never heard of. The
+    // key also lists a search SKU and a cheap chat model, as every real key does,
+    // so the extractor resolves normally.
+    const r = spawnCli(['run', `--openai-model=${UNPRICED}`], {
       cwd: dir,
       env: offlineFetchEnv({
         AEO_E2E_CATALOGUE: JSON.stringify([UNPRICED, 'gpt-5-search-api', 'gpt-4o-mini']),

@@ -12,7 +12,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, cliClassifyPins, resolveRunModels, resolveClassifyChoice } from '../lib/config.js';
+import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, cliClassifyPins, resolveRunModels, resolveClassifyChoice, lastRunModelFromSummary } from '../lib/config.js';
 import { PROVIDERS } from '../lib/providers/index.js';
 import { extractOpenAIResponse } from '../lib/providers/openai.js';
 import { pickClassifyProvider } from '../lib/providers/pick-classify.js';
@@ -265,6 +265,34 @@ async function readPreviousScore(domain, beforeDate) {
     try {
       const summary = JSON.parse(await readFile(join(dir, '_summary.json'), 'utf-8'));
       if (typeof summary.score === 'number') return summary.score;
+    } catch { /* malformed/absent summary — keep scanning */ }
+  }
+  return null;
+}
+
+/**
+ * The model `provider` was asked for in this project's most recent finished
+ * run, with the date of that run — or null when there is none.
+ *
+ * Used only when live discovery's pick is not a recognised cheap tier (the
+ * newest generation shipped a flagship only): the run then measures on the
+ * instrument the series was already measured on instead of on a model it has
+ * never used. Scans newest date first and skips unreadable summaries, the way
+ * readPreviousScore does.
+ *
+ * @param {string} domain
+ * @param {string} provider
+ * @returns {Promise<{model: string, date: string}|null>}
+ */
+async function readLastRunModel(domain, provider) {
+  const dates = responseDatesForRead(domain).reverse();
+  for (const date of dates) {
+    const dir = responseDateDirForRead(domain, date);
+    if (!dir) continue;
+    try {
+      const summary = JSON.parse(await readFile(join(dir, '_summary.json'), 'utf-8'));
+      const model = lastRunModelFromSummary(summary, provider);
+      if (model) return { model, date };
     } catch { /* malformed/absent summary — keep scanning */ }
   }
   return null;
@@ -2448,6 +2476,10 @@ async function cmdRun(options = {}) {
   // it and pay flagship rates. AEO_OPENAI_MODEL_PIN=gpt-5.6-luna holds our own
   // runs on the cheap tier until a real gpt-6 cheap variant exists — remove
   // the pin (or extend MAIN_CHEAP_TIER) once one does.
+  // Since 2026-10-13 the pin is no longer the ONLY thing between a flagship-only
+  // generation and a paid run: a pick with no recognised cheap tier is not taken
+  // on the operator's behalf (last run → config → stop; see resolveRunModels in
+  // lib/config.js). The pin remains the deliberate way to choose.
   const cliModelOverrides = {
     openaiModel:     options.openaiModel     || process.env.AEO_OPENAI_MODEL_PIN,
     geminiModel:     options.geminiModel     || process.env.AEO_GEMINI_MODEL_PIN,
@@ -2679,6 +2711,9 @@ async function cmdRun(options = {}) {
     // Providers whose cheap tier has no usable model on the key and no pin or
     // config model to stand in: refused after the loop, before any paid call.
     const needClassifyPin = [];
+    // Providers whose newest generation has no recognised cheap tier, with no
+    // earlier run and no config model the key lists to fall back on.
+    const needMainPin = [];
 
     for (const r of discoveryResults) {
       if (r.skip === 'no-key') {
@@ -2697,9 +2732,34 @@ async function cmdRun(options = {}) {
       // cfg.model. The precedence lives in resolveRunModels() (lib/config.js)
       // so it is unit-testable without a network — this stays a thin caller.
       const pinnedModel = modelPins[r.name] || null;
-      const { models: finalModels, source: modelSource } = resolveRunModels({
-        pinnedModel, discovered: r.models, cfgModel: r.cfg.model,
+      // Discovery answered, but its pick is not a recognised cheap tier: the
+      // newest generation shipped only names we have no price rank for — the
+      // 2026-10-11 key had generation 6.1 = `gpt-6.1-sol` alone ($2/$10 against
+      // gpt-6-luna's $0.10/$0.50). Taking it is a decision about money that
+      // nobody made, so the run falls back to what this project already
+      // measured on — checked against the key's own catalogue — or stops.
+      const discoveryUnsafe = !pinnedModel && r.mainSelection?.cheapTier === false
+        && Array.isArray(r.models) && r.models.length > 0;
+      let lastRun = null;
+      let cfgModelForRun = r.cfg.model;
+      if (discoveryUnsafe) {
+        const listed = new Set(r.mainSelection.catalogueIds || []);
+        const found = await readLastRunModel(domain, r.name);
+        lastRun = found && listed.has(found.model) ? found : null;
+        cfgModelForRun = r.cfg.model && listed.has(r.cfg.model) ? r.cfg.model : null;
+      }
+      const {
+        models: finalModels, source: modelSource, refused: mainRefused,
+        isRejectedPick: lastRunIsRejectedPick, configIsRejectedPick,
+      } = resolveRunModels({
+        pinnedModel, discovered: r.models, discoveryUnsafe,
+        lastRunModel: lastRun?.model ?? null, cfgModel: cfgModelForRun,
+        rejectedIds: r.mainSelection?.pool || [],
       });
+      if (mainRefused) {
+        needMainPin.push({ provider: r.name, selection: r.mainSelection, configIsRejectedPick: !!configIsRejectedPick, cfgModel: cfgModelForRun });
+        continue;
+      }
       if (!finalModels?.length) {
         console.log(`${c.dim}  skip ${r.name} — discovery failed and no fallback (re-run: aeo-platform init)${c.reset}`);
         continue;
@@ -2746,9 +2806,26 @@ async function cmdRun(options = {}) {
       // Naming the SOURCE is the point: the operator has to be able to see, in
       // the run log, whether the id being measured on came from their flag,
       // from the live catalogue, or from a config file that may be months old.
+      // The label names the model that is SENT and where it came from — in
+      // every branch, including the one where the model sent IS the id
+      // discovery picked (a last run that was pinned to the flagship on
+      // purpose): there "not taken" would be a statement about the wrong model.
+      const sel = r.mainSelection;
+      const chosenModel = finalModels[0];
+      const tierNote = discoveryUnsafe
+        ? `generation ${sel.generation} ships no recognised cheap tier`
+        : '';
       const sourceLabel = modelSource === 'cli-pin'
         ? ` ${c.dim}(pinned by --${r.name}-model)${c.reset}`
-        : modelSource === 'config' ? ` ${c.dim}(fallback)${c.reset}` : '';
+        : modelSource === 'last-run'
+          ? ` ${c.yellow}(using last run's model ${chosenModel} — source: ${lastRun.date} _summary.json; ${tierNote}${lastRunIsRejectedPick
+            ? `; ${chosenModel} is one of that generation's ids and is priced as a flagship`
+            : `, ${sel.picked} not taken`})${c.reset}`
+          : modelSource === 'config'
+            ? ` ${c.dim}(${discoveryUnsafe
+              ? `using config model ${chosenModel} — source: .aeo-tracker.json providers.${r.name}.model; ${tierNote}, ${sel.picked} not taken`
+              : 'fallback'})${c.reset}`
+            : '';
       console.log(`  ${c.green}${SYM.ok}${c.reset} ${r.name}: ${finalModels.join(', ')}${sourceLabel}${c.dim} · classify: ${resolvedClassifyModel}${classifySourceLabel}${c.reset}`);
 
       providerOverrides[r.name] = { model: finalModels[0], classifyModel: resolvedClassifyModel };
@@ -2774,6 +2851,24 @@ async function cmdRun(options = {}) {
     // after discovery (free GETs), before the first billed answer call. Silently
     // measuring on some other model is the original defect; so is charging the
     // operator for a run that answers a different question than they asked.
+    if (needMainPin.length > 0) {
+      for (const p of needMainPin) {
+        const sel = p.selection || {};
+        const cand = (sel.pool && sel.pool.length) ? sel.pool.join(', ') : sel.picked;
+        // One truthful sentence per case: the config model exists and IS the
+        // turned-down id (say that — "no config model" would be false), or there
+        // is nothing to fall back to.
+        console.error(p.configIsRejectedPick
+          ? `${c.red}  ${p.provider} — the newest generation (${sel.generation}) ships no recognised cheap tier (${cand}); there is no earlier run on this key, and the config model ${p.cfgModel} is one of those ids.${c.reset}`
+          : `${c.red}  ${p.provider} — the newest generation (${sel.generation}) ships no recognised cheap tier (${cand}), and there is no earlier run or config model on this key to fall back to.${c.reset}`);
+        if (p.configIsRejectedPick) {
+          console.error(`${c.dim}    The config model ${p.cfgModel} IS that flagship-only id; a config written before this release is not a choice to run on it. To measure on it on purpose, pass it: --${p.provider}-model=${p.cfgModel}${c.reset}`);
+        }
+        console.error(`${c.dim}    Name the model to measure with: --${p.provider}-model=<id>   (or AEO_${String(p.provider).toUpperCase()}_MODEL_PIN)${c.reset}`);
+      }
+      console.error(`${c.red}  Refusing to run: the only candidate may be priced as a flagship, and every question of the basket would be paid for at that price.${c.reset}`);
+      process.exit(1);
+    }
     if (needClassifyPin.length > 0) {
       printClassifyRefusals(needClassifyPin);
       process.exit(1);
@@ -5872,6 +5967,12 @@ ${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only
   bucket that cools down fast). Avoid pinning to a -search SKU except for exactly this
   like-for-like case. See --depth=full for the training-corpus (no-search) pass
   alongside the live-search pass.
+
+  When the newest generation ships NO recognised cheap tier (only a flagship: e.g. a
+  generation whose only id is gpt-6.1-sol), the run does not take it on its own. It uses the
+  model this project's last run asked for, then the config model — each only if the key
+  still lists it — and otherwise stops BEFORE any paid call and asks for --openai-model.
+  The run log names where the model came from. An explicit --openai-model always wins.
 
   --replay caveat: cached raw responses are filename-keyed by (query index, provider, model)
   within the active domain's namespace. An override that doesn't match the recorded model — or a

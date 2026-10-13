@@ -41,13 +41,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {
-  readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, openSync, closeSync,
+  readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, openSync, closeSync, renameSync, rmSync,
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
 import {
   withTmpProject, spawnCli, offlineFetchEnv, readRequestJournal, isAnswerCall, BIN, FIXTURE_ROOT,
+  responsesDateDir, todayDateString,
 } from './_helpers.js';
 
 const QUERIES = ['best test brands 2026', 'top test brand alternatives'];
@@ -75,14 +76,14 @@ function seed(dir, providerExtra = {}) {
 }
 
 /** One `run`; returns the printed output and the REQUESTS it made. */
-function run(dir, { catalogue, args = [MAIN_PIN], tag = 'run', env = {} }) {
+function run(dir, { catalogue, args = [MAIN_PIN], tag = 'run', env = {}, answerModel = MAIN }) {
   const urlLog = join(dir, `requests-${tag}.log`);
   const r = spawnCli(['run', ...args], {
     cwd: dir,
     env: offlineFetchEnv({
       AEO_E2E_CATALOGUE: JSON.stringify(catalogue),
       AEO_E2E_URL_LOG: urlLog,
-      AEO_E2E_ANSWER: JSON.stringify(ANSWER),
+      AEO_E2E_ANSWER: JSON.stringify({ ...ANSWER, model: answerModel }),
       ...env,
     }),
     timeout: 60000,
@@ -224,6 +225,167 @@ test('the cheap-tier pin applies to run and run-manual only, and needs a value',
     const noValue = spawnCli(['run', '--openai-classify-model'], { cwd: dir, env: offlineFetchEnv({}) });
     assert.strictEqual(noValue.status, 2);
     assert.match(noValue.stderr, /needs a model id/);
+  });
+});
+
+// ─── The newest generation ships a flagship only ────────────────────────────
+//
+// 2026-10-11, live key: generation 6.1 = `gpt-6.1-sol` ($2/$10 per 1M) and
+// nothing else; the cheap `gpt-6-luna` ($0.10/$0.50) sits one generation down.
+// A bare `run` took `gpt-6.1-sol` ("may be the flagship" on stderr, then paid
+// for it). The rule since 2026-10-13: a pick that is not a recognised cheap tier
+// is not taken on the operator's behalf — the run uses the model THIS project's
+// last run asked for, else the config's (unless the config IS the flagship),
+// else stops and asks for a pin. The decisions of the card owner, 2026-10-13:
+//   · last run == the flagship: TAKEN (an earlier run was pinned to it on
+//     purpose — "the previous model"), and the log says so in so many words;
+//   · config == the flagship: NOT taken, exit 1 naming the flag.
+// Every assertion below is on the model in the REQUEST (/v1/responses), the log
+// line second.
+
+/** The models the MAIN answer calls named (Responses API; the extractor here is a chat-completions model). */
+const mainModelsCalled = (requests) =>
+  [...new Set(requests.filter((q) => /\/v1\/responses/.test(q.url)).map((q) => q.model).filter(Boolean))].sort();
+
+/**
+ * A REAL earlier run: the CLI itself writes the `_summary.json` the next run
+ * reads (a run pinned to `model`, answers served by the stub), then its date
+ * directory is moved to `date`. Writer and reader are the product's own — not a
+ * summary typed into the shape the test author believes the writer produces.
+ */
+function priorRun(dir, { model, date, catalogue = LIVE }) {
+  const r = run(dir, { catalogue, args: [`--openai-model=${model}`], tag: `prior-${model}-${date || 'today'}`, answerModel: model });
+  const made = responsesDateDir(dir, 'testbrand.com', todayDateString());
+  assert.ok(existsSync(join(made, '_summary.json')), `the prior run wrote no summary:\n${r.out}`);
+  if (date) renameSync(made, responsesDateDir(dir, 'testbrand.com', date));
+}
+
+test('no recognised cheap tier: the run keeps the model its LAST run asked for — sent, and labelled with its source', async () => {
+  await withTmpProject('aeo-flagship-lastrun-', async (dir) => {
+    // A config model that IS on the key and differs from the last run's: the
+    // two disagree in practice (a config written at `init` freezes that day's
+    // model), and the last run is the instrument the series was measured on.
+    seed(dir, { model: 'gpt-5.6-luna' });
+    priorRun(dir, { model: 'gpt-6-luna', date: '2026-09-28' });
+    const { out, requests } = run(dir, { catalogue: LIVE, args: [], tag: 'second', answerModel: 'gpt-6-luna' });
+    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-6-luna'],
+      `the model SENT must be the last run's; requests:\n${JSON.stringify(requests.filter(isAnswerCall))}\n${out}`);
+    assert.match(out, /openai: gpt-6-luna[^\n]*using last run's model gpt-6-luna — source: 2026-09-28 _summary\.json[^\n]*gpt-6\.1-sol not taken/,
+      `the label must name the model sent and where it came from; got:\n${out}`);
+  });
+});
+
+test('"last run" is the NEWEST date, and a damaged newest summary is skipped, not trusted and not fatal', async () => {
+  await withTmpProject('aeo-flagship-dates-', async (dir) => {
+    seed(dir, { model: 'gpt-5.6-luna' });
+    // Two real runs on two dates, older model first. gpt-5.4-mini is still on
+    // the key, so an oldest-first scan would pick it.
+    priorRun(dir, { model: 'gpt-5.4-mini', date: '2026-08-27' });
+    priorRun(dir, { model: 'gpt-6-luna', date: '2026-09-28' });
+    const newest = run(dir, { catalogue: LIVE, args: [], tag: 'newest', answerModel: 'gpt-6-luna' });
+    assert.deepStrictEqual(mainModelsCalled(newest.requests), ['gpt-6-luna'],
+      `the newest of two dates must win; got:\n${newest.out}`);
+    assert.match(newest.out, /source: 2026-09-28 _summary\.json/);
+
+    // The run above wrote today's summary; it would be "the newest date" for the
+    // next one and hide what this half asserts. Take it out of the series.
+    rmSync(responsesDateDir(dir, 'testbrand.com', todayDateString()), { recursive: true, force: true });
+    // A run that died mid-write leaves an unreadable summary on the newest date.
+    const broken = responsesDateDir(dir, 'testbrand.com', '2026-10-11');
+    mkdirSync(broken, { recursive: true });
+    writeFileSync(join(broken, '_summary.json'), '{"date": "2026-10-11", "results": [');
+    const skipped = run(dir, { catalogue: LIVE, args: [], tag: 'broken', answerModel: 'gpt-6-luna' });
+    assert.deepStrictEqual(mainModelsCalled(skipped.requests), ['gpt-6-luna'],
+      `an unreadable newest summary must fall back to the previous date, not abort and not read as "no history"; got:\n${skipped.out}`);
+    assert.match(skipped.out, /source: 2026-09-28 _summary\.json/);
+  });
+});
+
+test('a last run that was pinned to the flagship ON PURPOSE is kept — and the label says the model sent, never "not taken"', async () => {
+  await withTmpProject('aeo-flagship-lastrun-is-flagship-', async (dir) => {
+    seed(dir, { model: 'gpt-5.6-luna' });
+    priorRun(dir, { model: 'gpt-6.1-sol', date: '2026-10-11' });
+    const { out, requests } = run(dir, { catalogue: LIVE, args: [], tag: 'second', answerModel: 'gpt-6.1-sol' });
+    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-6.1-sol'], `the earlier run's own model is the previous model; got:\n${out}`);
+    const line = out.split('\n').find((l) => /openai: gpt-6\.1-sol/.test(l)) || '';
+    assert.match(line, /using last run's model gpt-6\.1-sol — source: 2026-10-11 _summary\.json/);
+    assert.match(line, /priced as a flagship/, `the label must say what this id costs; got: ${line}`);
+    assert.ok(!/not taken/.test(line),
+      `a log line must not say a model was "not taken" while that model is the one being sent:\n${line}`);
+  });
+});
+
+test('a config model that IS the flagship-only id is not taken: exit 1, names the flag, before any paid call', async () => {
+  await withTmpProject('aeo-flagship-config-is-flagship-', async (dir) => {
+    seed(dir, { model: 'gpt-6.1-sol' });
+    const { r, out, requests } = run(dir, { catalogue: LIVE, args: [], tag: 'cfg', answerModel: 'gpt-6.1-sol' });
+    assert.strictEqual(r.status, 1, `expected exit 1; got ${r.status}\n${out}`);
+    assert.match(out, /--openai-model=gpt-6\.1-sol/, `the refusal must hand over the flag with the id; got:\n${out}`);
+    assert.match(out, /config model gpt-6\.1-sol IS that flagship-only id/);
+    // The first line of the refusal must not contradict the second: the config
+    // model EXISTS on this key — it is the rejected one.
+    assert.ok(!/no earlier run or config model/.test(out), `the refusal denies a config model that it names next:\n${out}`);
+    assert.match(out, /the config model gpt-6\.1-sol is one of those ids/);
+    assert.match(out, /Refusing to run/);
+    assert.ok(!/No API keys found/.test(out), `the run fell through the refusal:\n${out}`);
+    assert.ok(!madePaidCall(requests), `a billed call was made before the refusal:\n${JSON.stringify(requests)}`);
+  });
+});
+
+test('no earlier run, config model on the key and not the flagship: the config model is SENT and labelled', async () => {
+  await withTmpProject('aeo-flagship-config-', async (dir) => {
+    seed(dir, { model: 'gpt-5.6-luna' });
+    const { out, requests } = run(dir, { catalogue: LIVE, args: [], answerModel: 'gpt-5.6-luna' });
+    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-5.6-luna']);
+    assert.match(out, /openai: gpt-5\.6-luna[^\n]*using config model gpt-5\.6-luna — source: \.aeo-tracker\.json providers\.openai\.model[^\n]*gpt-6\.1-sol not taken/);
+  });
+});
+
+test('no earlier run and no config model on the key: stop before any paid call and name the flag', async () => {
+  await withTmpProject('aeo-flagship-stop-', async (dir) => {
+    seed(dir, { model: 'gpt-9.9-ghost' });   // not on this key
+    const { r, out, requests } = run(dir, { catalogue: LIVE, args: [], answerModel: 'gpt-6.1-sol' });
+    assert.strictEqual(r.status, 1, `expected exit 1; got ${r.status}\n${out}`);
+    assert.match(out, /--openai-model=<id>/, `the refusal must name the flag; got:\n${out}`);
+    assert.match(out, /gpt-6\.1-sol/, 'the refusal must name the candidate it declined');
+    assert.match(out, /no recognised cheap tier/);
+    assert.match(out, /Refusing to run/);
+    assert.ok(!/No API keys found/.test(out), `the run fell through the refusal:\n${out}`);
+    assert.ok(!madePaidCall(requests), `a billed call was made before the refusal:\n${JSON.stringify(requests)}`);
+  });
+});
+
+test('a last-run model the key no longer lists is not sent', async () => {
+  await withTmpProject('aeo-flagship-retired-', async (dir) => {
+    seed(dir, { model: 'gpt-5.6-luna' });
+    priorRun(dir, { model: 'gpt-6-luna', date: '2026-10-11' });
+    // The key has since lost gpt-6-luna (and nothing else changed).
+    const retired = LIVE.filter((id) => id !== 'gpt-6-luna');
+    const { out, requests } = run(dir, { catalogue: retired, args: [], tag: 'second', answerModel: 'gpt-5.6-luna' });
+    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-5.6-luna'],
+      `a model the catalogue no longer lists was sent, or the config was not used:\n${out}`);
+    assert.match(out, /using config model gpt-5\.6-luna/);
+  });
+});
+
+test('an explicit pin still wins — including a pin ON the flagship', async () => {
+  await withTmpProject('aeo-flagship-pin-', async (dir) => {
+    seed(dir);
+    const { out, requests } = run(dir, { catalogue: LIVE, args: ['--openai-model=gpt-6.1-sol'], answerModel: 'gpt-6.1-sol' });
+    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-6.1-sol']);
+    assert.match(out, /openai: gpt-6\.1-sol[^\n]*pinned by --openai-model/);
+  });
+});
+
+test('control — a recognised cheap tier in the newest generation is sent; history is not consulted', async () => {
+  await withTmpProject('aeo-cheap-tier-', async (dir) => {
+    seed(dir);
+    const withLuna6_1 = [...LIVE, 'gpt-6.1-luna'];
+    priorRun(dir, { model: 'gpt-6-luna', date: '2026-10-11', catalogue: withLuna6_1 });
+    const { out, requests } = run(dir, { catalogue: withLuna6_1, args: [], tag: 'second', answerModel: 'gpt-6.1-luna' });
+    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-6.1-luna'],
+      `the newest generation's cheap tier must win when one exists; got:\n${out}`);
+    assert.ok(!/last run|using config/.test(out), `history/config was consulted although discovery was safe:\n${out}`);
   });
 });
 
