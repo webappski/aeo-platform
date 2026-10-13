@@ -30,7 +30,7 @@ import { buildMcMetadata } from '../lib/report/mc-metadata.js';
 import { classifyCitations } from '../lib/report/classify-citations.js';
 import { discoverModels, discoverClassifyModel, resolveClassifyModel, listModelIds, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
 import { MAIN_OPTIONS_BY_PROVIDER, CLASSIFY_OPTIONS_BY_PROVIDER, detectThinkingActive } from '../lib/providers/main-options.js';
-import { extractUsage, calcCost, estimateWeeklyCost } from '../lib/providers/pricing.js';
+import { extractUsage, calcCost, estimateWeeklyCost, billedWebSearchCalls, webSearchFeeFor, WEB_SEARCH_TOOL_FEE, WEB_SEARCH_FEE_SOURCE } from '../lib/providers/pricing.js';
 import { formatTpmHint, estimateRunDuration } from '../lib/util/cost-estimate.js';
 import { planSchedule, runScheduled } from '../lib/util/scheduler.js';
 import { estimatePerRequest, getLearnedOrTierLimit } from '../lib/providers/tpm-ledger.js';
@@ -3187,27 +3187,35 @@ async function cmdRun(options = {}) {
               });
 
               const usage = extractUsage(provider.name, raw);
-              // Count the OpenAI web_search tool calls this response ACTUALLY made
-              // (Responses raw carries one `web_search_call` output item per search)
-              // and bill each. Reading the real count (0 for training/non-search,
-              // ≥1 for a forced search, >1 for multi-search) is honest and doesn't
-              // trust a `mode`/flag assumption. Search-SKU overrides (chat shape,
-              // no output[]) → count 0, but their pricing row's perRequest covers it.
-              const webSearchCalls = (provider.name === 'openai' && Array.isArray(raw?.output))
-                ? raw.output.filter(o => o?.type === 'web_search_call').length
-                : 0;
+              // The OpenAI web_search calls this response is BILLED for. Read from
+              // the response itself (0 for training/non-search, ≥1 for a forced
+              // search, >1 for multi-search) rather than trusting a `mode`/flag
+              // assumption — and counted as billedWebSearchCalls() counts them:
+              // `search` actions, not every `web_search_call` item (a gpt-6
+              // answer also carries `open_page` / `find_in_page` items, which the
+              // tool guide does not bill). Search-SKU overrides (chat shape, no
+              // output[]) → count 0, but their pricing row's perRequest covers it.
+              const webSearchCalls = provider.name === 'openai' ? billedWebSearchCalls(raw) : 0;
               const calcd = calcCost(cellModel, usage, { webSearchCalls });
               // Honesty (fail-branch #6): when the engine model is not in the
               // pricing table, calcCost returns null. The old fallback set
               // costUsd:0, which made an UNKNOWN cost render as «free» — a
               // silent untruth. Carry costTracked:false so the session-cost
               // summary can say «cost not tracked for: <model>» instead of $0.
+              // The web_search fee is "all models" and its call count is read
+              // from the response, so it is NOT unknown just because the TOKEN
+              // price is: it stays in the cell (2026-10-11: 102 calls, ≈$1.02,
+              // vanished from the total because `gpt-6-luna` had no row).
+              const searchFee = webSearchFeeFor(cellModel, webSearchCalls);
               let costInfo = calcd
                 ? { ...calcd, costTracked: true }
-                : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: 0, costTracked: false };
+                : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: searchFee.costUsd, costTracked: false };
               // Replay mode (see replay-mode block at top of file)
               if (replayed) costInfo = { inputTokens: 0, outputTokens: 0, costUsd: 0, costTracked: true };
               // End replay
+              // Persisted only when the fee is really inside this cell's costUsd
+              // (not on replay, not on a row that prices search per request).
+              const cellWebSearchCalls = replayed ? 0 : searchFee.calls;
 
               // Extraction cost for this cell — tracked separately so we can report it
               // aggregated at the bottom instead of per-cell.
@@ -3291,6 +3299,10 @@ async function cmdRun(options = {}) {
                 // Only persist when false — absence means tracked (keeps the
                 // year-over-year summary JSON lean; see storeSources rationale).
                 ...(costInfo.costTracked === false ? { costTracked: false } : {}),
+                // How many billed web_search calls are inside `costUsd`. Present
+                // only when there were any, so a run without search is
+                // byte-identical to before (R39).
+                ...(cellWebSearchCalls > 0 ? { webSearchCalls: cellWebSearchCalls } : {}),
                 // Model provenance — ALWAYS, not only on divergence (2026-09-01).
                 //
                 // `model` stays the REQUESTED id, because every downstream
@@ -3625,8 +3637,10 @@ async function cmdRun(options = {}) {
   // imply the run was free. Collect those model ids so we can print an honest
   // «cost not tracked for: …» line rather than a misleading $0.
   const untrackedModels = new Set();
+  let webSearchCallsTotal = 0;
   for (const r of results) {
     if (r.costTracked === false) untrackedModels.add(r.model);
+    webSearchCallsTotal += r.webSearchCalls || 0;
     if (!r.costUsd) continue;
     const key = `${r.provider}/${r.model}`;
     if (!costMap[key]) costMap[key] = { provider: r.provider, model: r.model, label: r.label || r.provider, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
@@ -3644,8 +3658,15 @@ async function cmdRun(options = {}) {
     for (const m of costByModel) {
       console.log(`    ${c.dim}${m.model}${c.reset}  ${m.inputTokens + m.outputTokens} tok  $${m.costUsd.toFixed(4)}`);
     }
+    // The tool-call fee on its own line: it is a different line on the OpenAI
+    // invoice from the tokens, and it was the part of a ChatGPT run's cost the
+    // total used to lose. It is INSIDE the model line above, not added to it.
+    if (webSearchCallsTotal > 0) {
+      const plural = webSearchCallsTotal === 1 ? '' : 's';
+      console.log(`    ${c.dim}web search: ${webSearchCallsTotal} call${plural} × $${WEB_SEARCH_TOOL_FEE.toFixed(2)} = $${(webSearchCallsTotal * WEB_SEARCH_TOOL_FEE).toFixed(4)} — already inside the ChatGPT line above (${WEB_SEARCH_FEE_SOURCE})${c.reset}`);
+    }
     if (untrackedModels.size > 0) {
-      console.log(`    ${c.yellow}cost not tracked for: ${[...untrackedModels].join(', ')}${c.reset} ${c.dim}(model not in pricing table — total above excludes it, not necessarily $0)${c.reset}`);
+      console.log(`    ${c.yellow}cost not tracked for: ${[...untrackedModels].join(', ')}${c.reset} ${c.dim}(model not in pricing table — its token cost is not in the total above, not necessarily $0; the web search fee is)${c.reset}`);
     }
   }
 
@@ -3751,6 +3772,20 @@ async function cmdRun(options = {}) {
     // — an invented price is worse than a known gap; the gap is named instead.
     ...(untrackedModels.size > 0
       ? { costComplete: false, costUntrackedModels: [...untrackedModels].sort() }
+      : {}),
+    // The OpenAI web_search tool-call fee, broken out. It is already inside
+    // `costByModel` / `sessionCostUsd` (the model's line) — this key makes it
+    // auditable against the provider's invoice, where it is a separate item
+    // from tokens. Absent when the run made no search call.
+    ...(webSearchCallsTotal > 0
+      ? { webSearchToolFee: {
+          provider: 'openai',
+          calls: webSearchCallsTotal,
+          unitUsd: WEB_SEARCH_TOOL_FEE,
+          costUsd: Math.round(webSearchCallsTotal * WEB_SEARCH_TOOL_FEE * 1_000_000) / 1_000_000,
+          includedInSessionCost: true,
+          source: WEB_SEARCH_FEE_SOURCE,
+        } }
       : {}),
     // single-key mode marker (1.1.8) — the report renderer needs it to phrase
     // «unverified» honestly (no second model ≠ model disagreement).

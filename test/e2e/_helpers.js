@@ -20,7 +20,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -66,8 +66,24 @@ if (process.env.AEO_E2E_OFFLINE_FETCH === '1') {
     json: async () => body,
     text: async () => JSON.stringify(body),
   });
-  globalThis.fetch = async (url) => {
+  // Optional request journal: `AEO_E2E_URL_LOG` is a file path; every request
+  // the CLI makes is appended to it, one line each —
+  //     <METHOD> <url> model=<id from the JSON body | ->
+  // Two things need it that a printed line cannot give. "The run stopped BEFORE
+  // the first paid call" is a statement about requests made, not about a message
+  // that was or was not printed. And "the extractor that ran is the one that was
+  // chosen" is a statement about the `model` in the request BODY: a run log that
+  // names a model the code then does not send is the exact defect a log-only
+  // assertion cannot see (a mutant that logged the discovered extractor and sent
+  // the config's one passed every test that read the log).
+  const urlLog = process.env.AEO_E2E_URL_LOG || null;
+  globalThis.fetch = async (url, init) => {
     const href = typeof url === 'string' ? url : String(url?.url || url);
+    if (urlLog) {
+      let model = '-';
+      try { model = JSON.parse(typeof init?.body === 'string' ? init.body : 'null')?.model || '-'; } catch { /* not a JSON body */ }
+      try { appendFileSync(urlLog, `${(init?.method || 'GET').toUpperCase()} ${href} model=${model}\n`); } catch { /* journal is best-effort */ }
+    }
     if (Array.isArray(catalogue) && href.includes('/v1/models')) {
       return okJson({ data: catalogue.map((id) => ({ id })) });
     }
@@ -92,6 +108,21 @@ export function reportsDateDir(projectDir, domain, date) {
 }
 export const FIXTURE_REPLAY_DATE = '2026-05-13';
 export { REPO_ROOT };
+
+/**
+ * Read an `AEO_E2E_URL_LOG` journal back as `[{method, url, model}]`.
+ * `model` is `null` when the request body carried none.
+ */
+export function readRequestJournal(file) {
+  if (!file || !existsSync(file)) return [];
+  return readFileSync(file, 'utf-8').split('\n').filter(Boolean).map((line) => {
+    const m = /^(\S+) (\S+) model=(.*)$/.exec(line);
+    return m ? { method: m[1], url: m[2], model: m[3] === '-' ? null : m[3] } : { method: 'GET', url: line, model: null };
+  });
+}
+
+/** The requests that answer a prompt (and so cost money): Responses + chat completions. */
+export const isAnswerCall = (r) => /\/v1\/(responses|chat\/completions)/.test(r.url);
 
 export function offlineFetchEnv(extra = {}) {
   const preloadUrl = pathToFileURL(fileURLToPath(import.meta.url)).href;

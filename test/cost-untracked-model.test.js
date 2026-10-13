@@ -4,7 +4,9 @@
 // than implying free). Real module, no mocks.
 
 import assert from 'node:assert/strict';
-import { calcCost, estimateWeeklyCost, extractUsage } from '../lib/providers/pricing.js';
+import {
+  calcCost, estimateWeeklyCost, extractUsage, billedWebSearchCalls, webSearchFeeFor, WEB_SEARCH_TOOL_FEE,
+} from '../lib/providers/pricing.js';
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -89,6 +91,48 @@ test('estimateWeeklyCost includes the tool fee for a general OpenAI main (3 web 
   // gpt-5-mini token-only ≈ $0.009/run; + 3×$0.01 tool fee → ~$0.039/run.
   const hint = estimateWeeklyCost('gpt-5-mini');
   assert.match(hint, /0\.039/, `expected the $0.03 tool fee reflected, got: ${hint}`);
+});
+
+// R37 note: these are pure functions over a response body (no I/O, no UI) — the
+// "non-lying unit" carve-out. That the run loop FEEDS them the right thing is
+// pinned end-to-end in test/e2e/run-cost-websearch.test.js.
+console.log('\nbilledWebSearchCalls — what OpenAI bills, not how many items there are');
+
+const item = (type, action) => ({ type: 'web_search_call', ...(type ? { action: { type } } : {}), ...(action || {}) });
+
+test('the provider\'s own tool_usage counter wins', () => {
+  const raw = { tool_usage: { web_search: { num_requests: 102 } }, output: [item('search'), item('open_page')] };
+  assert.equal(billedWebSearchCalls(raw), 102);
+  // 0 is an answer, not silence: the model was offered the tool and did not use it.
+  assert.equal(billedWebSearchCalls({ tool_usage: { web_search: { num_requests: 0 } }, output: [item('search')] }), 0);
+});
+
+test('without tool_usage: only `search` actions count — open_page / find_in_page do not', () => {
+  const raw = { output: [item('search'), item('open_page'), item('search'), item('find_in_page'), { type: 'message' }] };
+  assert.equal(billedWebSearchCalls(raw), 2);
+});
+
+test('an item with no action at all is the older shape: one item, one search', () => {
+  const raw = { output: [item(null), item(null), { type: 'reasoning' }, { type: 'message' }] };
+  assert.equal(billedWebSearchCalls(raw), 2);
+});
+
+test('no output / garbage → 0, never NaN or a throw', () => {
+  assert.equal(billedWebSearchCalls(undefined), 0);
+  assert.equal(billedWebSearchCalls({}), 0);
+  assert.equal(billedWebSearchCalls({ output: 'x', tool_usage: { web_search: { num_requests: 'many' } } }), 0);
+  assert.equal(billedWebSearchCalls({ choices: [{ message: {} }] }), 0);
+});
+
+test('webSearchFeeFor: priced from the call count alone — unlisted model, or listed', () => {
+  assert.deepEqual(webSearchFeeFor('totally-made-up-model-9000', 3), { calls: 3, costUsd: 3 * WEB_SEARCH_TOOL_FEE });
+  assert.deepEqual(webSearchFeeFor('gpt-6-luna', 2), { calls: 2, costUsd: 0.02 });
+  assert.deepEqual(webSearchFeeFor('gpt-6-luna', 0), { calls: 0, costUsd: 0 });
+});
+
+test('webSearchFeeFor: a row that prices search per request is not charged twice', () => {
+  // gpt-5-search-api carries perRequest:0.01 — the fee is inside its row.
+  assert.deepEqual(webSearchFeeFor('gpt-5-search-api', 4), { calls: 0, costUsd: 0 });
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

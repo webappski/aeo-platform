@@ -1,0 +1,302 @@
+{
+ "_provenance": {
+  "source": "https://developers.openai.com/api/docs/pricing",
+  "tier": "Standard (short context)",
+  "unit": "USD per 1M tokens",
+  "read": "2026-10-13, raw HTML (curl), props of the TextTokenPricingTables island with tier=standard",
+  "note": "WebFetch summaries of this page misread table rows; this is the island data, not a summary. Rows are as published: gpt-6-terra is NOT on the page. The page prints the 272K threshold only on gpt-5.5 / gpt-5.4 rows; for gpt-6 it is named by the simonw/llm-prices feed (gpt-6-luna \"≤272k\" vs gpt-6-luna-272k \">272k\")."
+ },
+ "rows": [
+  {
+   "id": "gpt-6-astra",
+   "label": "gpt-6-astra",
+   "input": 10,
+   "output": 50,
+   "cachedInput": 1,
+   "cacheWrite": 12.5
+  },
+  {
+   "id": "gpt-6.1-sol",
+   "label": "gpt-6.1-sol",
+   "input": 2,
+   "output": 10,
+   "cachedInput": 0.1,
+   "cacheWrite": 2.5
+  },
+  {
+   "id": "gpt-6-luna",
+   "label": "gpt-6-luna",
+   "input": 0.1,
+   "output": 0.5,
+   "cachedInput": 0.01,
+   "cacheWrite": 0.125
+  },
+  {
+   "id": "gpt-6-sol",
+   "label": "gpt-6-sol",
+   "input": 2,
+   "output": 10,
+   "cachedInput": 0.2,
+   "cacheWrite": 2.5
+  },
+  {
+   "id": "gpt-5.6-sol",
+   "label": "gpt-5.6-sol",
+   "input": 4,
+   "output": 20,
+   "cachedInput": 0.4,
+   "cacheWrite": 5
+  },
+  {
+   "id": "gpt-5.6-terra",
+   "label": "gpt-5.6-terra",
+   "input": 2,
+   "output": 12,
+   "cachedInput": 0.2,
+   "cacheWrite": 2.5
+  },
+  {
+   "id": "gpt-5.6-luna",
+   "label": "gpt-5.6-luna",
+   "input": 0.2,
+   "output": 1.2,
+   "cachedInput": 0.02,
+   "cacheWrite": 0.25
+  },
+  {
+   "id": "gpt-5.5",
+   "label": "gpt-5.5 (<272K context length)",
+   "input": 5,
+   "output": 30,
+   "cachedInput": 0.5,
+   "cacheWrite": null
+  },
+  {
+   "id": "gpt-5.5-pro",
+   "label": "gpt-5.5-pro (<272K context length)",
+   "input": 30,
+   "output": 180,
+   "cachedInput": null,
+   "cacheWrite": null
+  },
+  {
+   "id": "gpt-5.4",
+   "label": "gpt-5.4 (<272K context length)",
+   "input": 2.5,
+   "output": 15,
+   "cachedInput": 0.25,
+   "cacheWrite": null
+  },
+  {
+   "id": "gpt-5.4-mini",
+   "label": "gpt-5.4-mini",
+   "input": 0.75,
+   "output": 4.5,
+   "cachedInput": 0.075
+  },
+  {
+   "id": "gpt-5.4-nano",
+   "label": "gpt-5.4-nano",
+   "input": 0.2,
+   "output": 1.25,
+   "cachedInput": 0.02
+  },
+  {
+   "id": "gpt-5.4-pro",
+   "label": "gpt-5.4-pro (<272K context length)",
+   "input": 30,
+   "output": 180,
+   "cachedInput": null,
+   "cacheWrite": null
+  },
+  {
+   "id": "gpt-5.2",
+   "label": "gpt-5.2",
+   "input": 1.75,
+   "output": 14,
+   "cachedInput": 0.175
+  },
+  {
+   "id": "gpt-5.2-pro",
+   "label": "gpt-5.2-pro",
+   "input": 21,
+   "output": 168,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-5.1",
+   "label": "gpt-5.1",
+   "input": 1.25,
+   "output": 10,
+   "cachedInput": 0.125
+  },
+  {
+   "id": "gpt-5",
+   "label": "gpt-5",
+   "input": 1.25,
+   "output": 10,
+   "cachedInput": 0.125
+  },
+  {
+   "id": "gpt-5-mini",
+   "label": "gpt-5-mini",
+   "input": 0.25,
+   "output": 2,
+   "cachedInput": 0.025
+  },
+  {
+   "id": "gpt-5-nano",
+   "label": "gpt-5-nano",
+   "input": 0.05,
+   "output": 0.4,
+   "cachedInput": 0.005
+  },
+  {
+   "id": "gpt-5-pro",
+   "label": "gpt-5-pro",
+   "input": 15,
+   "output": 120,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-4.1",
+   "label": "gpt-4.1",
+   "input": 2,
+   "output": 8,
+   "cachedInput": 0.5
+  },
+  {
+   "id": "gpt-4.1-mini",
+   "label": "gpt-4.1-mini",
+   "input": 0.4,
+   "output": 1.6,
+   "cachedInput": 0.1
+  },
+  {
+   "id": "gpt-4.1-nano",
+   "label": "gpt-4.1-nano",
+   "input": 0.1,
+   "output": 0.4,
+   "cachedInput": 0.025
+  },
+  {
+   "id": "gpt-4o",
+   "label": "gpt-4o",
+   "input": 2.5,
+   "output": 10,
+   "cachedInput": 1.25
+  },
+  {
+   "id": "gpt-4o-2024-05-13",
+   "label": "gpt-4o-2024-05-13",
+   "input": 5,
+   "output": 15,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-4o-mini",
+   "label": "gpt-4o-mini",
+   "input": 0.15,
+   "output": 0.6,
+   "cachedInput": 0.075
+  },
+  {
+   "id": "o1",
+   "label": "o1",
+   "input": 15,
+   "output": 60,
+   "cachedInput": 7.5
+  },
+  {
+   "id": "o1-pro",
+   "label": "o1-pro",
+   "input": 150,
+   "output": 600,
+   "cachedInput": null
+  },
+  {
+   "id": "o3-pro",
+   "label": "o3-pro",
+   "input": 20,
+   "output": 80,
+   "cachedInput": null
+  },
+  {
+   "id": "o3",
+   "label": "o3",
+   "input": 2,
+   "output": 8,
+   "cachedInput": 0.5
+  },
+  {
+   "id": "o4-mini",
+   "label": "o4-mini",
+   "input": 1.1,
+   "output": 4.4,
+   "cachedInput": 0.275
+  },
+  {
+   "id": "o3-mini",
+   "label": "o3-mini",
+   "input": 1.1,
+   "output": 4.4,
+   "cachedInput": 0.55
+  },
+  {
+   "id": "gpt-4-turbo-2024-04-09",
+   "label": "gpt-4-turbo-2024-04-09",
+   "input": 10,
+   "output": 30,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-4-0613",
+   "label": "gpt-4-0613",
+   "input": 30,
+   "output": 60,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-3.5-turbo",
+   "label": "gpt-3.5-turbo",
+   "input": 0.5,
+   "output": 1.5,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-3.5-turbo-0125",
+   "label": "gpt-3.5-turbo-0125",
+   "input": 0.5,
+   "output": 1.5,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-3.5-turbo-1106",
+   "label": "gpt-3.5-turbo-1106",
+   "input": 1,
+   "output": 2,
+   "cachedInput": null
+  },
+  {
+   "id": "gpt-3.5-turbo-instruct",
+   "label": "gpt-3.5-turbo-instruct",
+   "input": 1.5,
+   "output": 2,
+   "cachedInput": null
+  },
+  {
+   "id": "davinci-002",
+   "label": "davinci-002",
+   "input": 2,
+   "output": 2,
+   "cachedInput": null
+  },
+  {
+   "id": "babbage-002",
+   "label": "babbage-002",
+   "input": 0.4,
+   "output": 0.4,
+   "cachedInput": null
+  }
+ ]
+}
