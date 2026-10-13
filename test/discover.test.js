@@ -6,7 +6,10 @@
 
 import assert from 'node:assert/strict';
 
-const { discoverModels, discoverClassifyModel, resolveClassifyModel, FALLBACK } = await import('../lib/providers/discover.js');
+const { discoverModels, discoverClassifyModel, resolveClassifyModel, resolveClassifyDecision, FALLBACK, isOpenAIChatId, isOpenAIClassifyCapableId, selectOpenAIMain, selectOpenAIClassify } = await import('../lib/providers/discover.js');
+const { readFileSync } = await import('node:fs');
+const { join, dirname } = await import('node:path');
+const { fileURLToPath } = await import('node:url');
 const { DEFAULT_CONFIG } = await import('../lib/config.js');
 
 let passed = 0, failed = 0;
@@ -90,8 +93,14 @@ await test('openai: an unrecognised newest generation still wins, and says so on
       { id: 'gpt-6-beta' },
       { id: 'gpt-5.6-luna' },
     ]}));
-    const { models } = await discoverModels('openai', 'sk-test');
+    const { models, selection } = await discoverModels('openai', 'sk-test');
     assert.equal(models[0].startsWith('gpt-6-'), true, `expected a gen-6 pick, got ${models[0]}`);
+    // Discovery REPORTS the pick and says it is not a recognised cheap tier; the
+    // decision not to run on it is the run loop's (lib/config.js
+    // resolveRunModels, E2E in run-model-selection-safety.test.js).
+    assert.equal(selection.cheapTier, false);
+    assert.equal(selection.generation, 6);
+    assert.ok(selection.catalogueIds.includes('gpt-5.6-luna'), 'the key\'s own catalogue travels with the pick');
   } finally {
     process.stderr.write = prevWrite;
   }
@@ -109,13 +118,33 @@ await test('openai: newest-gen mini wins (5.4-mini > 5-mini via parseFloat)', as
   assert.deepStrictEqual(models, ['gpt-5.4-mini']);
 });
 
-await test('openai: newest generation wins even when nothing in it is a recognised cheap tier', async () => {
+await test('openai: newest generation is REPORTED even when nothing in it is a recognised cheap tier — flagged, not blessed', async () => {
   stub(() => ok({ data: [
     { id: 'gpt-5' },
     { id: 'gpt-5.4' },
   ]}));
-  const { models } = await discoverModels('openai', 'sk-test');
+  const { models, selection } = await discoverModels('openai', 'sk-test');
   assert.deepStrictEqual(models, ['gpt-5.4']);
+  assert.equal(selection.cheapTier, false, 'a pick with no recognised cheap tier must say so');
+});
+
+await test('openai: a recognised cheap tier is flagged cheapTier:true', async () => {
+  stub(() => ok({ data: [{ id: 'gpt-6.1-sol' }, { id: 'gpt-6.1-luna' }, { id: 'gpt-6-luna' }] }));
+  const { models, selection } = await discoverModels('openai', 'sk-test');
+  assert.deepStrictEqual(models, ['gpt-6.1-luna']);
+  assert.equal(selection.cheapTier, true);
+});
+
+await test('openai main: non-chat ids from the live catalogue never enter the pool', async () => {
+  // Real ids from the key, 2026-10-13. A bare `^gpt-` prefix lets every one of
+  // these in; the newest "generation" among them would win by parseFloat.
+  stub(() => ok({ data: [
+    { id: 'gpt-live-1' }, { id: 'gpt-transcribe' }, { id: 'gpt-realtime-2.1' },
+    { id: 'gpt-image-2.5-flare' }, { id: 'gpt-4o-transcribe-diarize' },
+    { id: 'gpt-5.6-luna' },
+  ]}));
+  const { models } = await discoverModels('openai', 'sk-test');
+  assert.deepStrictEqual(models, ['gpt-5.6-luna']);
 });
 
 await test('openai: undated > dated within same gen', async () => {
@@ -339,6 +368,191 @@ await test('openai classify: search variants excluded even as last resort', asyn
   ]}));
   const { models } = await discoverClassifyModel('openai', 'sk-test');
   assert.equal(models, null);
+});
+
+console.log('\nOpenAI cheap tier — chat models only, same answer on every request (2026-10-11 defect)');
+
+// The ids the live key lists, 2026-10-13, trimmed to the families that matter.
+const LIVE_LIKE = [
+  'gpt-4o-mini-transcribe', 'gpt-4o-mini-transcribe-2025-12-15', 'gpt-4o-mini-tts', 'gpt-4o-mini-tts-2025-12-15',
+  'gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14', 'gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'gpt-4o',
+  'gpt-4o-mini-search-preview', 'gpt-5-search-api',
+  'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6.1-sol', 'gpt-6-luna',
+];
+
+await test('openai classify: tts / transcribe are never the extractor (was: the first -mini in catalogue order)', async () => {
+  stub(() => ok({ data: LIVE_LIKE.map(id => ({ id })) }));
+  const { models } = await discoverClassifyModel('openai', 'sk-test');
+  assert.deepStrictEqual(models, ['gpt-4o-mini']);
+});
+
+await test('openai classify: the answer does not depend on the order the catalogue lists ids in', async () => {
+  const picks = new Set();
+  for (const order of [LIVE_LIKE, [...LIVE_LIKE].reverse(), [...LIVE_LIKE].sort(), [...LIVE_LIKE].sort().reverse()]) {
+    stub(() => ok({ data: order.map(id => ({ id })) }));
+    picks.add((await discoverClassifyModel('openai', 'sk-test')).models[0]);
+  }
+  assert.deepStrictEqual([...picks], ['gpt-4o-mini']);
+});
+
+await test('openai classify: no chat model at all → null (the run stops), never a non-chat id', async () => {
+  stub(() => ok({ data: ['gpt-5-search-api', 'gpt-4o-mini-tts', 'gpt-4o-mini-transcribe', 'gpt-realtime-2.1', 'gpt-audio-mini'].map(id => ({ id })) }));
+  const { models, selection } = await discoverClassifyModel('openai', 'sk-test');
+  assert.equal(models, null);
+  assert.deepStrictEqual(selection.pool, []);
+});
+
+await test('openai classify: a pool with no recognised cheap tier is flagged, not blessed', async () => {
+  stub(() => ok({ data: [{ id: 'gpt-5-search-api' }, { id: 'gpt-4o' }, { id: 'gpt-4' }] }));
+  const { selection } = await discoverClassifyModel('openai', 'sk-test');
+  assert.equal(selection.cheapTier, false);
+});
+
+await test('selectOpenAIClassify / selectOpenAIMain are pure and agree with the fetchers', () => {
+  const c = selectOpenAIClassify(LIVE_LIKE);
+  assert.equal(c.picked, 'gpt-4o-mini');
+  assert.equal(c.cheapTier, true);
+  const m = selectOpenAIMain(LIVE_LIKE);
+  assert.equal(m.picked, 'gpt-6.1-sol');
+  assert.equal(m.cheapTier, false, 'generation 6.1 holds only gpt-6.1-sol — no recognised cheap tier');
+});
+
+await test('isOpenAIChatId: every non-chat family on the live key is rejected, chat ids pass', () => {
+  const nonChat = [
+    'gpt-4o-mini-tts', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe-diarize', 'gpt-transcribe',
+    'gpt-realtime-2.1', 'gpt-realtime-whisper', 'gpt-realtime-translate', 'gpt-audio-mini',
+    'gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-live-1', 'gpt-live-transcribe',
+    'gpt-5-search-api', 'gpt-4o-mini-search-preview', 'gpt-5.1-codex-max', 'gpt-5-chat-latest',
+    'gpt-5.5-pro', 'gpt-5-pro', 'gpt-3.5-turbo-instruct',
+    // not `gpt-<N>` at all:
+    'whisper-1', 'tts-1-hd', 'text-embedding-3-small', 'omni-moderation-latest', 'sora-2', 'o3', 'davinci-002', 'chat-latest',
+  ];
+  for (const id of nonChat) assert.equal(isOpenAIChatId(id), false, `${id} must not be a chat id`);
+  const chat = ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14', 'gpt-5-nano', 'gpt-5.6-luna', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-3.5-turbo'];
+  for (const id of chat) assert.equal(isOpenAIChatId(id), true, `${id} must be a chat id`);
+});
+
+// ── The live catalogue, as a fixture (133 ids, GET /v1/models 2026-10-13) ────
+//
+// The selectors above are exercised on short hand-written lists, and the defect
+// of 2026-10-11 was an UNKNOWN family reaching the pool — a list its author chose
+// cannot show that. Here the whole catalogue goes through, and the expectation is
+// a hand-labelled list, not the filter's own output: a new id on a refreshed
+// fixture fails the first test until someone has said whether it is a chat model.
+const LIVE_IDS = JSON.parse(readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'openai-models-2026-10-13.json'), 'utf-8')).ids;
+
+// Hand-labelled 2026-10-13: the numbered gpt-N text/chat models, dated snapshots
+// included. Everything else on the key is audio, speech, transcription, image,
+// realtime, live, search, codex, *-chat-latest aliases, *-pro, completions-only
+// (`instruct`), embeddings, moderation, video, or a pre-gpt legacy id.
+const LIVE_USABLE = [
+  'gpt-3.5-turbo', 'gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106', 'gpt-3.5-turbo-16k',
+  'gpt-4', 'gpt-4-0613', 'gpt-4-turbo', 'gpt-4-turbo-2024-04-09',
+  'gpt-4.1', 'gpt-4.1-2025-04-14', 'gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14', 'gpt-4.1-nano', 'gpt-4.1-nano-2025-04-14',
+  'gpt-4o', 'gpt-4o-2024-05-13', 'gpt-4o-2024-08-06', 'gpt-4o-2024-11-20', 'gpt-4o-mini', 'gpt-4o-mini-2024-07-18',
+  'gpt-5', 'gpt-5-2025-08-07', 'gpt-5-mini', 'gpt-5-mini-2025-08-07', 'gpt-5-nano', 'gpt-5-nano-2025-08-07',
+  'gpt-5.1', 'gpt-5.1-2025-11-13', 'gpt-5.2', 'gpt-5.2-2025-12-11',
+  'gpt-5.4', 'gpt-5.4-2026-03-05', 'gpt-5.4-mini', 'gpt-5.4-mini-2026-03-17', 'gpt-5.4-nano', 'gpt-5.4-nano-2026-03-17',
+  'gpt-5.5', 'gpt-5.5-2026-04-23', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra',
+  'gpt-6-astra', 'gpt-6-luna', 'gpt-6-sol', 'gpt-6.1-sol',
+];
+// Chat-capable but without a gpt-N number: the reasoning series. Usable when an
+// operator NAMES one (config / fallback rung), never ranked by discovery.
+const LIVE_REASONING = [
+  'o1', 'o1-2024-12-17', 'o3', 'o3-2025-04-16', 'o3-mini', 'o3-mini-2025-01-31', 'o4-mini', 'o4-mini-2025-04-16',
+];
+
+// Deterministic shuffles (no Math.random: a flaky order is not an order).
+function shuffled(list, seed) {
+  const out = [...list];
+  let x = seed;
+  for (let i = out.length - 1; i > 0; i--) {
+    x = (x * 1103515245 + 12345) & 0x7fffffff;
+    const j = x % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+await test('live catalogue: exactly the hand-labelled chat models pass isOpenAIChatId — an unlabelled family fails here', () => {
+  assert.equal(LIVE_IDS.length, 133, 'the fixture is the 133-id listing');
+  assert.deepStrictEqual(LIVE_IDS.filter(isOpenAIChatId).sort(), [...LIVE_USABLE].sort());
+  // Nothing hand-labelled is missing from the listing (a stale label list would
+  // otherwise pass by being a superset).
+  for (const id of LIVE_USABLE) assert.ok(LIVE_IDS.includes(id), `${id} is labelled usable but is not in the fixture`);
+});
+
+await test('live catalogue: the reasoning series is classify-capable by name, pro/instruct/search are not', () => {
+  assert.deepStrictEqual(
+    LIVE_IDS.filter((id) => isOpenAIClassifyCapableId(id) && !isOpenAIChatId(id)).sort(),
+    [...LIVE_REASONING].sort(),
+  );
+  for (const id of ['o1-pro', 'o1-pro-2025-03-19', 'omni-moderation-latest', 'o3-mini-search']) {
+    assert.equal(isOpenAIClassifyCapableId(id), false, `${id}`);
+  }
+});
+
+await test('live catalogue, 24 seeded orders: the cheap tier is gpt-4o-mini every time and always a chat model', () => {
+  const picks = new Set();
+  for (let seed = 1; seed <= 24; seed++) {
+    const sel = selectOpenAIClassify(shuffled(LIVE_IDS, seed));
+    assert.ok(isOpenAIChatId(sel.picked), `seed ${seed}: ${sel.picked} is not a chat model`);
+    picks.add(sel.picked);
+  }
+  assert.deepStrictEqual([...picks], ['gpt-4o-mini']);
+});
+
+await test('live catalogue, leave-one-out: whichever id disappears, neither tier picks a non-chat model', () => {
+  for (const gone of LIVE_IDS) {
+    const rest = LIVE_IDS.filter((id) => id !== gone);
+    const c = selectOpenAIClassify(rest).picked;
+    const m = selectOpenAIMain(rest).picked;
+    assert.ok(c === null || isOpenAIChatId(c), `without ${gone}: classify picked ${c}`);
+    assert.ok(m === null || isOpenAIChatId(m), `without ${gone}: main picked ${m}`);
+  }
+});
+
+await test('live catalogue, main tier: gpt-6.1-sol is the only 6.1 id and is reported as no cheap tier, in any order', () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const m = selectOpenAIMain(shuffled(LIVE_IDS, seed));
+    assert.equal(m.picked, 'gpt-6.1-sol');
+    assert.equal(m.cheapTier, false);
+    assert.equal(m.generation, 6.1);
+  }
+});
+
+await test('resolveClassifyDecision (run-manual / report): the same refusal as run — a listed config tts id is rejected, not taken', async () => {
+  const sel = { cheapTier: false, catalogueIds: ['gpt-5-search-api', 'gpt-4o', 'gpt-4o-mini-tts'], pool: ['gpt-4o'] };
+  const d = await resolveClassifyDecision('openai', { classifyModel: 'gpt-4o-mini-tts', env: 'OPENAI_API_KEY' }, {
+    env: { OPENAI_API_KEY: 'sk-test' },
+    discoverFn: async () => ({ models: ['gpt-4o'], selection: sel }),
+  });
+  assert.equal(d.model, null);
+  assert.equal(d.refused, 'no-usable-classify-model');
+  assert.deepStrictEqual(d.rejected, ['gpt-4o-mini-tts']);
+  // The report path may not block: it returns the config pin — and says so.
+  const lines = [];
+  const prev = process.stderr.write;
+  process.stderr.write = (s, ...rest) => { if (typeof s === 'string' && s.includes('[discover-warn]')) { lines.push(s); return true; } return prev.call(process.stderr, s, ...rest); };
+  try {
+    const model = await resolveClassifyModel('openai', { classifyModel: 'gpt-4o-mini-tts', env: 'OPENAI_API_KEY' }, {
+      env: { OPENAI_API_KEY: 'sk-test' },
+      discoverFn: async () => ({ models: ['gpt-4o'], selection: sel }),
+    });
+    assert.equal(model, 'gpt-4o-mini-tts', 'never-block: the configured id comes back');
+  } finally { process.stderr.write = prev; }
+  assert.equal(lines.length, 1, 'the report path must say why its classification may come back empty');
+  assert.match(lines[0], /gpt-4o-mini-tts is listed but is not a chat model by name/);
+});
+
+await test('resolveClassifyModel (report path): a pick with no recognised cheap tier is NOT taken — the config pin stands', async () => {
+  const cfg = { classifyModel: 'gpt-5-nano', env: 'OPENAI_API_KEY' };
+  const out = await resolveClassifyModel('openai', cfg, {
+    env: { OPENAI_API_KEY: 'sk-test' },
+    discoverFn: async () => ({ models: ['gpt-6.1-sol'], selection: { cheapTier: false } }),
+  });
+  assert.equal(out, 'gpt-5-nano');
 });
 
 console.log('\ndiscoverClassifyModel Anthropic');

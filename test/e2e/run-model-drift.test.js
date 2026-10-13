@@ -52,7 +52,13 @@ const SERVED = 'gpt-6-astra';
 // which prefers the newest generation — would otherwise have chosen SERVED.
 // Pinning is what makes «we asked for this one» a fact of the test rather than
 // a side effect of the discovery rules.
-const CATALOGUE = [REQUESTED, SERVED];
+// The key also lists a search SKU and a cheap chat model, as every real key
+// does: the cheap tier (extraction/sentiment) is resolved from the catalogue and
+// a catalogue holding only these two generation-5.6/6 ids has NO usable
+// extractor — the run now stops there instead of extracting with `gpt-6-astra`
+// (see test/e2e/run-model-selection-safety.test.js). This test is about the
+// answer surface, so the extractor is given its ordinary home.
+const CATALOGUE = [REQUESTED, SERVED, 'gpt-5-search-api', 'gpt-4o-mini'];
 
 const QUERIES = ['best test brands 2026', 'top test brand alternatives'];
 

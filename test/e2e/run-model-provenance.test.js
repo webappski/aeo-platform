@@ -76,10 +76,13 @@ test('a finished run records requested + served model per cell, and flags an inc
       })),
     }));
 
+    // The key also lists a search SKU and a cheap chat model, as every real key
+    // does: the cheap tier (extraction) resolves from the catalogue, and a
+    // catalogue holding only an unrecognised generation has no usable extractor.
     const r = spawnCli(['run'], {
       cwd: dir,
       env: offlineFetchEnv({
-        AEO_E2E_CATALOGUE: JSON.stringify([UNPRICED]),
+        AEO_E2E_CATALOGUE: JSON.stringify([UNPRICED, 'gpt-5-search-api', 'gpt-4o-mini']),
         AEO_E2E_ANSWER: JSON.stringify(ANSWER),
       }),
       timeout: 60000,

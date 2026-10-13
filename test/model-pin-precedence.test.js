@@ -24,7 +24,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyCliModelOverrides, cliModelPins, resolveRunModels } from '../lib/config.js';
+import {
+  applyCliModelOverrides, cliModelPins, cliClassifyPins, resolveRunModels, resolveClassifyChoice,
+} from '../lib/config.js';
 
 test('cliModelPins reports only what the operator actually typed', () => {
   assert.deepEqual(
@@ -80,4 +82,57 @@ test('applyCliModelOverrides still writes the flag into the config it is given',
   const bare = { providers: {} };
   applyCliModelOverrides(bare, { geminiModel: 'gemini-3.7-flash' });
   assert.deepEqual(bare.providers, {});
+});
+
+// ─── The cheap tier (2026-10-13) ────────────────────────────────────────────
+// Pure decision functions — same R37 carve-out as above; the wiring (a real run
+// that honours the pin, refuses before a paid call, labels its source) is
+// end-to-end in test/e2e/run-model-selection-safety.test.js.
+
+test('cliClassifyPins reports only the cheap-tier pins the operator typed', () => {
+  assert.deepEqual(cliClassifyPins({ openaiClassifyModel: 'gpt-4.1-mini' }), { openai: 'gpt-4.1-mini' });
+  assert.deepEqual(cliClassifyPins({}), {});
+  assert.deepEqual(cliClassifyPins({ openaiClassifyModel: '' }), {});
+  // `--openai-classify-model` typed without a value arrives as `true` under
+  // `strict: false`; it is not a model id.
+  assert.deepEqual(cliClassifyPins({ openaiClassifyModel: true }), {});
+  // A classify pin is not a main pin.
+  assert.deepEqual(cliModelPins({ openaiClassifyModel: 'gpt-4.1-mini' }), {});
+});
+
+test('resolveClassifyChoice: pin > safe discovery > config > fallback; refusal only when the catalogue was read', () => {
+  const ids = ['gpt-5-nano', 'gpt-4o-mini'];
+  const usable = (id) => !/tts|transcribe/.test(id);
+  assert.deepEqual(
+    resolveClassifyChoice({ pinnedModel: 'gpt-4.1-mini', discovered: ['gpt-4o-mini'], cfgModel: 'gpt-5-nano' }),
+    { model: 'gpt-4.1-mini', source: 'cli-pin' });
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: ['gpt-4o-mini'], selection: { cheapTier: true, catalogueIds: ids }, cfgModel: 'gpt-5-nano' }),
+    { model: 'gpt-4o-mini', source: 'discovery' });
+  // No recognised tier → config, checked against the key.
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: ['gpt-4o'], selection: { cheapTier: false, catalogueIds: ids }, cfgModel: 'gpt-5-nano', isUsable: usable }),
+    { model: 'gpt-5-nano', source: 'config' });
+  // Config not on the key → the shipped fallback, if the key lists it.
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: null, selection: { cheapTier: false, catalogueIds: ids }, cfgModel: 'gpt-4.1-mini', fallbackModel: 'gpt-5-nano', isUsable: usable }),
+    { model: 'gpt-5-nano', source: 'fallback' });
+  // Catalogue read, nothing usable anywhere → refusal, not a guess.
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: null, selection: { cheapTier: false, catalogueIds: ['gpt-4o-mini-tts'] }, cfgModel: 'gpt-5-nano', fallbackModel: 'gpt-5-nano', isUsable: usable }),
+    { model: null, source: 'none', refused: 'no-usable-classify-model', rejected: [] });
+  // A config model the key LISTS but the chat filter turns down (the same defect
+  // typed into a config file): not taken, and the refusal says it was listed.
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: ['gpt-4o'], selection: { cheapTier: false, catalogueIds: ['gpt-4o', 'gpt-4o-mini-tts'] }, cfgModel: 'gpt-4o-mini-tts', fallbackModel: 'gpt-5-nano', isUsable: usable }),
+    { model: null, source: 'none', refused: 'no-usable-classify-model', rejected: ['gpt-4o-mini-tts'] });
+  // …and with the predicate removed the same input would be taken: the filter,
+  // not the catalogue check, is what stands between a config tts id and the run.
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: ['gpt-4o'], selection: { cheapTier: false, catalogueIds: ['gpt-4o', 'gpt-4o-mini-tts'] }, cfgModel: 'gpt-4o-mini-tts', fallbackModel: 'gpt-5-nano' }),
+    { model: 'gpt-4o-mini-tts', source: 'config' });
+  // Catalogue NOT read (network): nothing to check against — the old chain.
+  assert.deepEqual(
+    resolveClassifyChoice({ discovered: null, selection: null, cfgModel: 'gpt-5-nano', fallbackModel: 'gpt-5-nano' }),
+    { model: 'gpt-5-nano', source: 'config' });
 });

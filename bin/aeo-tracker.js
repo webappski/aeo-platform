@@ -12,7 +12,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, resolveRunModels } from '../lib/config.js';
+import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, cliClassifyPins, resolveRunModels, resolveClassifyChoice } from '../lib/config.js';
 import { PROVIDERS } from '../lib/providers/index.js';
 import { extractOpenAIResponse } from '../lib/providers/openai.js';
 import { pickClassifyProvider } from '../lib/providers/pick-classify.js';
@@ -28,7 +28,7 @@ import { renderMarkdown, parseRawResponse } from '../lib/report/markdown.js';
 import { renderHtml } from '../lib/report/html.js';
 import { buildMcMetadata } from '../lib/report/mc-metadata.js';
 import { classifyCitations } from '../lib/report/classify-citations.js';
-import { discoverModels, discoverClassifyModel, resolveClassifyModel, listModelIds, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
+import { discoverModels, discoverClassifyModel, resolveClassifyModel, resolveClassifyDecision, listModelIds, isOpenAIChatId, isOpenAIClassifyCapableId, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
 import { MAIN_OPTIONS_BY_PROVIDER, CLASSIFY_OPTIONS_BY_PROVIDER, detectThinkingActive } from '../lib/providers/main-options.js';
 import { extractUsage, calcCost, estimateWeeklyCost, billedWebSearchCalls, webSearchFeeFor, WEB_SEARCH_TOOL_FEE, WEB_SEARCH_FEE_SOURCE } from '../lib/providers/pricing.js';
 import { formatTpmHint, estimateRunDuration } from '../lib/util/cost-estimate.js';
@@ -741,15 +741,38 @@ function extractorModelList(extraction) {
     .sort();
 }
 
-async function resolveClassifyProviderConfig(providerConfig) {
+async function resolveClassifyProviderConfig(providerConfig, refusals = null) {
   const base = providerConfig || DEFAULT_CONFIG.providers;
   const entries = await Promise.all(
-    Object.entries(base).map(async ([name, cfg]) => [
-      name,
-      { ...cfg, classifyModel: (await resolveClassifyModel(name, cfg)) || cfg.classifyModel },
-    ]),
+    Object.entries(base).map(async ([name, cfg]) => {
+      const decision = await resolveClassifyDecision(name, cfg);
+      // A caller that CAN stop (run-manual) passes a list and gets the
+      // refusals; the report path passes none and keeps its never-block contract.
+      if (decision.refused && Array.isArray(refusals)) {
+        refusals.push({ provider: name, selection: decision.selection, rejected: decision.rejected || [] });
+      }
+      return [name, { ...cfg, classifyModel: decision.model || cfg.classifyModel }];
+    }),
   );
   return Object.fromEntries(entries);
+}
+
+/**
+ * Print the refusal for providers whose cheap tier has no usable model on the
+ * key. One text for `run` and `run-manual`: a series is both, and the two must
+ * refuse for the same reason in the same words.
+ * @param {Array<{provider: string, selection?: Object|null, rejected?: string[]}>} list
+ */
+function printClassifyRefusals(list) {
+  for (const p of list) {
+    const tried = p.selection?.pool?.length ? p.selection.pool.join(', ') : 'no chat model';
+    console.error(`${c.red}  ${p.provider} — no usable model for the cheap tier (extraction, sentiment, validation) on this key (candidates: ${tried}), and no config classifyModel or shipped default the key lists as a chat model.${c.reset}`);
+    if (p.rejected?.length) {
+      console.error(`${c.dim}    Listed by the key but not a chat model by name: ${p.rejected.join(', ')} — not used.${c.reset}`);
+    }
+    console.error(`${c.dim}    Name one: --${p.provider}-classify-model=<id>${c.reset}`);
+  }
+  console.error(`${c.red}  Refusing to run: an extractor that is not a chat model fails on every cell, and a flagship is paid for on every one.${c.reset}`);
 }
 
 async function buildExtractionProviders(providerConfig) {
@@ -2438,6 +2461,13 @@ async function cmdRun(options = {}) {
   // override the latter. That collapse is why --openai-model was a documented
   // no-op — see cliModelPins() in lib/config.js.
   const modelPins = cliModelPins(cliModelOverrides);
+  // The cheap tier's own pins (kept apart from the main pins: different
+  // decision, different refusal text).
+  // AEO_OPENAI_CLASSIFY_MODEL_PIN is the durable form, as AEO_OPENAI_MODEL_PIN
+  // is for the main model: a measurement script or cron has no flag to type.
+  const classifyPins = cliClassifyPins({
+    openaiClassifyModel: options.openaiClassifyModel || process.env.AEO_OPENAI_CLASSIFY_MODEL_PIN,
+  });
   const { brand, domain, queries: rawQueries, providers: providerConfig } = config;
   const brandAliases = Array.isArray(config.brandAliases) ? config.brandAliases : [];
 
@@ -2617,12 +2647,17 @@ async function cmdRun(options = {}) {
           const [mainResult, classifyResult, catalogue] = await Promise.all([
             discoverModels(name, apiKey, cfg.baseURL),
             discoverClassifyModel(name, apiKey, cfg.baseURL),
-            modelPins[name] ? listModelIds(name, apiKey, cfg.baseURL) : Promise.resolve({ ids: null, authError: false }),
+            (modelPins[name] || classifyPins[name]) ? listModelIds(name, apiKey, cfg.baseURL) : Promise.resolve({ ids: null, authError: false }),
           ]);
           return {
             name, cfg, apiKey,
             models: mainResult.models, authError: mainResult.authError,
             classifyModels: classifyResult.models,
+            // The facts behind each OpenAI pick (cheap tier recognised or not,
+            // and the key's own catalogue). Absent for providers whose fetcher
+            // returns a bare id.
+            mainSelection: mainResult.selection || null,
+            classifySelection: classifyResult.selection || null,
             catalogueIds: catalogue.ids,
           };
         } catch (err) {
@@ -2641,6 +2676,9 @@ async function cmdRun(options = {}) {
     // Collected here, refused after the loop — one message listing every bad
     // pin beats failing on whichever provider happened to be iterated first.
     const deadPins = [];
+    // Providers whose cheap tier has no usable model on the key and no pin or
+    // config model to stand in: refused after the loop, before any paid call.
+    const needClassifyPin = [];
 
     for (const r of discoveryResults) {
       if (r.skip === 'no-key') {
@@ -2670,15 +2708,41 @@ async function cmdRun(options = {}) {
       // catalogue is null when it could not be read (Perplexity's /models 404s
       // routinely) — unknown is not absent, so that case proceeds.
       if (pinnedModel && Array.isArray(r.catalogueIds) && !r.catalogueIds.includes(pinnedModel)) {
-        deadPins.push({ provider: r.name, pinned: pinnedModel, catalogue: r.catalogueIds });
+        deadPins.push({ provider: r.name, pinned: pinnedModel, catalogue: r.catalogueIds, flag: `${r.name}-model` });
       }
-      // Classify tier keeps its extra fallback rung (discovered → cfg → hardcode)
-      // — unlike main, which has always stopped at cfg.model with no further
-      // hardcode rung inside this loop (the provider is just skipped instead).
-      const resolvedClassifyModel = (r.classifyModels && r.classifyModels[0])
-        || r.cfg.classifyModel
-        || MODEL_FALLBACK[r.name]?.classify;
-      const classifySourceLabel = r.classifyModels ? '' : ' (fallback)';
+      // Same refusal for a classify pin the key does not list.
+      const classifyPin = classifyPins[r.name] || null;
+      if (classifyPin && Array.isArray(r.catalogueIds) && !r.catalogueIds.includes(classifyPin)) {
+        deadPins.push({ provider: r.name, pinned: classifyPin, catalogue: r.catalogueIds, flag: `${r.name}-classify-model` });
+      }
+      // Classify tier: pin → live discovery (a recognised cheap tier) → config →
+      // shipped FALLBACK. When the catalogue was READ and holds nothing usable
+      // (an empty chat pool, or no recognised cheap tier) the config/FALLBACK
+      // rungs are checked against it, and with none of them there the run stops
+      // rather than extracting competitors with a flagship or a non-chat model.
+      // The decision is lib/config.js resolveClassifyChoice().
+      const classifyChoice = resolveClassifyChoice({
+        pinnedModel: classifyPin,
+        discovered: r.classifyModels,
+        selection: r.classifySelection,
+        cfgModel: r.cfg.classifyModel,
+        fallbackModel: MODEL_FALLBACK[r.name]?.classify,
+        isUsable: r.name === 'openai' ? isOpenAIClassifyCapableId : () => true,
+      });
+      // A pin is the operator's word and is not argued with — but an id that
+      // reads as text-to-speech / transcription / image / embedding BY NAME is
+      // the 2026-10-11 defect typed by hand, and one stderr line is cheap.
+      if (classifyPin && r.name === 'openai' && !isOpenAIClassifyCapableId(classifyPin)) {
+        console.warn(`${c.yellow}  ${SYM.warn} --openai-classify-model=${classifyPin} does not read as a chat model by name (audio / transcription / image / embedding / search / realtime ids fail on every call). Used as asked.${c.reset}`);
+      }
+      if (classifyChoice.refused) {
+        needClassifyPin.push({ provider: r.name, selection: r.classifySelection, rejected: classifyChoice.rejected || [] });
+        continue;
+      }
+      const resolvedClassifyModel = classifyChoice.model;
+      const classifySourceLabel = classifyChoice.source === 'cli-pin'
+        ? ` (pinned by --${r.name}-classify-model)`
+        : (classifyChoice.source === 'discovery' ? '' : ' (fallback)');
       // Naming the SOURCE is the point: the operator has to be able to see, in
       // the run log, whether the id being measured on came from their flag,
       // from the live catalogue, or from a config file that may be months old.
@@ -2710,10 +2774,14 @@ async function cmdRun(options = {}) {
     // after discovery (free GETs), before the first billed answer call. Silently
     // measuring on some other model is the original defect; so is charging the
     // operator for a run that answers a different question than they asked.
+    if (needClassifyPin.length > 0) {
+      printClassifyRefusals(needClassifyPin);
+      process.exit(1);
+    }
     if (deadPins.length > 0) {
       for (const p of deadPins) {
         const near = p.catalogue.filter(id => id.startsWith(String(p.pinned).split('-')[0])).slice(0, 8);
-        console.error(`${c.red}  --${p.provider}-model=${p.pinned} — this key's /models catalogue does not list that id.${c.reset}`);
+        console.error(`${c.red}  --${p.flag || `${p.provider}-model`}=${p.pinned} — this key's /models catalogue does not list that id.${c.reset}`);
         if (near.length) console.error(`${c.dim}    Available on this key: ${near.join(', ')}${c.reset}`);
       }
       console.error(`${c.red}  Refusing to run: substituting a different model would measure something other than what you asked for.${c.reset}`);
@@ -4904,12 +4972,27 @@ async function cmdReport(args = {}) {
 
 // ─── Commands (run-manual) ───
 
+/**
+ * `--name=value` or `--name value` out of a raw argv; null when the option is
+ * absent or typed without a value. (`run-manual` parses its own argv — the
+ * command's flags are positional-sensitive — so it cannot lean on parseArgs.)
+ */
+function argvOptionValue(argv, name) {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i].startsWith(`${name}=`)) return argv[i].slice(name.length + 1) || null;
+    if (argv[i] === name) return argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
+  }
+  return null;
+}
+
 async function cmdRunManual(argv) {
   // Parse: aeo-platform run-manual <provider> --from-dir <dir> [--declared-subset=<name>]
+  //        [--openai-classify-model=<id>]
   let providerName = null;
   let fromDir = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--from-dir' && argv[i + 1]) { fromDir = argv[i + 1]; i++; }
+    else if (argv[i] === '--openai-classify-model' && argv[i + 1] && !argv[i + 1].startsWith('--')) { i++; }
     else if (argv[i] === '--declared-subset' && argv[i + 1] && !argv[i + 1].startsWith('--')) { i++; }
     else if (argv[i].startsWith('--declared-subset=')) { /* consumed below */ }
     else if (!argv[i].startsWith('--') && !providerName) { providerName = argv[i]; }
@@ -4995,9 +5078,44 @@ async function cmdRunManual(argv) {
     // compared against each other, judged by different graders — and the
     // difference was invisible in the summary. Same reason resolveClassifyModel
     // exists for the report path: a config pin goes stale, discovery does not.
-    extractionProvidersManual = await buildExtractionProviders(
-      await resolveClassifyProviderConfig(config.providers),
-    );
+    const manualRefusals = [];
+    const manualExtractionConfig = await resolveClassifyProviderConfig(config.providers, manualRefusals);
+    // The cheap-tier pin reaches the manual legs too. A series is a run PLUS its
+    // run-manual legs; honouring the pin on `run` only gave one series two
+    // different extractors (`gemini-3.1-flash-lite + gpt-4o-mini` on the paste
+    // leg, the pinned one on the API leg) with nothing in the output saying so —
+    // the class of defect the 2026-09-01 comment above names.
+    const manualClassifyPin = argvOptionValue(argv, '--openai-classify-model')
+      || process.env.AEO_OPENAI_CLASSIFY_MODEL_PIN || null;
+    if (manualClassifyPin) {
+      const openaiCfg = manualExtractionConfig.openai || DEFAULT_CONFIG.providers.openai;
+      const openaiKey = process.env[openaiCfg.env || 'OPENAI_API_KEY'];
+      if (!openaiKey) {
+        console.warn(`${c.yellow}  ${SYM.warn} --openai-classify-model has no effect: no ${openaiCfg.env || 'OPENAI_API_KEY'} in the environment, so OpenAI is not an extractor seat.${c.reset}`);
+      } else {
+        const { ids } = await listModelIds('openai', openaiKey, openaiCfg.baseURL);
+        if (Array.isArray(ids) && !ids.includes(manualClassifyPin)) {
+          console.error(`${c.red}  --openai-classify-model=${manualClassifyPin} — this key's /models catalogue does not list that id.${c.reset}`);
+          console.error(`${c.red}  Refusing to run: substituting a different model would grade this leg with something other than what you asked for.${c.reset}`);
+          process.exit(1);
+        }
+        if (!isOpenAIClassifyCapableId(manualClassifyPin)) {
+          console.warn(`${c.yellow}  ${SYM.warn} --openai-classify-model=${manualClassifyPin} does not read as a chat model by name. Used as asked.${c.reset}`);
+        }
+        manualExtractionConfig.openai = { ...openaiCfg, classifyModel: manualClassifyPin };
+        console.log(`${c.dim}  OpenAI extractor pinned by --openai-classify-model: ${manualClassifyPin}${c.reset}`);
+      }
+    }
+    // The same refusal `run` takes: the catalogue was read, the cheap tier has
+    // no usable model, and no pin names one. Without it this leg would be graded
+    // by whatever the config says (a text-to-speech id the key lists, say) while
+    // the API leg of the series refused — one series, two graders.
+    const unresolved = manualRefusals.filter((p) => !(p.provider === 'openai' && manualClassifyPin));
+    if (unresolved.length > 0) {
+      printClassifyRefusals(unresolved);
+      process.exit(1);
+    }
+    extractionProvidersManual = await buildExtractionProviders(manualExtractionConfig);
   } catch (err) {
     console.error(`\n${c.red}${SYM.err} ${errMsg(err)}${c.reset}`);
     process.exit(1);
@@ -5731,6 +5849,14 @@ ${c.bold}Query validation:${c.reset}
 
 ${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only):
   ${c.bold}--openai-model=<id>${c.reset}     Pin providers.openai.model for this run
+  ${c.bold}--openai-classify-model=<id>${c.reset}
+                         Pin the model OpenAI uses for the cheap tier — competitor extraction, sentiment,
+                         query validation. Applies to run AND run-manual (a series is both; pin both legs
+                         the same). AEO_OPENAI_CLASSIFY_MODEL_PIN is the same pin as an env var. Without
+                         it the run picks one live: a chat model one generation behind the search model,
+                         cheapest tier, same pick every time. Pin it to keep an earlier run's extractor
+                         (e.g. gpt-4.1-mini). If the key lists no usable chat model for the cheap tier
+                         the run stops and asks for this flag before any paid call.
   ${c.bold}--gemini-model=<id>${c.reset}     Pin providers.gemini.model
   ${c.bold}--anthropic-model=<id>${c.reset}  Pin providers.anthropic.model
   ${c.bold}--perplexity-model=<id>${c.reset} Pin providers.perplexity.model
@@ -5746,6 +5872,7 @@ ${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only
   bucket that cools down fast). Avoid pinning to a -search SKU except for exactly this
   like-for-like case. See --depth=full for the training-corpus (no-search) pass
   alongside the live-search pass.
+
   --replay caveat: cached raw responses are filename-keyed by (query index, provider, model)
   within the active domain's namespace. An override that doesn't match the recorded model — or a
   query list reordered since capture — will miss the file and hit live API.
@@ -5881,6 +6008,11 @@ const { values, positionals } = parseArgs({
     // Use to swap a search-capable model (low TPM on tier 1) for its base
     // counterpart without re-running init or editing .aeo-tracker.json.
     'openai-model':     { type: 'string' },
+    // The cheap tier (competitor extraction, sentiment, validation) has its own
+    // pin. Live discovery picks it and a config `classifyModel` loses to it, so
+    // before this flag a wrong extractor could not be corrected from the
+    // command line at all.
+    'openai-classify-model': { type: 'string' },
     'gemini-model':     { type: 'string' },
     'anthropic-model':  { type: 'string' },
     'perplexity-model': { type: 'string' },
@@ -5947,6 +6079,22 @@ if (values.offline && command !== 'report') {
   process.exit(2);
 }
 
+// The cheap-tier pin belongs to the two commands that grade answers. `report`
+// resolves its own classify tier; `init`/`diff`/`export` have none. Accepting
+// the flag there and doing nothing is the defect `--offline` was written to
+// close, so: refuse, and name where it works.
+if (values['openai-classify-model'] !== undefined && !values.help) {
+  if (values['openai-classify-model'] === true) {
+    console.error(`${c.red}--openai-classify-model needs a model id: --openai-classify-model=<id>${c.reset}`);
+    process.exit(2);
+  }
+  if (command !== 'run' && command !== 'run-manual') {
+    console.error(`${c.red}--openai-classify-model applies to \`run\` and \`run-manual\` only (they grade answers).${c.reset}`);
+    console.error(`${c.dim}  \`${command || '(none)'}\` ignores it; to fix the extractor of a series, pin it on run and run-manual.${c.reset}`);
+    process.exit(2);
+  }
+}
+
 try {
   if (values.help || (!command && !values.version)) {
     console.log(HELP);
@@ -5978,6 +6126,7 @@ try {
       depth: values.depth,                       // web | full | auto (default: web)
       // Per-run model overrides — applied via applyCliModelOverrides()
       openaiModel:     values['openai-model'],
+      openaiClassifyModel: values['openai-classify-model'],
       geminiModel:     values['gemini-model'],
       anthropicModel:  values['anthropic-model'],
       perplexityModel: values['perplexity-model'],
