@@ -25,8 +25,9 @@
  *
  * Fail closed, never a quiet "clean". Exit 1 when: the variable is not set;
  * the path does not exist or is not a directory; the list file is missing,
- * unreadable or not a regular file; a list line is not a plain name; a CRM
- * entry is neither a directory nor a regular file; the list is empty; a name
+ * unreadable or not a regular file; a list line is not a plain name; the list
+ * file has no names while client folders exist; a CRM entry is neither a
+ * directory nor a regular file; the list is empty; a name
  * equals this project's own brand; `npm pack` fails or returns no files; the
  * file list lacks package.json, a README or a LICENSE; a file is not text
  * (NUL byte or invalid UTF-8) and is not in the inspected-binary manifest; a
@@ -201,6 +202,9 @@ function loadDenylist(dir) {
       }
       lines.push(line);
     });
+    if (folders.length > 0 && lines.length === 0) {
+      fail(`${LIST_FILE} has no names: brands and domains that differ from a folder name would silently go unchecked — add them, one per line`);
+    }
   }
 
   const seen = new Set();

@@ -159,6 +159,10 @@ test('d: folders but no list file → refuses and names the file', () => {
   expectFail(runGuard(BASE, envFor({ list: makeList({ folders: [tok()], file: null }) })), new RegExp(`${LIST_FILE} is missing`), 'd');
 });
 
+test('d2: folders but a list file with no names (comments and blank lines only) → refuses and names the file', () => {
+  expectFail(runGuard(BASE, envFor({ list: makeList({ folders: [tok()], file: ['# header only', ''] }) })), new RegExp(`${LIST_FILE} has no names`), 'd2');
+});
+
 test('e: the variable points at a file → refuses', () => {
   const f = join(mk('zq-file'), 'list.txt'); writeFileSync(f, `${tok()}\n`);
   expectFail(runGuard(BASE, envFor({ list: f })), /must be a directory/, 'e');
