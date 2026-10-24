@@ -30,7 +30,7 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 ### Docs
 
-- **Из комментариев и примеров в `lib/`, `bin/` и README убраны имена реальных клиентов.** Несколько root-cause-комментариев (`lib/brand-match.js`, `lib/config.js`, `lib/mention.js`, `lib/init/research/brand-fit.js`, `lib/report/sections.js`, `lib/report/visibility-index.js`, `lib/report/html.js`, `bin/mc-payload.mjs`) и пример в README-разделе «How we count visibility» называли клиентские бренды по имени в уже опубликованном npm-пакете. Даты инцидентов, счётчики ячеек и прочие фактические детали сохранены без изменений; пример сепаратор-толерантного сопоставления брендов (`"acore" ≈ "a-core" ≈ "a core"`) теперь построен на одном вымышленном бренде вместо реального. `test/e2e/methodology-doc-truth.test.js`, который проверяет это написание против настоящего `detectMention()`, обновлён тем же вымышленным брендом в этом же релизе. Публикация в npm — по решению мейнтейнера.
+- **Названия брендов в комментариях и примерах заменены на один вымышленный бренд `Acore`.** Это root-cause-комментарии в `lib/brand-match.js`, `lib/config.js`, `lib/mention.js`, `lib/init/research/brand-fit.js`, `lib/report/sections.js`, `lib/report/visibility-index.js`, `lib/report/html.js`, `bin/mc-payload.mjs` и пример в README-разделе «How we count visibility». Даты, счётчики ячеек и правила сопоставления не менялись; пример сепаратор-толерантного сопоставления брендов (`"acore" ≈ "a-core" ≈ "a core"`) теперь построен на вымышленном бренде. `test/e2e/methodology-doc-truth.test.js`, который проверяет это написание против настоящего `detectMention()`, обновлён тем же брендом.
 
 ## [1.16.1] — 2026-09-29
 
