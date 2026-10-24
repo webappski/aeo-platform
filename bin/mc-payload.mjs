@@ -33,7 +33,7 @@
  * Usage:
  *   node bin/mc-payload.mjs <run-folder | _summary.json path> [lang]
  * Examples:
- *   node bin/mc-payload.mjs ~/Projects/aeo-tracker-runs/merchpilot/aeo-responses/2026-06-25
+ *   node bin/mc-payload.mjs ~/Projects/aeo-tracker-runs/acme/aeo-responses/2026-06-25
  *   node bin/mc-payload.mjs ~/Projects/aeo-tracker-runs/acme/aeo-responses/2026-07-10/_summary.json ru
  */
 import { buildMcMetadata } from '../lib/report/mc-metadata.js';

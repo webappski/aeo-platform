@@ -330,7 +330,7 @@ Each answer gets exactly one label (`lib/mention.js`):
 
 **`yes` and `src` both count as one for Presence.** Being cited as a source counts as being visible. That is the least obvious scoring decision in the tool, so it is stated rather than buried.
 
-Name matching is case-insensitive and separator-tolerant — `gcore` matches `Gcore`, `G-Core`, `G Core`, `(Gcore)` — and anchored on word boundaries, so it does not fire inside a longer word (`gcorehouse`) or across a seam (`a bi**g core** network`). Three limits, stated rather than hidden:
+Name matching is case-insensitive and separator-tolerant — `acore` matches `Acore`, `A-Core`, `A Core`, `(Acore)` — and anchored on word boundaries, so it does not fire inside a longer word (`acorehouse`) or across a seam (`an extr**a core** team`). Three limits, stated rather than hidden:
 
 - **No fuzzy matching.** An engine that misspells your name counts as an absence until you add that spelling to `brandAliases` in `.aeo-tracker.json`.
 - **The domain is matched as a plain substring**, without word anchoring — so a longer host that contains your domain string would register as a mention.
@@ -436,7 +436,7 @@ Sub-components with insufficient data (e.g. zero rank positions in a first run) 
 
 **A low or zero score is a question to investigate, not a conclusion to act on.** The tool measures exactly what it asked — and a score is only as trustworthy as the basket behind it. Before you treat a 0% as "AI does not know my brand", confirm two things the tool now surfaces for you in the report's *"How representative is this score?"* panel:
 
-1. **Did the raw answer mention your brand under every spelling?** A naive match misses `G-Core` when you tracked `Gcore`, or a brand cited only inside a source URL. The tool checks aliases and separators and shows the exact sentences engines produced (the *"What AI engines actually said"* section) — read them before trusting a 0. If you see the brand there but the score is 0, that is a matching gap to report, not invisibility.
+1. **Did the raw answer mention your brand under every spelling?** A naive match misses `A-Core` when you tracked `Acore`, or a brand cited only inside a source URL. The tool checks aliases and separators and shows the exact sentences engines produced (the *"What AI engines actually said"* section) — read them before trusting a 0. If you see the brand there but the score is 0, that is a matching gap to report, not invisibility.
 2. **Does the basket cover the field where your brand actually competes?** A CDN brand measured only on "VPC for healthcare" will score 0 — not because it is invisible, but because the basket asked about ground it does not play on. The report's coverage line ("your queries touch X of N product lines") and the small-sample warning are there to catch this. A headline driven by off-target or too-few queries is an artefact of the basket, not a verdict on the brand.
 
 This is the same discipline the tool applies to itself: a number without provenance is a guess. Re-run with a corrected basket (`aeo-platform init --queries-only --add-queries` preserves your trend history) before drawing conclusions. Only a 0% on a basket that covers your real product lines, checked against the raw answer text, is evidence of an AEO gap worth acting on.
