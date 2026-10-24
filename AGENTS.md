@@ -69,11 +69,13 @@ consequences:
 budget for it, and do not start one while another heavy job is using the machine.
 
 There is no CI workflow in this repo. The pre-commit hook and `prepublishOnly`
-(`npm test` + `test:pack-files` + `test:no-client-names` + `scripts/smoke-tarball.sh`)
-are the only gates. `test:no-client-names` needs `AEO_CLIENT_DENYLIST` (a file or a
-`resources/clients/`-style directory, outside this repo) pointed at the CRM client
-list, or an explicit `AEO_SKIP_CLIENT_NAME_GUARD=1` to publish without checking it —
-neither is set by default, so a bare `prepublishOnly` run stops there on purpose.
+(`test:no-client-names` first, then `npm test` + `test:pack-files` +
+`scripts/smoke-tarball.sh`) are the only gates. `test:no-client-names` needs
+`AEO_CLIENT_DENYLIST` pointed at the CRM clients folder, a directory outside this
+repo: one sub-directory per client, plus `public-package-denylist.txt` for the
+brands and domains that differ from a folder name. It has no bypass: without the
+variable a bare `npm publish` stops at that first step on purpose, so the release
+command is `AEO_CLIENT_DENYLIST=<path to the clients folder> npm publish`.
 
 ## Never
 
