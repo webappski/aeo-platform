@@ -1048,7 +1048,7 @@
   .pr-route.cur{ padding-left: 0; padding-top: 28px; }
 }
 
-/* Promo line — "first 10 get first plan free" hook above paid-meta */
+/* Promo line above paid-meta */
 .fk-callout-footer .paid-promo{
   display:flex;
   align-items:baseline;

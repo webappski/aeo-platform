@@ -32,6 +32,13 @@ import {
 } from './_helpers.js';
 
 const KEYS = offlineFetchEnv({ GEMINI_API_KEY: 'test-key-do-not-use-real' });
+
+// AP-1 / D15 — `run-manual` ends like `run`: the "Next:" hint, then one line
+// pointing at the free pilot (see run-replay.test.js for the same pin on `run`).
+const PILOT_HEADLINE = 'Free AI visibility pilot: three places every month';
+// Literal copy of UTM_KEY_PATTERN from webappka src/app/shared/constants/utm-key.ts:8.
+const UTM_KEY_PATTERN = /^utm_[a-z0-9_]{1,30}$/i;
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 const DOMAIN = 'testbrand.com';
 
 function dayBefore(yyyymmdd) {
@@ -106,6 +113,24 @@ test('P0-13 — run-manual perplexity --from-dir reads pasted text + writes summ
       { cwd: dir, env: KEYS, timeout: 60_000 },
     );
     assertExitCode(r, 1, 'flat previous score 100 must drive the run-manual regression exit');
+
+    // G4 — the pilot line is printed exactly once, after the Next: hint.
+    const out = stripAnsi(r.stdout);
+    const lines = out.split('\n').filter((l) => l.includes(PILOT_HEADLINE));
+    assert.strictEqual(lines.length, 1, `expected the pilot line exactly once in stdout, got ${lines.length}`);
+    assert.ok(out.lastIndexOf('Next:') !== -1 && out.lastIndexOf('Next:') < out.indexOf(PILOT_HEADLINE),
+      'the pilot line must come after the "Next:" hint');
+    // G6 — the link goes to the English pilot page and carries the campaign keys the site keeps.
+    const link = lines[0].match(/https:\/\/\S+/);
+    assert.ok(link, `the pilot line must carry a link — got "${lines[0]}"`);
+    const url = new URL(link[0]);
+    assert.strictEqual(url.origin + url.pathname, 'https://webappski.com/en/free-aeo-pilot');
+    for (const key of url.searchParams.keys()) {
+      assert.match(key, UTM_KEY_PATTERN, `query key "${key}" is not a campaign parameter the site keeps`);
+    }
+    assert.strictEqual(url.searchParams.get('utm_source'), 'aeo-platform');
+    assert.strictEqual(url.searchParams.get('utm_medium'), 'cli');
+    assert.strictEqual(url.searchParams.get('utm_campaign'), 'free-pilot');
 
     // 4. Verify the summary landed.
     const summaryPath = join(todayLegacyDir, '_summary.json');

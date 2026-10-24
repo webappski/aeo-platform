@@ -22,6 +22,12 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
 - **Плата за поиск вынесена отдельной строкой в «Session cost» и ключом `webSearchToolFee` в `_summary.json`.** `web search: 102 calls × $0.01 = $1.0200 — already inside the ChatGPT line above (источник и дата)`. Ключ несёт `calls`, `unitUsd`, `costUsd`, `source` и `includedInSessionCost: true`: сумма уже внутри строки модели, второй раз она не прибавляется. Поле ячейки `webSearchCalls` появляется только когда поиск был — прогон без поиска не меняется ни на байт.
 
+### Changed
+
+- **Карточка «Webappski plan» в `report.html` больше не обещает «First 10 founding clients free».** В 1.16.1 это стояло в трёх местах: абзац под заголовком, пункт «Trade-offs» и строка под кнопкой «Request an invoice». webappski.com этого уже не говорит, а страница `/<lang>/aeo-plan-invoice` предлагает один план за €129 по запросу счёта. Теперь карточка говорит то же самое: «we hand-build the plan for you: €129 per plan, one-time. Ask for an invoice and we'll email it over», «Not free — €129 per plan, one-time; the DIY route is the free one», «nothing is charged until you say yes». Цена, срок «1–3 business days», ссылка на счёт и текст пяти пунктов не менялись. Ключи `pricing.earlyBirdShort` и `pricing.earlyBirdLong` удалены: их не задавал ни `bin/`, ни другие репозитории портфеля. Ключи `waitlistLine`, `featureLine`, `promoLine` остались с новыми значениями по умолчанию; `waitlistLine` теперь продолжает фразу «Or skip the DIY step — », а не стоит отдельным предложением после неё. Страж — `test/e2e/offer-alignment.test.js`: ни «first 10», ни «founding client» (en/de/pl/ru) нет ни в карточке, ни во всём `report.html`, три новых текста стоят на своих местах с подставленной ценой.
+
+- **После `run` и `run-manual` в терминале одна строка о бесплатном пилоте.** `Free AI visibility pilot: three places every month — https://webappski.com/en/free-aeo-pilot?utm_source=aeo-platform&utm_medium=cli&utm_campaign=free-pilot` — сразу после подсказки `Next:`. Её нет при `run --json` и когда все движки вернули ошибку (код выхода 3). Пилот — другое предложение, чем план за €129 (три места в месяц, по заявке), поэтому в карточку отчёта он не попал; в README призыва к пилоту нет. Ссылка всегда ведёт на английскую страницу: CLI говорит по-английски, а выбор языка из конфига был бы новой логикой. Значения `utm_source`, `utm_medium` и `utm_campaign` записаны строчными, как в справке Google Analytics 4.
+
 ## [1.16.1] — 2026-09-29
 
 ### Fixed

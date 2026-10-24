@@ -56,6 +56,16 @@ const DOMAIN = 'testbrand.com';
 // has already been set by detectMention() before extraction runs.
 const KEYS = offlineFetchEnv({ GEMINI_API_KEY: 'test-key-do-not-use-real' });
 
+// AP-1 / D15 — `run` ends with one line pointing at the free pilot, after the
+// "Next:" hint. Piped stdout carries no ANSI, but strip it anyway so the URL
+// below is parsed exactly as a terminal user would copy it.
+const PILOT_HEADLINE = 'Free AI visibility pilot: three places every month';
+// Literal copy of UTM_KEY_PATTERN from webappka src/app/shared/constants/utm-key.ts:8 —
+// the keys the site keeps off a landing URL; another repo cannot be imported.
+const UTM_KEY_PATTERN = /^utm_[a-z0-9_]{1,30}$/i;
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+const pilotLines = (stdout) => stripAnsi(stdout).split('\n').filter((l) => l.includes(PILOT_HEADLINE));
+
 test('P0-5 — stable replay run exits 0 and writes _summary.json', async () => {
   await withTmpProject('aeo-e2e-replay-stable-', (dir) => {
     seedReplayProject(dir, { variant: 'stable', legacyLayout: true });
@@ -64,6 +74,23 @@ test('P0-5 — stable replay run exits 0 and writes _summary.json', async () => 
       { cwd: dir, env: KEYS },
     );
     assertExitCode(r, 0, 'stable replay should exit 0');
+    // G4 — the pilot line is printed exactly once, after the Next: hint.
+    const out = stripAnsi(r.stdout);
+    const lines = pilotLines(r.stdout);
+    assert.strictEqual(lines.length, 1, `expected the pilot line exactly once in stdout, got ${lines.length}`);
+    assert.ok(out.lastIndexOf('Next:') !== -1 && out.lastIndexOf('Next:') < out.indexOf(PILOT_HEADLINE),
+      'the pilot line must come after the "Next:" hint');
+    // G6 — the link goes to the English pilot page and carries the campaign keys the site keeps.
+    const link = lines[0].match(/https:\/\/\S+/);
+    assert.ok(link, `the pilot line must carry a link — got "${lines[0]}"`);
+    const url = new URL(link[0]);
+    assert.strictEqual(url.origin + url.pathname, 'https://webappski.com/en/free-aeo-pilot');
+    for (const key of url.searchParams.keys()) {
+      assert.match(key, UTM_KEY_PATTERN, `query key "${key}" is not a campaign parameter the site keeps`);
+    }
+    assert.strictEqual(url.searchParams.get('utm_source'), 'aeo-platform');
+    assert.strictEqual(url.searchParams.get('utm_medium'), 'cli');
+    assert.strictEqual(url.searchParams.get('utm_campaign'), 'free-pilot');
     const summaryPath = join(responsesDateDir(dir, DOMAIN, todayDateString()), '_summary.json');
     assert.ok(existsSync(summaryPath), `expected _summary.json at ${summaryPath}`);
     const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
@@ -82,6 +109,8 @@ test('P0-6 — stable replay --json prints final JSON blob to stdout, exits 0', 
       { cwd: dir, env: KEYS },
     );
     assertExitCode(r, 0, 'stable replay --json should exit 0');
+    // G5 — programmatic consumers parse the JSON only: no pilot line in --json mode.
+    assert.strictEqual(pilotLines(r.stdout).length, 0, '--json stdout must not carry the pilot line');
     // Last non-blank stdout line must be a JSON object whose `exitCode` is 0.
     const lines = r.stdout.trim().split('\n').filter(Boolean);
     // Find the JSON blob — it may span multiple lines (pretty-printed).
@@ -159,6 +188,8 @@ test('P0-9 — malformed fixtures → all cells error → exit 3 (Phase 0 gate)'
       { cwd: dir, env: KEYS },
     );
     assertExitCode(r, 3, 'malformed fixtures + fake key → all-errored contract → exit 3');
+    // G5 — nothing was measured (exit 3): no pilot pitch after a failed run.
+    assert.strictEqual(pilotLines(`${r.stdout}\n${r.stderr}`).length, 0, 'exit 3 must not print the pilot line');
     // The actionable panel should name the failing engine and the env var
     // it reads its key from. Stable substring check; do not over-pin copy.
     assert.match(

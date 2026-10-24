@@ -4040,6 +4040,7 @@ async function cmdRun(options = {}) {
     // Skipped on exitCode 3 (all engines errored — no data to report) and in
     // --json mode (programmatic consumers parse the JSON only).
     console.log(`\nNext: ${c.cyan}aeo-platform report --html${c.reset}  ${c.dim}(or 'aeo-platform report' for markdown-only)${c.reset}\n`);
+    console.log(`${c.dim}Free AI visibility pilot: three places every month — https://webappski.com/en/free-aeo-pilot?utm_source=aeo-platform&utm_medium=cli&utm_campaign=free-pilot${c.reset}\n`);
   }
 
   // Yield event loop to avoid Node.js libuv handle closing crashes on Windows
@@ -5527,6 +5528,7 @@ async function cmdRunManual(argv) {
   // Next-step hint (mirrors cmdRun). run-manual has no exitCode 3 or silent
   // mode, so no guards needed.
   console.log(`\nNext: ${c.cyan}aeo-platform report --html${c.reset}  ${c.dim}(or 'aeo-platform report' for markdown-only)${c.reset}\n`);
+  console.log(`${c.dim}Free AI visibility pilot: three places every month — https://webappski.com/en/free-aeo-pilot?utm_source=aeo-platform&utm_medium=cli&utm_campaign=free-pilot${c.reset}\n`);
 
   process.exit(exitCode);
 }
