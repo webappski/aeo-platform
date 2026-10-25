@@ -287,7 +287,7 @@
 /* ── Fork tooltips: hover-zones over the two end-nodes ──────────
    The \`.fk-stage\` wraps the inline SVG and the absolute hover-zones.
    Because the stage's height is set by the SVG (width:100%, height:auto,
-   viewBox 1000x240), percentage coordinates on the hover-zones align
+   viewBox 1000x280), percentage coordinates on the hover-zones align
    exactly to the SVG node rectangles. Each hover-zone exposes a
    tooltip card on hover/focus that explains the path's pros & cons.
    The cons-side of the free path is red-washed; the pros-side of the
@@ -309,9 +309,10 @@
   transition:box-shadow .15s ease, background .15s ease;
 }
 .fk-hover::after{
-  /* `?` chip anchored INSIDE the box — attaches affordance to the card itself,
-     no orphan text below. Works on hover (desktop) AND tap (mobile, via the
-     parent <button>'s aria-haspopup + JS tap-toggle in bridgeJs). */
+  /* `?` chip anchored to the box — attaches affordance to the card itself,
+     no orphan text below. Inside the box corner on wide screens, on the corner
+     itself on narrow ones (see the max-width:760px block). The chip has no script:
+     the parent <button> (aria-haspopup) opens the tooltip on :hover / :focus. */
   content:"?";
   position:absolute;
   top:8px; right:8px;
@@ -560,6 +561,12 @@
   .fk-hover:focus-within .fk-tip{
     transform:translate(-50%, -50%) scale(1);
   }
+  /* The SVG shrinks with the screen, the 20px chip does not: on a phone it lay on the right third of
+     the box labels. Centre it on the box CORNER instead. Half of it is now outside the button, so it
+     takes the tap itself (pointer-events:auto) and the tooltip still opens. `* {box-sizing}` does
+     not reach ::after, so border-box keeps the declared 20px (the border goes inside). Checked at
+     every width 320-1440 by test/e2e/fork-chip-geometry.test.js. */
+  .fk-hover::after{ top:-10px; right:-10px; pointer-events:auto; box-sizing:border-box; }
 }
 
 /* ── Fork annotated callouts ─────────────────────────────────────
