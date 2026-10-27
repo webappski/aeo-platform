@@ -447,3 +447,34 @@ test('E14 · init --queries-only / --add-queries / --replace-queries: the brains
     }
   });
 });
+
+// ─── E15 / E16: the two paths that carry the model id into a second place ───
+//     (design section 5, A4; the founder asked for them closed on 2026-10-27)
+
+test('E15 · run --depth=full: the web pass and the training-data pass both name gpt-6-luna', async () => {
+  await withTmpProject('aeo-nu-e15-', (dir) => {
+    assert.strictEqual(initKeywords(dir).r.status, 0);
+    const { r, out, requests } = runBare(dir, { tag: 'full', args: ['--depth=full'], answerModel: 'gpt-6-luna' });
+    assert.strictEqual(r.status, 0, out);
+    // The web pass is a Responses request. The training pass of an OpenAI model is
+    // served over chat/completions with the same id and no search tool.
+    assert.deepStrictEqual(uniq(modelsOf(responseCalls(requests))), ['gpt-6-luna'], `${dump(requests)}\n${out}`);
+    const training = chatCalls(requests).filter((q) => q.model === 'gpt-6-luna');
+    assert.ok(training.length >= QUERIES.length, `one training-data request per question expected; got ${training.length}:\n${dump(requests)}\n${out}`);
+    assert.deepStrictEqual(uniq(modelsOf(chatCalls(requests)).filter((m) => m !== 'gpt-6-luna')), ['gpt-4o-mini'], `${dump(requests)}`);
+  });
+});
+
+test('E16 · run --replay after a new init: the cached answers are found by the model id init wrote, and no request is made', async () => {
+  await withTmpProject('aeo-nu-e16-', (dir) => {
+    assert.strictEqual(initKeywords(dir).r.status, 0);
+    const live = runBare(dir, { tag: 'live', answerModel: 'gpt-6-luna' });
+    assert.strictEqual(live.r.status, 0, live.out);
+    const { r, out, requests } = runBare(dir, { tag: 'replay', args: ['--replay'], answerModel: 'gpt-6-luna' });
+    assert.strictEqual(r.status, 0, out);
+    const paid = requests.filter((q) => /\/v1\/(responses|chat\/completions)/.test(q.url));
+    assert.strictEqual(paid.length, 0, `--replay must serve the cached answers; paid requests:\n${dump(requests)}\n${out}`);
+    assert.ok(out.split('\n').filter((l) => /YES|NO/.test(l) && l.includes('[replay]')).length >= QUERIES.length, `every question is served from the cache:\n${out}`);
+    assert.match(out, /openai: gpt-6-luna \(replay\)/);
+  });
+});
