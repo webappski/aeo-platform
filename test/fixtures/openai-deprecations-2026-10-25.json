@@ -1,0 +1,18 @@
+{
+  "_provenance": {
+    "source": "https://developers.openai.com/api/docs/deprecations",
+    "fetched": "2026-10-27",
+    "how": "raw HTML (curl, HTTP 200), table rows read as the page prints them: shutdown date, then the model (alias and dated snapshot when the page names both), then the recommended replacement",
+    "scope": "OpenAI chat ids that this package has shipped or could ship as a default (FALLBACK / DEFAULT_CONFIG / live classifier pick); not the whole page",
+    "note": "A frozen snapshot catches only the schedule of the day it was taken. The reference is the live page; see test/discover.test.js F3."
+  },
+  "rows": [
+    { "id": "gpt-4.1-nano", "snapshot": "gpt-4.1-nano-2025-04-14", "shutdown": "2026-10-23", "replacement": "gpt-5.6-luna" },
+    { "id": "gpt-5-mini", "snapshot": "gpt-5-mini-2025-08-07", "shutdown": "2026-12-11", "replacement": "gpt-5.6-terra" },
+    { "id": "gpt-5-nano", "snapshot": "gpt-5-nano-2025-08-07", "shutdown": "2026-12-11", "replacement": "gpt-5.6-luna" },
+    { "id": "gpt-4o-mini-2024-07-18", "snapshot": null, "shutdown": "2027-01-14", "replacement": "gpt-6-luna" },
+    { "id": "gpt-4.1-2025-04-14", "snapshot": null, "shutdown": "2027-01-14", "replacement": "gpt-6-luna" },
+    { "id": "gpt-4.1-mini-2025-04-14", "snapshot": null, "shutdown": "2027-01-14", "replacement": "gpt-6-luna" },
+    { "id": "gpt-5.4-nano", "snapshot": "gpt-5.4-nano-2026-03-17", "shutdown": "2027-04-01", "replacement": "gpt-6-luna" }
+  ]
+}

@@ -46,6 +46,7 @@ import {
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
+import { MAIN_CHEAP_TIER, isOpenAIClassifyCapableId } from '../../lib/providers/discover.js';
 import {
   withTmpProject, spawnCli, offlineFetchEnv, readRequestJournal, isAnswerCall, BIN, FIXTURE_ROOT,
   responsesDateDir, todayDateString,
@@ -92,9 +93,16 @@ function run(dir, { catalogue, args = [MAIN_PIN], tag = 'run', env = {}, answerM
 }
 const MAIN_PIN = `--openai-model=${MAIN}`;
 
-/** The models that were asked to GRADE: answer/chat requests naming anything but the main model. */
+/**
+ * The models that were asked to GRADE: the chat-completions requests. By URL, not
+ * by "anything but the main model": since AP-7 the main and the classify tier can
+ * be the same id (`gpt-6-luna`), and a filter on the main id would hide the
+ * extractor. Not valid where the MAIN model is itself served over chat/
+ * completions (a `-search-api` SKU) or under `--depth=full` (the learning pass):
+ * tests of those paths do not use it.
+ */
 const extractorsCalled = (requests) =>
-  [...new Set(requests.filter(isAnswerCall).map((q) => q.model).filter((m) => m && m !== MAIN))].sort();
+  [...new Set(requests.filter((q) => /\/v1\/chat\/completions/.test(q.url)).map((q) => q.model).filter(Boolean))].sort();
 const madePaidCall = (requests) => requests.some(isAnswerCall);
 
 test('the extractor that RUNS is a chat model — on the live catalogue, in API order and reversed', async () => {
@@ -260,30 +268,58 @@ function priorRun(dir, { model, date, catalogue = LIVE }) {
   if (date) renameSync(made, responsesDateDir(dir, 'testbrand.com', date));
 }
 
-test('no recognised cheap tier: the run keeps the model its LAST run asked for — sent, and labelled with its source', async () => {
+// ─── The newest FAMILY ships no recognised cheap tier (branch of 10d2a7f) ────
+//
+// AP-7 changed what "newest generation" means: discovery now DESCENDS inside the
+// newest family (6.1 has only `gpt-6.1-sol`, so the cheap tier is `gpt-6-luna`).
+// The branch below therefore needs a catalogue in which no id of the newest
+// FAMILY is a cheap tier: the live catalogue minus every id `MAIN_CHEAP_TIER`
+// recognises (NO_TIER). A literal carry-over of the old tests on LIVE would no
+// longer reach this branch, and a catalogue with the tier ids removed also
+// removes the classify candidates and every model a past run could have used —
+// the run would then end on the EXTRACTOR's refusal with 0 requests, a false
+// reason. So each case is re-seeded: the classifier is a listed chat id with no
+// cheap tier (`gpt-4.1`), and the models are ids with no tier either.
+
+const NO_TIER = LIVE.filter((id) => !MAIN_CHEAP_TIER.some((re) => re.test(id)));
+const SEED = { cfg: 'gpt-5.5', last: 'gpt-5.4', older: 'gpt-5.2', flagship: 'gpt-6.1-sol', famOutOfPool: 'gpt-6-sol', classify: 'gpt-4.1' };
+const seedNoTier = (dir, model) => seed(dir, { model, classifyModel: SEED.classify });
+
+test('T0 · the re-seed ids are still outside the cheap tier, and the tier ids are still absent from NO_TIER', () => {
+  const why = 'the catalogue fixture changed, not the product: re-seed section 1.4 of the AP-7 test design';
+  for (const [k, id] of Object.entries(SEED)) {
+    assert.ok(NO_TIER.includes(id), `SEED.${k} = ${id} is not in NO_TIER — ${why}`);
+  }
+  assert.ok(isOpenAIClassifyCapableId(SEED.classify), `SEED.classify = ${SEED.classify} is not a chat-capable id — ${why}`);
+  for (const id of ['gpt-6-luna', 'gpt-5-nano']) {
+    assert.ok(!NO_TIER.includes(id), `${id} is in NO_TIER — it was the recorded reason to re-seed — ${why}`);
+  }
+});
+
+test('T263 · no recognised cheap tier: the run keeps the model its LAST run asked for — sent, and labelled with its source', async () => {
   await withTmpProject('aeo-flagship-lastrun-', async (dir) => {
     // A config model that IS on the key and differs from the last run's: the
     // two disagree in practice (a config written at `init` freezes that day's
     // model), and the last run is the instrument the series was measured on.
-    seed(dir, { model: 'gpt-5.6-luna' });
-    priorRun(dir, { model: 'gpt-6-luna', date: '2026-09-28' });
-    const { out, requests } = run(dir, { catalogue: LIVE, args: [], tag: 'second', answerModel: 'gpt-6-luna' });
-    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-6-luna'],
+    seedNoTier(dir, SEED.cfg);
+    priorRun(dir, { model: SEED.last, date: '2026-09-28', catalogue: NO_TIER });
+    const { out, requests } = run(dir, { catalogue: NO_TIER, args: [], tag: 'second', answerModel: SEED.last });
+    assert.deepStrictEqual(mainModelsCalled(requests), [SEED.last],
       `the model SENT must be the last run's; requests:\n${JSON.stringify(requests.filter(isAnswerCall))}\n${out}`);
-    assert.match(out, /openai: gpt-6-luna[^\n]*using last run's model gpt-6-luna — source: 2026-09-28 _summary\.json[^\n]*gpt-6\.1-sol not taken/,
+    assert.match(out, /openai: gpt-5\.4[^\n]*using last run's model gpt-5\.4 — source: 2026-09-28 _summary\.json[^\n]*gpt-6\.1-sol not taken/,
       `the label must name the model sent and where it came from; got:\n${out}`);
   });
 });
 
-test('"last run" is the NEWEST date, and a damaged newest summary is skipped, not trusted and not fatal', async () => {
+test('T278 · "last run" is the NEWEST date, and a damaged newest summary is skipped, not trusted and not fatal', async () => {
   await withTmpProject('aeo-flagship-dates-', async (dir) => {
-    seed(dir, { model: 'gpt-5.6-luna' });
-    // Two real runs on two dates, older model first. gpt-5.4-mini is still on
+    seedNoTier(dir, SEED.cfg);
+    // Two real runs on two dates, older model first. The older model is still on
     // the key, so an oldest-first scan would pick it.
-    priorRun(dir, { model: 'gpt-5.4-mini', date: '2026-08-27' });
-    priorRun(dir, { model: 'gpt-6-luna', date: '2026-09-28' });
-    const newest = run(dir, { catalogue: LIVE, args: [], tag: 'newest', answerModel: 'gpt-6-luna' });
-    assert.deepStrictEqual(mainModelsCalled(newest.requests), ['gpt-6-luna'],
+    priorRun(dir, { model: SEED.older, date: '2026-08-27', catalogue: NO_TIER });
+    priorRun(dir, { model: SEED.last, date: '2026-09-28', catalogue: NO_TIER });
+    const newest = run(dir, { catalogue: NO_TIER, args: [], tag: 'newest', answerModel: SEED.last });
+    assert.deepStrictEqual(mainModelsCalled(newest.requests), [SEED.last],
       `the newest of two dates must win; got:\n${newest.out}`);
     assert.match(newest.out, /source: 2026-09-28 _summary\.json/);
 
@@ -294,19 +330,19 @@ test('"last run" is the NEWEST date, and a damaged newest summary is skipped, no
     const broken = responsesDateDir(dir, 'testbrand.com', '2026-10-11');
     mkdirSync(broken, { recursive: true });
     writeFileSync(join(broken, '_summary.json'), '{"date": "2026-10-11", "results": [');
-    const skipped = run(dir, { catalogue: LIVE, args: [], tag: 'broken', answerModel: 'gpt-6-luna' });
-    assert.deepStrictEqual(mainModelsCalled(skipped.requests), ['gpt-6-luna'],
+    const skipped = run(dir, { catalogue: NO_TIER, args: [], tag: 'broken', answerModel: SEED.last });
+    assert.deepStrictEqual(mainModelsCalled(skipped.requests), [SEED.last],
       `an unreadable newest summary must fall back to the previous date, not abort and not read as "no history"; got:\n${skipped.out}`);
     assert.match(skipped.out, /source: 2026-09-28 _summary\.json/);
   });
 });
 
-test('a last run that was pinned to the flagship ON PURPOSE is kept — and the label says the model sent, never "not taken"', async () => {
+test('T304 · a last run that was pinned to the flagship ON PURPOSE is kept — and the label says the model sent, never "not taken"', async () => {
   await withTmpProject('aeo-flagship-lastrun-is-flagship-', async (dir) => {
-    seed(dir, { model: 'gpt-5.6-luna' });
-    priorRun(dir, { model: 'gpt-6.1-sol', date: '2026-10-11' });
-    const { out, requests } = run(dir, { catalogue: LIVE, args: [], tag: 'second', answerModel: 'gpt-6.1-sol' });
-    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-6.1-sol'], `the earlier run's own model is the previous model; got:\n${out}`);
+    seedNoTier(dir, SEED.cfg);
+    priorRun(dir, { model: SEED.flagship, date: '2026-10-11', catalogue: NO_TIER });
+    const { out, requests } = run(dir, { catalogue: NO_TIER, args: [], tag: 'second', answerModel: SEED.flagship });
+    assert.deepStrictEqual(mainModelsCalled(requests), [SEED.flagship], `the earlier run's own model is the previous model; got:\n${out}`);
     const line = out.split('\n').find((l) => /openai: gpt-6\.1-sol/.test(l)) || '';
     assert.match(line, /using last run's model gpt-6\.1-sol — source: 2026-10-11 _summary\.json/);
     assert.match(line, /priced as a flagship/, `the label must say what this id costs; got: ${line}`);
@@ -315,10 +351,10 @@ test('a last run that was pinned to the flagship ON PURPOSE is kept — and the 
   });
 });
 
-test('a config model that IS the flagship-only id is not taken: exit 1, names the flag, before any paid call', async () => {
+test('T318 · a config model that IS the flagship-only id is not taken: exit 1, names the flag, before any paid call', async () => {
   await withTmpProject('aeo-flagship-config-is-flagship-', async (dir) => {
-    seed(dir, { model: 'gpt-6.1-sol' });
-    const { r, out, requests } = run(dir, { catalogue: LIVE, args: [], tag: 'cfg', answerModel: 'gpt-6.1-sol' });
+    seedNoTier(dir, SEED.flagship);
+    const { r, out, requests } = run(dir, { catalogue: NO_TIER, args: [], tag: 'cfg', answerModel: SEED.flagship });
     assert.strictEqual(r.status, 1, `expected exit 1; got ${r.status}\n${out}`);
     assert.match(out, /--openai-model=gpt-6\.1-sol/, `the refusal must hand over the flag with the id; got:\n${out}`);
     assert.match(out, /config model gpt-6\.1-sol IS that flagship-only id/);
@@ -332,43 +368,56 @@ test('a config model that IS the flagship-only id is not taken: exit 1, names th
   });
 });
 
-test('no earlier run, config model on the key and not the flagship: the config model is SENT and labelled', async () => {
+test('T335 · no earlier run, config model on the key and not the flagship: the config model is SENT and labelled — the newest family has no cheap tier', async () => {
   await withTmpProject('aeo-flagship-config-', async (dir) => {
-    seed(dir, { model: 'gpt-5.6-luna' });
-    const { out, requests } = run(dir, { catalogue: LIVE, args: [], answerModel: 'gpt-5.6-luna' });
-    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-5.6-luna']);
-    assert.match(out, /openai: gpt-5\.6-luna[^\n]*using config model gpt-5\.6-luna — source: \.aeo-tracker\.json providers\.openai\.model[^\n]*gpt-6\.1-sol not taken/);
+    seedNoTier(dir, SEED.cfg);
+    const { out, requests } = run(dir, { catalogue: NO_TIER, args: [], answerModel: SEED.cfg });
+    assert.deepStrictEqual(mainModelsCalled(requests), [SEED.cfg]);
+    const line = out.split('\n').find((l) => /openai: gpt-5\.5/.test(l)) || '';
+    assert.match(line, /using config model gpt-5\.5 — source: \.aeo-tracker\.json providers\.openai\.model[^\n]*gpt-6\.1-sol not taken/);
+    assert.match(line, /family 6/, `the label speaks of the family, not a single generation; got: ${line}`);
   });
 });
 
-test('no earlier run and no config model on the key: stop before any paid call and name the flag', async () => {
+test('T6sol · a config model from the same family but outside the rejected pool is SENT: gpt-6-sol is not gpt-6.1-sol', async () => {
+  await withTmpProject('aeo-flagship-config-famout-', async (dir) => {
+    seedNoTier(dir, SEED.famOutOfPool);
+    const { out, requests } = run(dir, { catalogue: NO_TIER, args: [], answerModel: SEED.famOutOfPool });
+    assert.deepStrictEqual(mainModelsCalled(requests), [SEED.famOutOfPool],
+      `a config model that is not in the rejected pool must be sent, not refused; got:\n${out}`);
+    assert.match(out, /using config model gpt-6-sol — source: \.aeo-tracker\.json/);
+  });
+});
+
+test('T344 · no earlier run and no config model on the key: stop before any paid call and name the flag — the newest family has no cheap tier', async () => {
   await withTmpProject('aeo-flagship-stop-', async (dir) => {
-    seed(dir, { model: 'gpt-9.9-ghost' });   // not on this key
-    const { r, out, requests } = run(dir, { catalogue: LIVE, args: [], answerModel: 'gpt-6.1-sol' });
+    seedNoTier(dir, 'gpt-9.9-ghost');   // not on this key
+    const { r, out, requests } = run(dir, { catalogue: NO_TIER, args: [], answerModel: SEED.flagship });
     assert.strictEqual(r.status, 1, `expected exit 1; got ${r.status}\n${out}`);
     assert.match(out, /--openai-model=<id>/, `the refusal must name the flag; got:\n${out}`);
     assert.match(out, /gpt-6\.1-sol/, 'the refusal must name the candidate it declined');
     assert.match(out, /no recognised cheap tier/);
+    assert.match(out, /family 6/, `the refusal speaks of the family; got:\n${out}`);
     assert.match(out, /Refusing to run/);
     assert.ok(!/No API keys found/.test(out), `the run fell through the refusal:\n${out}`);
     assert.ok(!madePaidCall(requests), `a billed call was made before the refusal:\n${JSON.stringify(requests)}`);
   });
 });
 
-test('a last-run model the key no longer lists is not sent', async () => {
+test('T358 · a last-run model the key no longer lists is not sent', async () => {
   await withTmpProject('aeo-flagship-retired-', async (dir) => {
-    seed(dir, { model: 'gpt-5.6-luna' });
-    priorRun(dir, { model: 'gpt-6-luna', date: '2026-10-11' });
-    // The key has since lost gpt-6-luna (and nothing else changed).
-    const retired = LIVE.filter((id) => id !== 'gpt-6-luna');
-    const { out, requests } = run(dir, { catalogue: retired, args: [], tag: 'second', answerModel: 'gpt-5.6-luna' });
-    assert.deepStrictEqual(mainModelsCalled(requests), ['gpt-5.6-luna'],
+    seedNoTier(dir, SEED.cfg);
+    priorRun(dir, { model: SEED.last, date: '2026-10-11', catalogue: NO_TIER });
+    // The key has since lost the last run's model (and nothing else changed).
+    const retired = NO_TIER.filter((id) => id !== SEED.last);
+    const { out, requests } = run(dir, { catalogue: retired, args: [], tag: 'second', answerModel: SEED.cfg });
+    assert.deepStrictEqual(mainModelsCalled(requests), [SEED.cfg],
       `a model the catalogue no longer lists was sent, or the config was not used:\n${out}`);
-    assert.match(out, /using config model gpt-5\.6-luna/);
+    assert.match(out, /using config model gpt-5\.5/);
   });
 });
 
-test('an explicit pin still wins — including a pin ON the flagship', async () => {
+test('T371 · an explicit pin still wins — including a pin ON the flagship', async () => {
   await withTmpProject('aeo-flagship-pin-', async (dir) => {
     seed(dir);
     const { out, requests } = run(dir, { catalogue: LIVE, args: ['--openai-model=gpt-6.1-sol'], answerModel: 'gpt-6.1-sol' });
@@ -377,7 +426,7 @@ test('an explicit pin still wins — including a pin ON the flagship', async () 
   });
 });
 
-test('control — a recognised cheap tier in the newest generation is sent; history is not consulted', async () => {
+test('T380 · control — a recognised cheap tier in the newest generation is sent; history is not consulted', async () => {
   await withTmpProject('aeo-cheap-tier-', async (dir) => {
     seed(dir);
     const withLuna6_1 = [...LIVE, 'gpt-6.1-luna'];

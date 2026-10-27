@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 
-const { discoverModels, discoverClassifyModel, resolveClassifyModel, resolveClassifyDecision, FALLBACK, isOpenAIChatId, isOpenAIClassifyCapableId, selectOpenAIMain, selectOpenAIClassify } = await import('../lib/providers/discover.js');
+const { discoverModels, discoverClassifyModel, resolveClassifyModel, resolveClassifyDecision, FALLBACK, isOpenAIChatId, isOpenAIClassifyCapableId, selectOpenAIMain, selectOpenAIClassify, MAIN_CHEAP_TIER } = await import('../lib/providers/discover.js');
 const { readFileSync } = await import('node:fs');
 const { join, dirname } = await import('node:path');
 const { fileURLToPath } = await import('node:url');
@@ -99,7 +99,7 @@ await test('openai: an unrecognised newest generation still wins, and says so on
     // decision not to run on it is the run loop's (lib/config.js
     // resolveRunModels, E2E in run-model-selection-safety.test.js).
     assert.equal(selection.cheapTier, false);
-    assert.equal(selection.generation, 6);
+    assert.equal(selection.generation, '6');
     assert.ok(selection.catalogueIds.includes('gpt-5.6-luna'), 'the key\'s own catalogue travels with the pick');
   } finally {
     process.stderr.write = prevWrite;
@@ -413,8 +413,8 @@ await test('selectOpenAIClassify / selectOpenAIMain are pure and agree with the 
   assert.equal(c.picked, 'gpt-4o-mini');
   assert.equal(c.cheapTier, true);
   const m = selectOpenAIMain(LIVE_LIKE);
-  assert.equal(m.picked, 'gpt-6.1-sol');
-  assert.equal(m.cheapTier, false, 'generation 6.1 holds only gpt-6.1-sol — no recognised cheap tier');
+  assert.equal(m.picked, 'gpt-6-luna');
+  assert.equal(m.cheapTier, true, 'generation 6.1 holds only gpt-6.1-sol; the family\'s cheap tier is gpt-6-luna (AP-7)');
 });
 
 await test('isOpenAIChatId: every non-chat family on the live key is rejected, chat ids pass', () => {
@@ -441,6 +441,11 @@ await test('isOpenAIChatId: every non-chat family on the live key is rejected, c
 // fixture fails the first test until someone has said whether it is a chat model.
 const LIVE_IDS = JSON.parse(readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'openai-models-2026-10-13.json'), 'utf-8')).ids;
+
+// The catalogue of 2026-10-27: the same key, one id later — generation 6.1 now lists
+// gpt-6.1-terra (the BALANCED tier, ten times a luna) next to gpt-6.1-sol.
+const LIVE_27 = JSON.parse(readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'openai-models-2026-10-27.json'), 'utf-8')).ids;
 
 // Hand-labelled 2026-10-13: the numbered gpt-N text/chat models, dated snapshots
 // included. Everything else on the key is audio, speech, transcription, image,
@@ -513,12 +518,13 @@ await test('live catalogue, leave-one-out: whichever id disappears, neither tier
   }
 });
 
-await test('live catalogue, main tier: gpt-6.1-sol is the only 6.1 id and is reported as no cheap tier, in any order', () => {
+await test('U9 · live catalogue, main tier: gpt-6.1-sol is the only 6.1 id, so the pick is the family\'s cheap tier gpt-6-luna, in any order', () => {
   for (let seed = 1; seed <= 6; seed++) {
     const m = selectOpenAIMain(shuffled(LIVE_IDS, seed));
-    assert.equal(m.picked, 'gpt-6.1-sol');
-    assert.equal(m.cheapTier, false);
-    assert.equal(m.generation, 6.1);
+    assert.equal(m.picked, 'gpt-6-luna');
+    assert.equal(m.cheapTier, true);
+    assert.strictEqual(m.generation, '6');
+    assert.strictEqual(m.newestGeneration, '6.1');
   }
 });
 
@@ -721,6 +727,289 @@ await test('no shipped default names a retired gemini-2.5 model', async () => {
   for (const p of ['openai', 'anthropic', 'gemini', 'perplexity']) {
     assert.doesNotMatch(String(FALLBACK[p].classify), /^gemini-2\.5\b/);
     assert.doesNotMatch(String(FALLBACK[p].main), /^gemini-2\.5\b/);
+  }
+});
+
+// ─── AP-7 — the cheap tier of the NEWEST FAMILY, not of the newest generation ──
+//
+// Founder 2026-09-01: "the latest model, the cheap modification". 6.1 shipped
+// `gpt-6.1-sol` alone, so the newest generation has no cheap tier — and the rule
+// 10d2a7f (2026-10-13) then refused to pick anything on a new user's behalf, who
+// ran on whatever init had frozen in the config (`gpt-5.6-luna`), a generation
+// behind and twice the price. The expectations below come from the rule and the
+// vendor's pages (developers.openai.com/api/docs/models, /deprecations,
+// 2026-10-25), never from what selectOpenAIMain printed: OpenAI lists
+// "GPT-6 Astra for complex reasoning and coding, GPT-6.1 Sol to balance
+// intelligence and cost, or GPT-6 Luna for cost-sensitive, high-volume
+// workloads" in one row of choices, and names gpt-6-luna as the replacement of
+// every cheap id it retires after gen 6 — so gpt-6-luna is the cheap tier of the
+// current family 6, not "the previous generation".
+//
+// Generation order is (major, minor) as NUMBERS (semver.org §11.2): 6.10 is newer
+// than 6.9, and 6.10 is not 6.1. The three generation fields are STRINGS in the
+// form the id spells them, because the number 6.10 cannot be told from 6.1.
+console.log('\nAP-7 — cheap tier of the newest family; generation order is (major, minor)');
+
+// LIVE minus every id the cheap-tier list recognises: the catalogue of a day on
+// which a new generation ships no cheap tier at all. The list is IMPORTED and used
+// only to build an input — an expectation built from it would agree with itself.
+const NO_TIER = LIVE_IDS.filter((id) => !MAIN_CHEAP_TIER.some((re) => re.test(id)));
+const live = (...extra) => [...LIVE_IDS, ...extra];
+
+/** The `[discover-warn] openai` lines a discovery over `ids` writes to stderr. */
+async function openaiWarnLines(ids) {
+  const lines = [];
+  const prev = process.stderr.write;
+  process.stderr.write = (s, ...rest) => {
+    if (typeof s === 'string' && s.includes('[discover-warn]')) { lines.push(s); return true; }
+    return originalStderrWrite(s, ...rest);
+  };
+  try {
+    stub(() => ok({ data: ids.map((id) => ({ id })) }));
+    await discoverModels('openai', 'sk-test');
+  } finally {
+    process.stderr.write = prev;
+  }
+  return lines.filter((l) => l.includes('[discover-warn] openai'));
+}
+
+await test('U1·a · live catalogue: the pick is the cheap tier of family 6, gpt-6-luna', () => {
+  const m = selectOpenAIMain(LIVE_IDS);
+  assert.strictEqual(m.picked, 'gpt-6-luna');
+  assert.strictEqual(m.cheapTier, true);
+  assert.strictEqual(m.pool[0], 'gpt-6-luna');
+  assert.ok(m.pool.every((id) => /^gpt-6-/.test(id)), `pool is the chosen generation only: ${m.pool}`);
+});
+
+await test('U1·b · live catalogue: chosen generation 6, newest 6.1, skipped [6.1 → gpt-6.1-sol]', () => {
+  const m = selectOpenAIMain(LIVE_IDS);
+  assert.strictEqual(m.generation, '6');
+  assert.strictEqual(m.newestGeneration, '6.1');
+  assert.deepStrictEqual(m.skipped, [{ generation: '6.1', ids: ['gpt-6.1-sol'] }]);
+});
+
+await test('U2a · a 5.x catalogue with luna in 5.6 picks gpt-5.6-luna, not 5.4-mini (mini ranks above luna: 5.x must not merge into one pool)', () => {
+  const m = selectOpenAIMain(['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.4-mini']);
+  assert.strictEqual(m.picked, 'gpt-5.6-luna');
+  assert.strictEqual(m.cheapTier, true);
+});
+
+await test('U2b · the same catalogue: generation 5.6 is also the newest, nothing skipped', () => {
+  const m = selectOpenAIMain(['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.4-mini']);
+  assert.strictEqual(m.generation, '5.6');
+  assert.strictEqual(m.newestGeneration, '5.6');
+  assert.deepStrictEqual(m.skipped, []);
+});
+
+await test('U3 · live + gpt-6.2-ember (no recognised tier): descends through 6.2 and 6.1 to gpt-6-luna and names both', () => {
+  const m = selectOpenAIMain(live('gpt-6.2-ember'));
+  assert.strictEqual(m.picked, 'gpt-6-luna');
+  assert.strictEqual(m.cheapTier, true);
+  assert.strictEqual(m.generation, '6');
+  assert.strictEqual(m.newestGeneration, '6.2');
+  assert.deepStrictEqual(m.skipped, [
+    { generation: '6.2', ids: ['gpt-6.2-ember'] },
+    { generation: '6.1', ids: ['gpt-6.1-sol'] },
+  ]);
+});
+
+await test('U4·a · a catalogue with no cheap tier in the whole family: the pick is the flagship and says cheapTier:false', () => {
+  const m = selectOpenAIMain(NO_TIER);
+  assert.strictEqual(m.picked, 'gpt-6.1-sol');
+  assert.strictEqual(m.cheapTier, false);
+  assert.deepStrictEqual(m.pool, ['gpt-6.1-sol']);
+});
+
+await test('U4·b · …and the other generations of the family are named as skipped, in pool sort order', () => {
+  const m = selectOpenAIMain(NO_TIER);
+  assert.strictEqual(m.generation, '6.1');
+  assert.strictEqual(m.newestGeneration, '6.1');
+  // The id order inside `skipped` is the director\'s contract (card AP-7, V2:
+  // "in the sort order of the pool"), not the founder\'s rule.
+  assert.deepStrictEqual(m.skipped, [{ generation: '6', ids: ['gpt-6-sol', 'gpt-6-astra'] }]);
+});
+
+await test('U5·a · live + gpt-7-astra: family 7 has no tier, the descent does not cross into family 6', () => {
+  const m = selectOpenAIMain(live('gpt-7-astra'));
+  assert.strictEqual(m.picked, 'gpt-7-astra');
+  assert.strictEqual(m.cheapTier, false);
+  assert.deepStrictEqual(m.pool, ['gpt-7-astra']);
+});
+
+await test('U5·b · …family 7 holds one generation, so nothing is skipped', () => {
+  const m = selectOpenAIMain(live('gpt-7-astra'));
+  assert.strictEqual(m.generation, '7');
+  assert.strictEqual(m.newestGeneration, '7');
+  assert.deepStrictEqual(m.skipped, []);
+});
+
+await test('U6·a · 5.7 without a tier above 5.6 with one: the FIRST generation that has a tier wins, not the best tier of all lower ones', () => {
+  const m = selectOpenAIMain(['gpt-5.7-sol', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.4-mini']);
+  assert.strictEqual(m.picked, 'gpt-5.6-luna');
+  assert.strictEqual(m.cheapTier, true);
+});
+
+await test('U6·b · …generation 5.6, newest 5.7, skipped [5.7 → gpt-5.7-sol]', () => {
+  const m = selectOpenAIMain(['gpt-5.7-sol', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.4-mini']);
+  assert.strictEqual(m.generation, '5.6');
+  assert.strictEqual(m.newestGeneration, '5.7');
+  assert.deepStrictEqual(m.skipped, [{ generation: '5.7', ids: ['gpt-5.7-sol'] }]);
+});
+
+await test('U7 · a non-chat id of a newer family (even one labelled mini) does not set the family', () => {
+  const m = selectOpenAIMain(live('gpt-7-transcribe', 'gpt-7-pro', 'gpt-7-realtime-mini'));
+  assert.strictEqual(m.picked, 'gpt-6-luna');
+  assert.strictEqual(m.generation, '6');
+  assert.strictEqual(m.newestGeneration, '6.1');
+});
+
+await test('U8 · a dated snapshot of the flagship is skipped with it, the undated id first', () => {
+  const m = selectOpenAIMain(live('gpt-6.1-sol-2026-10-01'));
+  assert.strictEqual(m.picked, 'gpt-6-luna');
+  assert.deepStrictEqual(m.skipped, [{ generation: '6.1', ids: ['gpt-6.1-sol', 'gpt-6.1-sol-2026-10-01'] }]);
+});
+
+await test('U10·a · live + gpt-6.1-luna: a tier in the newest generation is taken directly (control)', () => {
+  const m = selectOpenAIMain(live('gpt-6.1-luna'));
+  assert.strictEqual(m.picked, 'gpt-6.1-luna');
+  assert.strictEqual(m.cheapTier, true);
+});
+
+await test('U10·b · …nothing skipped', () => {
+  const m = selectOpenAIMain(live('gpt-6.1-luna'));
+  assert.strictEqual(m.generation, '6.1');
+  assert.strictEqual(m.newestGeneration, '6.1');
+  assert.deepStrictEqual(m.skipped, []);
+});
+
+await test('U11a · 6.10 is NEWER than 6.9: generations are ordered as (major, minor) numbers, not as decimals', () => {
+  const m = selectOpenAIMain(['gpt-6.9-luna', 'gpt-6.10-luna']);
+  assert.strictEqual(m.picked, 'gpt-6.10-luna');
+  assert.strictEqual(m.generation, '6.10');
+  assert.strictEqual(m.newestGeneration, '6.10');
+});
+
+await test('U11b · 6.10 is not 6.1: a 6.10 flagship does not join the 6.1 pool', () => {
+  const m = selectOpenAIMain(['gpt-6.10-sol', 'gpt-6.1-luna', 'gpt-6.1-sol']);
+  assert.strictEqual(m.picked, 'gpt-6.1-luna');
+  assert.deepStrictEqual(m.pool, ['gpt-6.1-luna', 'gpt-6.1-sol']);
+  assert.strictEqual(m.generation, '6.1');
+  assert.strictEqual(m.newestGeneration, '6.10');
+  assert.deepStrictEqual(m.skipped, [{ generation: '6.10', ids: ['gpt-6.10-sol'] }]);
+});
+
+await test('U17 · the live catalogue of 2026-10-27 (6.1 = sol + terra): terra is balanced, not cheap — the pick is gpt-6-luna and 6.1 is skipped with BOTH ids', () => {
+  const m = selectOpenAIMain(LIVE_27);
+  assert.strictEqual(m.picked, 'gpt-6-luna');
+  assert.strictEqual(m.cheapTier, true);
+  assert.strictEqual(m.balanced, false);
+  assert.strictEqual(m.generation, '6');
+  assert.strictEqual(m.newestGeneration, '6.1');
+  assert.deepStrictEqual(m.skipped, [{ generation: '6.1', ids: ['gpt-6.1-terra', 'gpt-6.1-sol'] }]);
+});
+
+await test('U18 · terra and luna in the SAME generation: luna wins (the 5.6 precedent), nothing is skipped', () => {
+  const m = selectOpenAIMain(['gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.4-mini']);
+  assert.strictEqual(m.picked, 'gpt-5.6-luna');
+  assert.strictEqual(m.balanced, false);
+  assert.deepStrictEqual(m.skipped, []);
+});
+
+await test('U19 · a family with a balanced tier and NO low-cost tier anywhere: the second pass takes terra, and says so', async () => {
+  const ids = [...LIVE_27.filter((id) => !/^gpt-6/.test(id)), 'gpt-7-sol', 'gpt-7-terra'];
+  const m = selectOpenAIMain(ids);
+  assert.strictEqual(m.picked, 'gpt-7-terra');
+  assert.strictEqual(m.cheapTier, true);
+  assert.strictEqual(m.balanced, true);
+  const lines = await openaiWarnLines(ids);
+  assert.strictEqual(lines.length, 1, `always one line for the balanced tier; got ${lines.length}:\n${lines.join('')}`);
+  for (const must of ['family 7', 'gpt-7-terra', 'no low-cost tier', '--openai-model']) assert.ok(lines[0].includes(must), `the line must contain ${must}:\n${lines[0]}`);
+  assert.ok(!lines[0].includes('will not take it on its own'), `the balanced tier IS taken:\n${lines[0]}`);
+});
+
+await test('U20 · discovery over the 2026-10-27 catalogue: ONE warning naming 6.1, gpt-6.1-terra, gpt-6.1-sol and the pick gpt-6-luna', async () => {
+  const lines = await openaiWarnLines(LIVE_27);
+  assert.strictEqual(lines.length, 1, `exactly one line; got ${lines.length}:\n${lines.join('')}`);
+  for (const must of ['6.1', 'gpt-6.1-terra', 'gpt-6.1-sol', 'gpt-6-luna']) assert.ok(lines[0].includes(must), `the line must name ${must}:\n${lines[0]}`);
+});
+
+await test('U12 · the classifier pick is untouched by the family rule: gpt-4o-mini on the live catalogue', () => {
+  assert.strictEqual(selectOpenAIClassify(LIVE_IDS).picked, 'gpt-4o-mini');
+});
+
+await test('U13 · discovery over live: ONE warning that names the skipped generation 6.1 / gpt-6.1-sol and the pick gpt-6-luna, and does not say "will not take it on its own"', async () => {
+  const lines = await openaiWarnLines(LIVE_IDS);
+  assert.strictEqual(lines.length, 1, `exactly one [discover-warn] openai line; got ${lines.length}:\n${lines.join('')}`);
+  for (const must of ['6.1', 'gpt-6.1-sol', 'gpt-6-luna']) assert.ok(lines[0].includes(must), `the line must name ${must}:\n${lines[0]}`);
+  assert.ok(!lines[0].includes('will not take it on its own'), `a pick that IS taken must not say it is not:\n${lines[0]}`);
+});
+
+await test('U13b · discovery over live + gpt-6.2-ember: the warning names BOTH skipped generations and their ids', async () => {
+  const lines = await openaiWarnLines(live('gpt-6.2-ember'));
+  assert.strictEqual(lines.length, 1, `exactly one line; got ${lines.length}:\n${lines.join('')}`);
+  for (const must of ['6.2', 'gpt-6.2-ember', '6.1', 'gpt-6.1-sol', 'gpt-6-luna']) {
+    assert.ok(lines[0].includes(must), `the line must name ${must}:\n${lines[0]}`);
+  }
+  assert.ok(!lines[0].includes('will not take it on its own'));
+});
+
+await test('U14 · live + gpt-6.1-luna: a tier in the newest generation is silent (no warning)', async () => {
+  assert.deepStrictEqual(await openaiWarnLines(live('gpt-6.1-luna')), []);
+});
+
+await test('U15 · a family with no tier: ONE warning naming family 6 and every id of it, and the promise of 10d2a7f stays true', async () => {
+  const lines = await openaiWarnLines(NO_TIER);
+  assert.strictEqual(lines.length, 1, `exactly one line; got ${lines.length}:\n${lines.join('')}`);
+  for (const must of ['family 6', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra', 'will not take it on its own']) {
+    assert.ok(lines[0].includes(must), `the line must contain ${must}:\n${lines[0]}`);
+  }
+});
+
+await test('U15b · a family with no tier and TWO more generations: the warning names the ids of all three', async () => {
+  const lines = await openaiWarnLines([...NO_TIER, 'gpt-6.2-ember']);
+  assert.strictEqual(lines.length, 1, `exactly one line; got ${lines.length}:\n${lines.join('')}`);
+  for (const must of ['gpt-6.2-ember', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) {
+    assert.ok(lines[0].includes(must), `the line must name ${must}:\n${lines[0]}`);
+  }
+});
+
+await test('U16 · the report path with no catalogue and no classifyModel in the config: gpt-6-luna', async () => {
+  const model = await resolveClassifyModel('openai', { env: 'K' }, { env: { K: 'x' }, discoverFn: () => ({ models: null }) });
+  assert.strictEqual(model, 'gpt-6-luna');
+});
+
+// ─── The shipped defaults: what a new user\'s init writes ─────────────────────
+console.log('\nAP-7 — shipped defaults');
+
+await test('F1 · FALLBACK.openai main and classify are both gpt-6-luna (the oracle: the family\'s cheap tier, the vendor\'s replacement of every retired cheap id)', () => {
+  assert.strictEqual(FALLBACK.openai.main, 'gpt-6-luna');
+  assert.strictEqual(FALLBACK.openai.classify, 'gpt-6-luna');
+});
+
+await test('F2 · FALLBACK.openai.main is what the rule picks on the last recorded live catalogues (a new fixture forces the default up)', () => {
+  assert.strictEqual(FALLBACK.openai.main, selectOpenAIMain(LIVE_IDS).picked);
+  assert.strictEqual(FALLBACK.openai.main, selectOpenAIMain(LIVE_27).picked);
+});
+
+await test('F3 · no openai id that init writes (FALLBACK, DEFAULT_CONFIG) is on the vendor\'s retirement schedule', () => {
+  const sched = JSON.parse(readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'openai-deprecations-2026-10-25.json'), 'utf-8'));
+  assert.ok(Array.isArray(sched.rows) && sched.rows.length > 0 && sched._provenance?.source, 'the fixture must carry rows and its provenance');
+  // A page row R retires a default D when R is D, a dated snapshot of D, or D is a
+  // dated snapshot of R. The date is a full YYYY-MM-DD, not any suffix.
+  const DATED = /^-\d{4}-\d{2}-\d{2}$/;
+  const retires = (R, D) => R === D || (R.startsWith(D) && DATED.test(R.slice(D.length))) || (D.startsWith(R) && DATED.test(D.slice(R.length)));
+  // Controls first: a matcher that matches everything or nothing would pass or fail this test for no reason.
+  assert.ok(retires('gpt-4o-mini-2024-07-18', 'gpt-4o-mini'), 'a dated snapshot of the default retires it');
+  assert.ok(!retires('gpt-4o-mini-2024-07-18', 'gpt-4o'), 'a different model is not retired by another model\'s snapshot');
+  const defaults = [
+    FALLBACK.openai.main, FALLBACK.openai.classify,
+    DEFAULT_CONFIG.providers.openai.model, DEFAULT_CONFIG.providers.openai.classifyModel,
+  ];
+  const names = sched.rows.flatMap((r) => [r.id, r.snapshot].filter(Boolean).map((n) => ({ n, r })));
+  for (const d of defaults) {
+    const hit = names.find(({ n }) => retires(n, d));
+    assert.ok(!hit, `${d} is retired by OpenAI on ${hit?.r.shutdown} (replacement ${hit?.r.replacement}) — see ${sched._provenance.source}`);
   }
 });
 

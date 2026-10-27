@@ -65,7 +65,7 @@ const SERVED_IDS = [
   // (the 102 web searches) went missing with it. `gpt-6-sol` and `gpt-6-astra`
   // are the rest of that generation on the same pricing page.
   ['gpt-6-luna',   'pinned for the 2026-10-11 measurement; priced on developers.openai.com/api/docs/pricing'],
-  ['gpt-6.1-sol',  'what discovery picks on the operator key (generation 6.1 ships only this id)'],
+  ['gpt-6.1-sol',  'the only id of generation 6.1; discovery passes over it for gpt-6-luna, but a pin or a last run can still send it'],
   ['gpt-6-sol',    'gpt-6 generation, same page'],
   ['gpt-6-astra',  'gpt-6 flagship, same page'],
   // One generation behind the search SKU is where classify/extraction lands;

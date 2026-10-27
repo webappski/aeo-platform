@@ -160,7 +160,7 @@ Use category-based phrasing («best X for Y» / «top X 2026») the way real use
 
 Six concrete reasons `aeo-platform` exists, in order of how often they decide the install:
 
-- **Measures 4 engines via official APIs** — ChatGPT (`gpt-5.6-luna` + the Responses `web_search` tool), Claude (`claude-sonnet-5`), Gemini (`gemini-3.8-flash`), Perplexity (`sonar-reasoning-pro`). No scraping. No proprietary score.
+- **Measures 4 engines via official APIs** — ChatGPT (`gpt-6-luna` + the Responses `web_search` tool), Claude (`claude-sonnet-5`), Gemini (`gemini-3.8-flash`), Perplexity (`sonar-reasoning-pro`). No scraping. No proprietary score.
 - **Local-first.** Raw responses stay on your disk in `aeo-responses/<domain>/YYYY-MM-DD/`. No telemetry. No traffic to webappski.com. API keys read from `process.env`, never written to disk. OpenAI Responses web-search calls send `store:false` to disable Responses application-state storage; this is not a claim of Zero Data Retention, and provider abuse-monitoring retention remains governed by your provider account. The only non-provider network call is an update check against `registry.npmjs.org` (the host npm itself talks to) — at most once a day, nothing sent, skipped in CI/non-TTY, opt out with `AEO_NO_UPDATE_CHECK=1`.
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+. The report is a single self-contained HTML file (~390 KB — about 170 KB of that is the embedded variable fonts that let it render identically offline, with zero CDN calls).
@@ -269,11 +269,11 @@ Full plans: [`sample-plan-typelessform.md`](https://github.com/webappski/aeo-pla
 
 ## Multi-engine coverage
 
-**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-5.6-luna` + the Responses `web_search` tool), Gemini (`gemini-3.8-flash`), Claude (`claude-sonnet-5`), Perplexity (`sonar-reasoning-pro`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
+**aeo-platform calls four AI answer engines via their official REST APIs in a single run: ChatGPT (`gpt-6-luna` + the Responses `web_search` tool), Gemini (`gemini-3.8-flash`), Claude (`claude-sonnet-5`), Perplexity (`sonar-reasoning-pro`). OpenAI + Gemini keys are recommended (they power the two-model hallucination filter); any ONE research-capable key (OpenAI, Gemini, or Anthropic) is enough to start in single-key mode — competitor mentions are then marked unverified. Claude + Perplexity add optional columns. Browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai chat) are covered via `run-manual` paste mode that merges into the same `_summary.json`.**
 
 | Engine | Default model | API path | Web-search grounding | Required key |
 |---|---|---|---|---|
-| ChatGPT (OpenAI) | `gpt-5.6-luna` | direct REST | yes (Responses `web_search` tool) | `OPENAI_API_KEY` |
+| ChatGPT (OpenAI) | `gpt-6-luna` | direct REST | yes (Responses `web_search` tool) | `OPENAI_API_KEY` |
 | Gemini (Google) | `gemini-3.8-flash` | direct REST | optional (request flag) | `GEMINI_API_KEY` |
 | Claude (Anthropic) | `claude-sonnet-5` | direct REST | optional (request flag) | `ANTHROPIC_API_KEY` |
 | Perplexity | `sonar-reasoning-pro` | direct REST | always | `PERPLEXITY_API_KEY` |
@@ -364,7 +364,7 @@ Each run records this in `_summary.json` under `measurement` (`{ "surface": "api
 
 | Engine measured (API) | What we call | Is NOT the same as |
 |---|---|---|
-| OpenAI `gpt-5.6-luna` + Responses `web_search` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
+| OpenAI `gpt-6-luna` + Responses `web_search` | direct REST, search-grounded | chatgpt.com (Pro personalisation, memory, plugins) |
 | Perplexity `sonar-reasoning-pro` | direct REST, always grounded | perplexity.ai Pro browser UI |
 | Gemini `generateContent` + grounding | direct REST | the Gemini app |
 | Anthropic `claude-sonnet-5` | direct REST (optional column) | claude.ai chat |
@@ -554,7 +554,7 @@ Every flag `aeo-platform` accepts, grouped by which command consumes it.
 | `--no-open` | `report` | Write files but don't auto-open the browser |
 | `--offline` | `report` | Render from what is already on disk: makes no request at all and writes nothing (a normal `report` re-writes the run's `_summary.json` even when every value came from cache). Missing signals are marked as not fetched, never guessed |
 | `--no-authority` / `--no-page-signals` / `--no-entity-graph` / `--no-pricing` | `report` | Skip individual fetch-heavy checks (behind a VPN, or to dodge rate limits). These four are not an offline mode — other fetchers have no flag here; use `--offline` for that |
-| `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from the default `gpt-5.6-luna` to another model available to your OpenAI project. A pin always wins. Without one, when the newest OpenAI generation ships no recognised cheap tier (a flagship-only release), `run` does not take it on its own: it uses the model of this project's last run, then the config model (each only if the key still lists it, and the config model only if it is not the flagship itself), and otherwise stops before any paid call and asks for this flag. The run log names the model that was actually sent and where it came from |
+| `--openai-model=<id>` / `--gemini-model=<id>` / `--anthropic-model=<id>` / `--perplexity-model=<id>` | `run` | Override the model for one run only (no config rewrite). E.g. switch from the default `gpt-6-luna` to another model available to your OpenAI project. A pin always wins. Without one, `run` takes the cheap tier of the newest model family (a generation that ships only a flagship or the balanced `terra` tier, such as `gpt-6.1-sol` + `gpt-6.1-terra`, is passed over for the next one down in the same family, `gpt-6-luna`; `terra`, about ten times the price of a `luna`, is taken only when no generation of the family has a `mini` / `luna` / `lite` / `nano` tier, and then the run says so). When no generation of the newest family ships a recognised cheap tier (a flagship-only family), `run` does not take it on its own: it uses the model of this project's last run, then the config model (each only if the key still lists it, and the config model only if it is not the flagship itself), and otherwise stops before any paid call and asks for this flag. The run log names the model that was actually sent and where it came from |
 | `--openai-classify-model=<id>` | `run`, `run-manual` | Pin the OpenAI model for the cheap tier — competitor extraction, sentiment, query validation. Pin both commands of a series the same (`AEO_OPENAI_CLASSIFY_MODEL_PIN` is the same pin as an env var; other commands refuse the flag instead of ignoring it). Without it the run picks one live: a chat model one generation behind the search model, cheapest tier, the same pick on every request (text-to-speech, transcription, image and realtime ids are never candidates). Pin it to keep an earlier run's extractor. If the key lists no usable chat model for that tier, `run` stops before any paid call and asks for this flag |
 | `--add-queries "q1,q2,q3"` | `init` | Add queries to an existing config without re-running brainstorm; preserves prior basket history |
 | `--replace-queries "q1,q2,q3"` | `init` | Replace queries in an existing config (forks basket version); preserves prior versions in `basketHistory` |
@@ -683,7 +683,7 @@ jobs:
   ],
   "regressionThreshold": 10,
   "providers": {
-    "openai":     { "model": "gpt-5.6-luna",        "classifyModel": "gpt-5-nano",       "env": "OPENAI_API_KEY" },
+    "openai":     { "model": "gpt-6-luna",          "classifyModel": "gpt-6-luna",         "env": "OPENAI_API_KEY" },
     "gemini":     { "model": "gemini-3.8-flash",    "classifyModel": "gemini-3.1-flash-lite", "env": "GEMINI_API_KEY" },
     "anthropic":  { "model": "claude-sonnet-5",     "classifyModel": "claude-haiku-4-5", "env": "ANTHROPIC_API_KEY" },
     "perplexity": { "model": "sonar-reasoning-pro", "classifyModel": "sonar",            "env": "PERPLEXITY_API_KEY" }
@@ -719,7 +719,7 @@ Traditional SEO optimises for click-through from search-result pages. AEO/GEO op
 
 ### Which AI engines does `aeo-platform` cover?
 
-Four, via official APIs: **ChatGPT** (`gpt-5.6-luna` + the Responses `web_search` tool), **Claude** (`claude-sonnet-5`), **Gemini** (`gemini-3.8-flash`), **Perplexity** (`sonar-reasoning-pro`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
+Four, via official APIs: **ChatGPT** (`gpt-6-luna` + the Responses `web_search` tool), **Claude** (`claude-sonnet-5`), **Gemini** (`gemini-3.8-flash`), **Perplexity** (`sonar-reasoning-pro`). For browser-only surfaces (Perplexity Pro UI, ChatGPT Pro personalisation, Claude.ai UI) use `run-manual` to paste UI answers. Models auto-discover at run time and refresh to the newest stable variant via provider model-listing APIs — pin a specific model in `.aeo-tracker.json::providers[].model` if you need version-locked measurements for compliance.
 
 ### Is my data private?
 
@@ -1124,7 +1124,7 @@ MIT — do whatever you want with it.
         {
           "@type": "Question",
           "name": "Which AI engines does aeo-platform cover?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-5.6-luna with the Responses web_search tool), Claude (claude-sonnet-5), Gemini (gemini-3.8-flash), Perplexity (sonar-reasoning-pro). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Four engines via official APIs: ChatGPT (gpt-6-luna with the Responses web_search tool), Claude (claude-sonnet-5), Gemini (gemini-3.8-flash), Perplexity (sonar-reasoning-pro). Manual paste mode also covers browser-only surfaces like Perplexity Pro UI and ChatGPT Pro personalisation." }
         },
         {
           "@type": "Question",

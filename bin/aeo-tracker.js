@@ -2473,9 +2473,10 @@ async function cmdRun(options = {}) {
   // `gpt-6-astra` ($10/$50 per 1M — flagship pricing, no recognised cheap
   // tier per MAIN_CHEAP_TIER below), so discovery's own "newest generation
   // always wins" rule (intentional, see lib/providers/discover.js) would pick
-  // it and pay flagship rates. AEO_OPENAI_MODEL_PIN=gpt-5.6-luna holds our own
-  // runs on the cheap tier until a real gpt-6 cheap variant exists — remove
-  // the pin (or extend MAIN_CHEAP_TIER) once one does.
+  // it and pay flagship rates. AEO_OPENAI_MODEL_PIN=gpt-5.6-luna held our own
+  // runs on the cheap tier until a real gpt-6 cheap variant existed. Since
+  // 2026-10-27 (AP-7) discovery descends inside the newest family to its cheap
+  // tier (gpt-6-luna), so that pin is no longer needed.
   // Since 2026-10-13 the pin is no longer the ONLY thing between a flagship-only
   // generation and a paid run: a pick with no recognised cheap tier is not taken
   // on the operator's behalf (last run → config → stop; see resolveRunModels in
@@ -2813,7 +2814,7 @@ async function cmdRun(options = {}) {
       const sel = r.mainSelection;
       const chosenModel = finalModels[0];
       const tierNote = discoveryUnsafe
-        ? `generation ${sel.generation} ships no recognised cheap tier`
+        ? `family ${String(sel.generation).split('.')[0]} ships no recognised cheap tier`
         : '';
       const sourceLabel = modelSource === 'cli-pin'
         ? ` ${c.dim}(pinned by --${r.name}-model)${c.reset}`
@@ -2825,7 +2826,9 @@ async function cmdRun(options = {}) {
             ? ` ${c.dim}(${discoveryUnsafe
               ? `using config model ${chosenModel} — source: .aeo-tracker.json providers.${r.name}.model; ${tierNote}, ${sel.picked} not taken`
               : 'fallback'})${c.reset}`
-            : '';
+            : modelSource === 'discovery'
+              ? ` ${c.dim}(discovery)${c.reset}`
+              : '';
       console.log(`  ${c.green}${SYM.ok}${c.reset} ${r.name}: ${finalModels.join(', ')}${sourceLabel}${c.dim} · classify: ${resolvedClassifyModel}${classifySourceLabel}${c.reset}`);
 
       providerOverrides[r.name] = { model: finalModels[0], classifyModel: resolvedClassifyModel };
@@ -2859,8 +2862,8 @@ async function cmdRun(options = {}) {
         // turned-down id (say that — "no config model" would be false), or there
         // is nothing to fall back to.
         console.error(p.configIsRejectedPick
-          ? `${c.red}  ${p.provider} — the newest generation (${sel.generation}) ships no recognised cheap tier (${cand}); there is no earlier run on this key, and the config model ${p.cfgModel} is one of those ids.${c.reset}`
-          : `${c.red}  ${p.provider} — the newest generation (${sel.generation}) ships no recognised cheap tier (${cand}), and there is no earlier run or config model on this key to fall back to.${c.reset}`);
+          ? `${c.red}  ${p.provider} — the newest family (${String(sel.generation).split('.')[0]}) ships no recognised cheap tier (${cand}); there is no earlier run on this key, and the config model ${p.cfgModel} is one of those ids.${c.reset}`
+          : `${c.red}  ${p.provider} — the newest family (${String(sel.generation).split('.')[0]}) ships no recognised cheap tier (${cand}), and there is no earlier run or config model on this key to fall back to.${c.reset}`);
         if (p.configIsRejectedPick) {
           console.error(`${c.dim}    The config model ${p.cfgModel} IS that flagship-only id; a config written before this release is not a choice to run on it. To measure on it on purpose, pass it: --${p.provider}-model=${p.cfgModel}${c.reset}`);
         }
@@ -5963,18 +5966,25 @@ ${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only
   today. If the provider's catalogue no longer lists the pinned id, the run stops with
   an error instead of quietly substituting another model.
 
-  OpenAI's default main is the cheapest tier of the newest generation (gpt-5.6-luna as
-  of 2026-09), which does live web search via the Responses web_search tool at the
+  OpenAI's default main is the cheapest tier of the newest family (gpt-6-luna as
+  of 2026-10), which does live web search via the Responses web_search tool at the
   general 500k-TPM bucket — NOT the legacy gpt-5-search-api SKU (its own tiny ~6k-TPM
   bucket that cools down fast). Avoid pinning to a -search SKU except for exactly this
   like-for-like case. See --depth=full for the training-corpus (no-search) pass
   alongside the live-search pass.
 
-  When the newest generation ships NO recognised cheap tier (only a flagship: e.g. a
-  generation whose only id is gpt-6.1-sol), the run does not take it on its own. It uses the
-  model this project's last run asked for, then the config model — each only if the key
-  still lists it — and otherwise stops BEFORE any paid call and asks for --openai-model.
-  The run log names where the model came from. An explicit --openai-model always wins.
+  A generation inside the newest family that ships only a flagship or the balanced tier
+  (gpt-6.1-sol, gpt-6.1-terra) is passed over: the low-cost tier (mini / luna / lite / nano)
+  of the next generation down in the SAME family (gpt-6-luna) is taken, and one
+  [discover-warn] line says so. The balanced tier (terra, about ten times a luna) is taken
+  only when no generation of the family ships a low-cost tier, and then always with a line.
+
+  When the newest family ships NO recognised cheap tier
+  in any generation (e.g. only gpt-7-astra), the run does not take the flagship on its own.
+  It uses the model this project's last run asked for, then the config model — each only if
+  the key still lists it — and otherwise stops BEFORE any paid call and asks for
+  --openai-model. The run log names where the model came from. An explicit --openai-model
+  always wins.
 
   --replay caveat: cached raw responses are filename-keyed by (query index, provider, model)
   within the active domain's namespace. An override that doesn't match the recorded model — or a

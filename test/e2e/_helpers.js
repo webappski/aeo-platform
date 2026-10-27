@@ -77,6 +77,34 @@ if (process.env.AEO_E2E_OFFLINE_FETCH === '1') {
   // assertion cannot see (a mutant that logged the discovered extractor and sent
   // the config's one passed every test that read the log).
   const urlLog = process.env.AEO_E2E_URL_LOG || null;
+  // Three more switches, each off unless set (AP-7). They exist so a new-user
+  // path can run past the point where the offline default (401 on everything)
+  // would stop it for a reason that has nothing to do with the model choice.
+  //  - AEO_E2E_CATALOGUE_STATUS=<code>: `/v1/models` answers that non-auth status.
+  //    Without it a missing catalogue is a 401, which discovery reads as "key
+  //    rejected, provider skipped" — not as "network down".
+  //  - AEO_E2E_CHAT=<json>: 200 + this body for `/v1/chat/completions` (the init
+  //    validator and the brainstorm). Without it that call is a 401 and init
+  //    stops on "Unexpected error … likely a bug".
+  //  - AEO_E2E_SITE=<json {host, html}>: `https://<host>/…` and
+  //    `https://www.<host>/…` answer 200 text/html with `html`. The host is the
+  //    project's domain, chosen by the test; it is not wired in here.
+  // Callers of `extractorsCalled`: chat/completions is NOT only the extractor
+  // when the main model is a search SKU (`gpt-5-search-api` is served over chat/
+  // completions) or under `--depth=full` (the learning pass); tests of those
+  // paths must not use it.
+  const catalogueStatus = Number(process.env.AEO_E2E_CATALOGUE_STATUS) || null;
+  let chat = null;
+  try { chat = JSON.parse(process.env.AEO_E2E_CHAT || 'null'); }
+  catch { chat = null; }
+  let site = null;
+  try { site = JSON.parse(process.env.AEO_E2E_SITE || 'null'); }
+  catch { site = null; }
+  const siteHit = (href) => {
+    if (!site?.host) return false;
+    return [`https://${site.host}`, `https://www.${site.host}`]
+      .some((base) => href === base || href.startsWith(`${base}/`) || href.startsWith(`${base}?`));
+  };
   globalThis.fetch = async (url, init) => {
     const href = typeof url === 'string' ? url : String(url?.url || url);
     if (urlLog) {
@@ -84,10 +112,29 @@ if (process.env.AEO_E2E_OFFLINE_FETCH === '1') {
       try { model = JSON.parse(typeof init?.body === 'string' ? init.body : 'null')?.model || '-'; } catch { /* not a JSON body */ }
       try { appendFileSync(urlLog, `${(init?.method || 'GET').toUpperCase()} ${href} model=${model}\n`); } catch { /* journal is best-effort */ }
     }
+    if (catalogueStatus && href.includes('/v1/models')) {
+      return {
+        ok: false,
+        status: catalogueStatus,
+        headers: { get: () => null },
+        json: async () => ({ error: { message: 'offline E2E catalogue down' } }),
+        text: async () => JSON.stringify({ error: { message: 'offline E2E catalogue down' } }),
+      };
+    }
     if (Array.isArray(catalogue) && href.includes('/v1/models')) {
       return okJson({ data: catalogue.map((id) => ({ id })) });
     }
     if (answer && href.includes('/v1/responses')) return okJson(answer);
+    if (chat && href.includes('/v1/chat/completions')) return okJson(chat);
+    if (siteHit(href)) {
+      return {
+        ok: true,
+        status: 200,
+        url: href,
+        headers: { get: (name) => (String(name).toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null) },
+        text: async () => String(site.html ?? ''),
+      };
+    }
     return unauthorized();
   };
 }
