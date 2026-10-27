@@ -397,7 +397,8 @@ test('T344 · no earlier run and no config model on the key: stop before any pai
     assert.match(out, /--openai-model=<id>/, `the refusal must name the flag; got:\n${out}`);
     assert.match(out, /gpt-6\.1-sol/, 'the refusal must name the candidate it declined');
     assert.match(out, /no recognised cheap tier/);
-    assert.match(out, /family 6/, `the refusal speaks of the family; got:\n${out}`);
+    // The refusal sentence itself, not the [discover-warn] line above it (which also says `family 6`).
+    assert.match(out, /the newest family \(6\) ships no recognised cheap tier/, `the refusal speaks of the family; got:\n${out}`);
     assert.match(out, /Refusing to run/);
     assert.ok(!/No API keys found/.test(out), `the run fell through the refusal:\n${out}`);
     assert.ok(!madePaidCall(requests), `a billed call was made before the refusal:\n${JSON.stringify(requests)}`);

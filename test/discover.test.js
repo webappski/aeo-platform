@@ -807,6 +807,7 @@ await test('U3 · live + gpt-6.2-ember (no recognised tier): descends through 6.
   assert.strictEqual(m.cheapTier, true);
   assert.strictEqual(m.generation, '6');
   assert.strictEqual(m.newestGeneration, '6.2');
+  assert.strictEqual(m.balanced, false, 'a low-cost tier two generations down is found in the FIRST pass');
   assert.deepStrictEqual(m.skipped, [
     { generation: '6.2', ids: ['gpt-6.2-ember'] },
     { generation: '6.1', ids: ['gpt-6.1-sol'] },
@@ -942,6 +943,7 @@ await test('U13 · discovery over live: ONE warning that names the skipped gener
   assert.strictEqual(lines.length, 1, `exactly one [discover-warn] openai line; got ${lines.length}:\n${lines.join('')}`);
   for (const must of ['6.1', 'gpt-6.1-sol', 'gpt-6-luna']) assert.ok(lines[0].includes(must), `the line must name ${must}:\n${lines[0]}`);
   assert.ok(!lines[0].includes('will not take it on its own'), `a pick that IS taken must not say it is not:\n${lines[0]}`);
+  assert.ok(!lines[0].includes('balanced'), `the low-cost tier was found in the first pass; the line must not speak of the balanced tier:\n${lines[0]}`);
 });
 
 await test('U13b · discovery over live + gpt-6.2-ember: the warning names BOTH skipped generations and their ids', async () => {
@@ -951,6 +953,7 @@ await test('U13b · discovery over live + gpt-6.2-ember: the warning names BOTH 
     assert.ok(lines[0].includes(must), `the line must name ${must}:\n${lines[0]}`);
   }
   assert.ok(!lines[0].includes('will not take it on its own'));
+  assert.ok(!lines[0].includes('balanced'), `a low-cost tier two generations down is a first-pass pick:\n${lines[0]}`);
 });
 
 await test('U14 · live + gpt-6.1-luna: a tier in the newest generation is silent (no warning)', async () => {
