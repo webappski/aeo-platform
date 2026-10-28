@@ -19,6 +19,33 @@ Every hosted AEO platform scores you with a model you cannot inspect. Here the s
 
 Both files are ordinary `aeo-platform report` output, produced by the three commands in the next section. Nothing in them was written by hand.
 
+**Install:** `npm install -g aeo-platform` (Node 20+), or run once without installing: `npx aeo-platform@latest init` (one-liner: [How the loop works](#how-the-loop-works)). The CLI tells you when a newer release is out — one cached registry check a day; opt out with `AEO_NO_UPDATE_CHECK=1`.
+
+## Contents
+
+- [How to run it](#how-to-run-it--init--run--report)
+- [Flags](#flags--what-each-one-gives-you)
+- [How the loop works](#how-the-loop-works)
+- [Why aeo-platform](#why-aeo-platform)
+- [Who runs this](#who-runs-this--the-agency-behind-aeo-platform)
+- [What you get](#what-you-get)
+- [The 30-day AEO plan](#the-30-day-aeo-plan-the-portable-wedge-no-hosted-vendor-ships)
+- [Multi-engine coverage](#multi-engine-coverage)
+- [How we count visibility](#how-we-count-visibility)
+- [What this measures](#what-this-measures--and-what-it-does-not)
+- [AI-bot crawlability audit](#ai-bot-crawlability-audit-zero-llm-cost)
+- [Authority signals](#authority-signals)
+- [UVI methodology](#uvi-methodology--unified-visibility-index)
+- [A 0% is a hypothesis](#a-0-is-a-hypothesis-not-a-fact)
+- [Comparison: hosted platforms](#comparison-vs-hosted-aeo-platforms)
+- [Comparison: open-source trackers](#comparison-vs-open-source-aeo-trackers)
+- [Commands](#commands)
+- [FAQ](#faq)
+- [Limitations](#limitations)
+- [Roadmap](#roadmap)
+- [Migrating from @webappski/aeo-tracker](#migrating-from-webappskiaeo-tracker)
+- [License](#license)
+
 ## How to run it — init → run → report
 
 **1. Set your API keys.** Two keys are strongly recommended — **any two** of OpenAI, Gemini,
@@ -110,9 +137,7 @@ npx aeo-platform@latest init --yes --brand=YOURBRAND --domain=YOURDOMAIN.COM --a
   && npx aeo-platform@latest report
 ```
 
-Prefer a global install for a weekly rhythm? `npm install -g aeo-platform` and use bare `aeo-platform …` — the CLI prints its version on every command and tells you when a newer release is out (one cached check a day against the npm registry; opt out with `AEO_NO_UPDATE_CHECK=1`).
-
-**Windows (PowerShell / CMD):** the same `npx` chain — including the PowerShell 5.1 caveat (`&&` is not supported there) — is in the [Windows one-liners](https://github.com/webappski/aeo-platform/blob/main/docs/quickstart.md#windows-the-npx-one-liners-powershell-and-cmd).
+**Windows (PowerShell / CMD):** [the same `npx` chain](https://github.com/webappski/aeo-platform/blob/main/docs/quickstart.md#windows-the-npx-one-liners-powershell-and-cmd), including the PowerShell 5.1 caveat (`&&` is not supported there).
 
 **Already know your 3 target queries?** Skip the LLM auto-suggest pipeline (zero LLM cost, BYO mode added as first-class in `1.0.3`):
 
@@ -148,7 +173,7 @@ Three things to keep honest about that:
 
 - What is reproducible is the **measurement**. A full client audit also carries on-page findings and a written roadmap around the grid — human work, not tool output, and nothing you can re-derive by installing a package.
 - The **free instant check** on the agency's site is a deliberately reduced version — three questions, two engines, no API keys asked of you. The full four-engine run, the crawlability audit, the authority-signal pass and the 30-day plan are what this repository does.
-- Running it against your own brand costs you your own API spend, a few cents per week. Webappski earns nothing from your runs, and the tool sends nothing to webappski.com.
+- Running it against your own brand costs you your own API spend: ≈$0.21 per run (3 questions × OpenAI + Gemini; recalculated on 24 October 2026 from the token counts of the 19 June 2026 run at current prices). Webappski earns nothing from your runs, and the tool sends nothing to webappski.com.
 
 The agency's site is [webappski.com](https://webappski.com), and the reduced hosted check described above lives at [webappski.com/en/aeo-audit](https://webappski.com/en/aeo-audit) — free, no account, no card. This README carries no prices and no sales call-to-action by design: commercial detail belongs on that site, not in an MIT repository you were invited to fork.
 
@@ -392,7 +417,7 @@ This is the same discipline the tool applies to itself: a number without provena
 
 If all three are "no", the rest of this README is written for you.
 
-**Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the portable paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is a few cents per week.
+**Pick `aeo-platform` when:** indie founders, small AEO / GEO agencies, dev-centric teams who prefer CLI + CI integration, anyone who wants the portable paste-into-AI plan, anyone who can't justify a subscription for a tool whose direct-API cost is ≈$0.21 per run (3 questions × OpenAI + Gemini; recalculated on 24 October 2026 from the token counts of the 19 June 2026 run at current prices).
 
 **One axis the table cannot show: who checks the checker.** Every third-party platform above is closed-source — see the column; the only MIT in it is this engine, on the two rows that run it. That means the score reaches you from a server you cannot enter, and you are trusting the vendor's definition of a mention, their competitor matching, and their weighting, none of which you can read. Here all three sit in `lib/` in the copy on your disk, [how we count visibility](#how-we-count-visibility) writes out the mention rule and the one-call-per-cell sampling behaviour, and the [UVI methodology](#uvi-methodology--unified-visibility-index) writes out the weights. It is also the axis on which an *agency* is judged: Webappski measures clients with this engine, so a client can install it and re-derive the grid they were sent. Transparency as a file you can open, rather than as a word on a landing page.
 
@@ -526,9 +551,9 @@ Full version history: [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Migrating from `@webappski/aeo-tracker`
 
-`npm uninstall -g @webappski/aeo-tracker && npm install -g aeo-platform` — the `aeo-tracker` command stays as an alias inside `aeo-platform` and `.aeo-tracker.json` stays compatible. The full account is in the `1.0.0` entry of [CHANGELOG.md](https://github.com/webappski/aeo-platform/blob/main/CHANGELOG.md).
+`npm uninstall -g @webappski/aeo-tracker && npm install -g aeo-platform`; the `aeo-tracker` command stays as an alias and `.aeo-tracker.json` stays compatible ([1.0.0 changelog](https://github.com/webappski/aeo-platform/blob/main/CHANGELOG.md)).
 
-**Longer guides:** [Quickstart, Windows notes, API keys under non-standard names, cost per weekly run](https://github.com/webappski/aeo-platform/blob/main/docs/quickstart.md) · [Commands reference](https://github.com/webappski/aeo-platform/blob/main/docs/commands.md) · [Contributing](https://github.com/webappski/aeo-platform/blob/main/CONTRIBUTING.md).
+**Longer guides:** [Quickstart and setup notes](https://github.com/webappski/aeo-platform/blob/main/docs/quickstart.md) · [Commands reference](https://github.com/webappski/aeo-platform/blob/main/docs/commands.md) · [Contributing](https://github.com/webappski/aeo-platform/blob/main/CONTRIBUTING.md).
 
 <details>
 <summary><b>Behind this tool</b></summary>

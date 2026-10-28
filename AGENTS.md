@@ -184,6 +184,10 @@ touching it:
   file that does not exist. Reference material that does not fit goes to `docs/`
   and is linked by an absolute `https://github.com/webappski/aeo-platform/blob/main/…`
   URL — `docs/` is not in `package.json::files`, so a relative link is dead on npm.
+- `test/e2e/readme-first-screen.test.js` — `npm install -g aeo-platform` before the
+  first `aeo-platform init`; a `## Contents` whose links are exactly the other `##`
+  headings (add a section → add its link); no "a few cents", and the same dated
+  "≈$X per run" figure in the README and `docs/quickstart.md`.
 - `test/e2e/readme-schema-truth.test.js` — no Schema.org block in the README, and
   `npm version patch` on a copy of the package exits 0 and leaves the README
   alone. **A release-path guard: do not give `package.json` a `version` script

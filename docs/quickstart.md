@@ -207,7 +207,7 @@ CI mode (`init --yes`) disables interactive prompts. For CI, set the standard na
 
 You pay only the LLM-API cost for your own runs. There is no `aeo-platform` subscription fee.
 
-- 2-engine minimum (OpenAI + Gemini) — typically a few cents per weekly run
+- 2-engine minimum (OpenAI + Gemini) — ≈$0.21 per run (3 questions × OpenAI + Gemini; recalculated on 24 October 2026 from the token counts of the 19 June 2026 run at current prices)
 - 4-engine matrix (+ Claude + Perplexity) — roughly 2× the 2-engine cost
 - `--depth=full` doubles cost (adds a training-data pass per cell where supported)
 - `--geo=us,uk,de` multiplies cost linearly by region count
