@@ -1,7 +1,7 @@
 {
   "name": "aeo-platform",
   "version": "1.17.0",
-  "description": "Open-source CLI that measures brand visibility across ChatGPT, Claude, Gemini & Perplexity — exports a paste-into-AI 30-mission AEO plan.",
+  "description": "Open-source AEO CLI: AI visibility tracker for ChatGPT, Claude, Gemini & Perplexity with a 30-day answer engine optimization plan. Built by Webappski.",
   "type": "module",
   "bin": {
     "aeo-platform": "./bin/aeo-tracker.js",
@@ -161,11 +161,16 @@
     "claude",
     "gemini",
     "perplexity",
-    "30-mission-aeo-plan",
+    "30-day-aeo-plan",
     "ai-search-visibility",
     "llm-seo",
     "open-source-aeo",
-    "aeo-agency"
+    "aeo-agency",
+    "ai-visibility-tracker",
+    "ai-visibility-tracking",
+    "llm-visibility",
+    "aeo-tracker",
+    "cli"
   ],
   "author": "Webappski <info@webappski.com> (https://webappski.com)",
   "license": "MIT",
@@ -173,7 +178,7 @@
     "type": "git",
     "url": "git+https://github.com/webappski/aeo-platform.git"
   },
-  "homepage": "https://github.com/webappski/aeo-platform#readme",
+  "homepage": "https://webappski.com/en/aeo-platform",
   "bugs": {
     "url": "https://github.com/webappski/aeo-platform/issues"
   },

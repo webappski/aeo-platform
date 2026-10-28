@@ -169,6 +169,72 @@ for (const file of ['docs/commands.md', 'docs/quickstart.md', 'docs/crawlability
   });
 }
 
+// ── The package metadata npm shows next to the README (AEO24-AP-4) ─────────────
+//
+// `description`, `keywords` and `homepage` are what a search on npmjs.com reads
+// and what the page header links to. On 2026-10-24 the description carried
+// neither "AI visibility" nor "answer engine optimization" (the two phrases the
+// category is searched by), the keywords named the free result "30-mission-aeo-
+// plan", and `homepage` pointed at GitHub, so the npm page had no path to the
+// product page on webappski.com. The README had no link there either, and one
+// link still went through a 301 (/blog -> /en/posts).
+const PKG = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'));
+export const HOMEPAGE = 'https://webappski.com/en/aeo-platform';
+const NEW_KEYWORDS = ['ai-visibility-tracker', 'ai-visibility-tracking', 'llm-visibility', 'aeo-tracker', 'cli'];
+
+export function metadataProblems(pkg, readme) {
+  const problems = [];
+  const add = (code, detail) => problems.push({ code, detail });
+
+  const d = pkg.description || '';
+  if (d.length > 160) add('description', `description is ${d.length} characters, the limit is 160`);
+  for (const phrase of ['AI visibility', 'answer engine optimization']) {
+    if (!d.toLowerCase().includes(phrase.toLowerCase())) add('description', `description lacks "${phrase}"`);
+  }
+  if (/30-mission/i.test(d)) add('naming', 'the description calls the free result "30-mission" (that is the paid Webappski Plan)');
+
+  const kw = pkg.keywords || [];
+  const lacking = NEW_KEYWORDS.filter(k => !kw.includes(k));
+  if (lacking.length) add('keywords', `keywords lack: ${lacking.join(', ')}`);
+  if (kw.includes('30-mission-aeo-plan') || !kw.includes('30-day-aeo-plan')) {
+    add('keywords', 'the free result is the "30-day-aeo-plan" keyword, not "30-mission-aeo-plan"');
+  }
+
+  if (pkg.homepage !== HOMEPAGE) add('homepage', `homepage is ${pkg.homepage}, expected ${HOMEPAGE}`);
+
+  const at = readme.indexOf(HOMEPAGE);
+  if (at === -1 || at > 60000) add('product-link', `the README must link ${HOMEPAGE} within its first 60 000 characters (found at ${at})`);
+  if (/webappski\.com\/blog\b/.test(readme)) add('blog-link', 'webappski.com/blog is a 301 to /en/posts — link /en/posts');
+
+  return problems;
+}
+
+test('the package metadata npm shows (description, keywords, homepage) and the README links to the product page', () => {
+  const problems = metadataProblems(PKG, README);
+  assert.deepEqual(problems, [], problems.map(p => `${p.code}: ${p.detail}`).join('\n'));
+});
+
+const META_MUTANTS = [
+  ['the 1.17.0 description (no "AI visibility")', (p, r) => [{ ...p, description: 'Open-source CLI that measures brand visibility across ChatGPT, Claude, Gemini & Perplexity — exports a paste-into-AI 30-mission AEO plan.' }, r], 'description'],
+  ['a description over 160 characters', (p, r) => [{ ...p, description: `${p.description}${' x'.repeat(30)}` }, r], 'description'],
+  ['"30-mission" in the description', (p, r) => [{ ...p, description: `${p.description} Portable 30-mission plan.` }, r], 'naming'],
+  ['the old keyword 30-mission-aeo-plan', (p, r) => [{ ...p, keywords: [...p.keywords.filter(k => k !== '30-day-aeo-plan'), '30-mission-aeo-plan'] }, r], 'keywords'],
+  ['a new keyword missing (cli)', (p, r) => [{ ...p, keywords: p.keywords.filter(k => k !== 'cli') }, r], 'keywords'],
+  ['homepage back to GitHub', (p, r) => [{ ...p, homepage: 'https://github.com/webappski/aeo-platform#readme' }, r], 'homepage'],
+  ['the product-page link removed from the README', (p, r) => [p, r.split(HOMEPAGE).join('https://webappski.com/en/aeo-audit')], 'product-link'],
+  ['the product-page link only after 60 000 characters', (p, r) => { const base = r.split(HOMEPAGE).join('https://webappski.com/en/aeo-audit'); return [p, `${base}${' '.repeat(Math.max(0, 60001 - base.length))}\n${HOMEPAGE}\n`]; }, 'product-link'],
+  ['the /blog link back', (p, r) => [p, `${r}\n[blog](https://webappski.com/blog)\n`], 'blog-link'],
+];
+
+for (const [name, mutate, expected] of META_MUTANTS) {
+  test(`mutant "${name}" is caught by the "${expected}" metadata pin`, () => {
+    const codesOf = (p, r) => metadataProblems(p, r).map(x => x.code);
+    assert.ok(!codesOf(PKG, README).includes(expected), `the real package already trips "${expected}"`);
+    const [p, r] = mutate(PKG, README);
+    assert.ok(codesOf(p, r).includes(expected), `"${name}" must trip the "${expected}" pin, got [${codesOf(p, r)}]`);
+  });
+}
+
 /** One broken README per pin. Each is the README with ONE thing put back. */
 const MUTANTS = [
   ['+6 000 characters', (t) => t + 'x'.repeat(6000), 'budget'],

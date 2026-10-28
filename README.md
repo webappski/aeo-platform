@@ -175,7 +175,7 @@ Three things to keep honest about that:
 - The **free instant check** on the agency's site is a deliberately reduced version — three questions, two engines, no API keys asked of you. The full four-engine run, the crawlability audit, the authority-signal pass and the 30-day plan are what this repository does.
 - Running it against your own brand costs you your own API spend: ≈$0.21 per run (3 questions × OpenAI + Gemini; recalculated on 24 October 2026 from the token counts of the 19 June 2026 run at current prices). Webappski earns nothing from your runs, and the tool sends nothing to webappski.com.
 
-The agency's site is [webappski.com](https://webappski.com), and the reduced hosted check described above lives at [webappski.com/en/aeo-audit](https://webappski.com/en/aeo-audit) — free, no account, no card. This README carries no prices and no sales call-to-action by design: commercial detail belongs on that site, not in an MIT repository you were invited to fork.
+The agency's site is [webappski.com](https://webappski.com) ([this package's page](https://webappski.com/en/aeo-platform)), and the reduced hosted check described above lives at [webappski.com/en/aeo-audit](https://webappski.com/en/aeo-audit) — free, no account, no card. This README carries no prices and no sales call-to-action by design: commercial detail belongs on that site, not in an MIT repository you were invited to fork.
 
 ## What you get
 
@@ -562,7 +562,7 @@ Built and maintained by **[Webappski](https://webappski.com)** — an AEO / GEO 
 
 The tool was open-sourced after observing a gap between third-party AEO scorecards (which surfaced a mid-range proprietary score for Webappski) and direct-API tests (which showed zero brand mentions across the same engines in the same week). That gap between proprietary score and direct-API truth is the bug `aeo-platform` is built to fix.
 
-Methodology lives in the weekly reports at [webappski.com/blog](https://webappski.com/blog). The tool itself is the *what*; the blog is the *how*.
+Methodology lives in the weekly reports at [webappski.com/en/posts](https://webappski.com/en/posts). The tool itself is the *what*; the blog is the *how*.
 
 - [Report a bug](https://github.com/webappski/aeo-platform/issues)
 - [Request a feature](https://github.com/webappski/aeo-platform/issues)

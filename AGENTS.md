@@ -184,6 +184,11 @@ touching it:
   file that does not exist. Reference material that does not fit goes to `docs/`
   and is linked by an absolute `https://github.com/webappski/aeo-platform/blob/main/…`
   URL — `docs/` is not in `package.json::files`, so a relative link is dead on npm.
+  The same file pins the package metadata npm shows beside the README:
+  `description` (≤ 160, names "AI visibility" and "answer engine optimization"),
+  the `keywords`, `homepage` = `https://webappski.com/en/aeo-platform`, and the
+  README's link to that page. The free paste-into-AI result is the "30-day AEO
+  plan" everywhere; "30-mission" belongs to the paid Webappski Plan.
 - `test/e2e/readme-first-screen.test.js` — `npm install -g aeo-platform` before the
   first `aeo-platform init`; a `## Contents` whose links are exactly the other `##`
   headings (add a section → add its link); no "a few cents", and the same dated
