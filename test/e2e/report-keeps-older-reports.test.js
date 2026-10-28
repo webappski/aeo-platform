@@ -27,7 +27,12 @@
  * (`if (args.forDate) ...`) — cases 1 and 2 stay green, case 3 MUST go RED.
  * Remove it → green.
  *
- * Pure file-write + subprocess; no network, no live API, no product test hooks.
+ * Real CLI in a temp project, no product test hooks. It spends no money: the
+ * project has no `.aeo-tracker.json` (so no LLM branch of `report` starts) and the
+ * API keys are fake. It is NOT offline: by default `report` also fetches over HTTP
+ * (own-domain page signals, authority presence, the crawlability audit — the Wave 1
+ * block of cmdReport), and those requests are made here too. The cases do not pass
+ * `--offline`, because the path a user takes is a plain `report`.
  */
 import test from 'node:test';
 import assert from 'node:assert';

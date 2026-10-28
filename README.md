@@ -81,15 +81,15 @@ aeo-platform report --html   # Report — builds report.html (+ report.md) and o
 ```
 
 That's the whole loop — three commands, once a week. **Not sure what each step is actually
-doing?** [How the loop works](#how-the-loop-works), just below the flags, walks through
-`init` → `run` → `report` in plain English.
+doing?** [How the loop works](#how-the-loop-works), just below the flags, says what each
+command does and links the plain-English walk-through.
 
 Persistent keys (that survive a restart), Windows CMD, extra engines, and no-install `npx`
 → see the [full quickstart](https://github.com/webappski/aeo-platform/blob/main/docs/quickstart.md#full-quickstart--for-first-time-terminal-users-5-minutes).
 
 ## Flags — what each one gives you
 
-Short version; the full reference is further down. Every command runs fine with no flags —
+Short version; the full reference is linked under [Commands](#commands). Every command runs fine with no flags —
 reach for these when you need them.
 
 **`init`**
@@ -501,7 +501,7 @@ Otterly, Profound, Peec, Bluefish, AthenaHQ, Goodie — and Waikay, Trakkr, LLMr
 
 ### Is `aeo-platform` CI-friendly?
 
-Yes. `--json` flag for structured stdout, ANSI auto-disabled on non-TTY, `NO_COLOR` env honoured, exit codes `0/1/2/3` map cleanly to alerting tiers. GitHub Actions / cron example above.
+Yes. `--json` flag for structured stdout, ANSI auto-disabled on non-TTY, `NO_COLOR` env honoured, exit codes `0/1/2/3` map cleanly to alerting tiers.
 
 ### My first run showed 0% — is the tool broken?
 
