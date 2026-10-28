@@ -1,6 +1,6 @@
 {
   "name": "aeo-platform",
-  "version": "1.17.0",
+  "version": "1.17.1",
   "description": "Open-source AEO CLI: AI visibility tracker for ChatGPT, Claude, Gemini & Perplexity with a 30-day answer engine optimization plan. Built by Webappski.",
   "type": "module",
   "bin": {
