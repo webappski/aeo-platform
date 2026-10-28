@@ -1,26 +1,16 @@
 /**
- * E2E — `report --public` does NOT sweep older aeo-reports/<date>/ artifacts.
+ * E2E — `report --public` does NOT delete older aeo-reports/<date>/ artifacts.
  *
- * The default `report` (writing to the default location) runs
- * `cleanupStaleReportArtifacts`, which deletes report.{md,html} from EVERY date
- * dir except the one being written — a layout-rewrite hygiene step. But a hosted
- * proof timeline is a SET of dated reports (April / May / … each its own
- * aeo-reports/<date>/report.html). The default sweep erased exactly those
- * historical renders. `--public` is proof-archive mode and must SKIP the sweep
- * so the archive survives a regen.
+ * A hosted proof timeline is a SET of dated reports (April / May / … each its
+ * own aeo-reports/<date>/report.html). `report` used to sweep report.{md,html}
+ * out of every date dir except the one being written, which erased exactly
+ * those historical renders; `--public` (proof-archive mode) was the first path
+ * to skip the sweep. The sweep is gone from every path now; the default path is
+ * pinned by report-keeps-older-reports.test.js. This file keeps the `--public`
+ * path pinned on its own: the archive must survive a regen.
  *
- * TWO-SIDED on purpose: an "old report survives under --public" assertion alone
- * would false-pass if the sweep silently stopped running in BOTH modes (the file
- * would survive regardless). So we also assert the old report IS deleted in the
- * DEFAULT mode — proving the sweep still has teeth and `--public` is what spares
- * it.
- *
- * Mutation-sanity (run by hand to confirm teeth): change the guard back to
- * `if (!args.output)` (drop `&& !args.public`) — the "survives under --public"
- * test MUST go RED. Restore → green.
- *
- * NOT A LEAK TEST, despite the company it keeps. Its three assertions are
- * `existsSync`, `!existsSync` and one stdout regex — it never reads a rendered
+ * NOT A LEAK TEST, despite the company it keeps. Its two assertions are
+ * `existsSync` and one stdout regex — it never reads a rendered
  * report, so no denylist and no fixture enrichment changes anything it proves.
  * It was grouped with the two leak E2Es in the AP-LEAKTEST-BLIND-FIXTURES card
  * (2026-09-20) and deliberately left alone when that card was closed: a content
@@ -71,8 +61,8 @@ function summaryFor(date) {
 }
 
 // Seed: a TODAY run (what `report` will render to aeo-reports/<today>/) plus a
-// pre-existing PROOF report under aeo-reports/<ARCHIVE_DATE>/report.html that the
-// sweep would normally delete.
+// pre-existing PROOF report under aeo-reports/<ARCHIVE_DATE>/report.html that
+// must still be there afterwards.
 function seedTodayRunPlusArchivedReport(dir) {
   const today = todayDateString();
   const dd = responsesDateDir(dir, DOMAIN, today);
@@ -98,17 +88,5 @@ test('report --public preserves an older aeo-reports/<date>/report.html (no swee
     // And the sweep summary line must not claim it removed anything.
     assert.doesNotMatch(r.stdout, /Cleanup: removed \d+ stale report/,
       '--public must not run the stale-artifact cleanup at all');
-  });
-});
-
-test('default report (no --public) DOES sweep the older aeo-reports/<date>/report.html', async () => {
-  await withTmpProject('aeo-e2e-default-sweep-', async (dir) => {
-    const { archiveReport } = seedTodayRunPlusArchivedReport(dir);
-
-    const r = spawnCli(['report', '--no-open'], { cwd: dir, env: KEYS });
-    assertExitCode(r, 0, 'default report should exit 0');
-
-    assert.ok(!existsSync(archiveReport),
-      'default report SHOULD sweep the older report.html (proves the sweep still has teeth; --public is what spares it)');
   });
 });

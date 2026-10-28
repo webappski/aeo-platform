@@ -26,6 +26,10 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 - **`test/e2e/readme-npm-budget.test.js`** — README size, one `## FAQ` before `## License`, no Schema.org block, no relative link into `docs/`, no dead link or anchor, no "What's new in 1.0.x", and the one-name-per-plan check; each pin has a mutant in the same file that must turn it red.
 - **`funnel-invariant.test.js` also checks the four files the README text moved to** for commercial calls to action.
 
+### Fixed
+
+- **`report` no longer deletes `report.md` and `report.html` from the folders of older runs; earlier reports stay where they were written.** A plain `aeo-platform report` (no `--output`, no `--public`) removed both files from every date folder under `aeo-reports/<domain>/` except the one it was rendering, so a report already delivered for an earlier run was gone after the next one, and `report --for-date` can only draw it again in today's layout, not as delivered. `--public` and `--for-date` were guarded earlier; the default path was not. The sweep (and its "Cleanup: removed …" line) is removed, not put behind a flag; `report` writes only its own date folder. `test/e2e/report-keeps-older-reports.test.js` runs `report --no-open` and `report --html --no-open` against an older folder and compares the sha256 of both files before and after.
+
 ## [1.17.0] — 2026-10-27
 
 ### Added

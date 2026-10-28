@@ -361,45 +361,6 @@ async function resolveActiveDomain() {
   throw err;
 }
 
-// ─── Stale artifact cleanup ─────────────────────────────────────────
-//
-// `aeo-platform report` writes to aeo-reports/<latest-date>/. Older date
-// directories accumulate orphaned report.md / report.html from previous tool
-// versions or out-of-cycle runs — those become misleading after a layout
-// rewrite (e.g. v0.5 bento) because the old reports still render the old
-// layout, and a reader who opens the wrong file thinks the new code is broken.
-// Called from cmdReport after the latest artifacts are written.
-async function cleanupStaleReportArtifacts(latestDate, domain) {
-  // Scope the sweep to THIS domain's reports namespace — never reach across
-  // into another domain's dated proof archive (that once wiped historical
-  // renders; see the --public guard at the call site).
-  const reportsDir = reportsDirFor(domain);
-  if (!existsSync(reportsDir)) return { removedFiles: 0, removedDirs: 0 };
-  const { readdirSync, rmdirSync } = await import('node:fs');
-  const { unlink } = await import('node:fs/promises');
-  let removedFiles = 0;
-  let removedDirs = 0;
-  for (const entry of readdirSync(reportsDir)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(entry)) continue;  // only date-named dirs
-    if (entry === latestDate) continue;                 // never touch the latest
-    const dirPath = join(reportsDir, entry);
-    for (const fname of ['report.html', 'report.md']) {
-      const p = join(dirPath, fname);
-      if (existsSync(p)) {
-        try { await unlink(p); removedFiles++; } catch { /* skip */ }
-      }
-    }
-    // Remove the date dir if it's now empty (no custom files left).
-    try {
-      if (readdirSync(dirPath).length === 0) {
-        rmdirSync(dirPath);
-        removedDirs++;
-      }
-    } catch { /* skip */ }
-  }
-  return { removedFiles, removedDirs };
-}
-
 // ─── Atomic JSON persist for cache updates ───
 //
 // All cmdReport cache writers (citation classification, LLM actions, authority,
@@ -5005,24 +4966,10 @@ async function cmdReport(args = {}) {
     }
   }
 
-  // v0.5 — sweep stale orphaned report.{md,html} from older date dirs so they
-  // don't mislead a reader after a layout rewrite. Only fires when writing to
-  // the default location (custom --output paths skip cleanup since the user
-  // controls where artifacts land).
-  //
-  // --public is ALSO skipped: public mode is proof-archive mode. The hosted
-  // proof timeline is a SET of dated reports (April / May / … each a separate
-  // aeo-reports/<date>/report.html), and the default sweep — which deletes
-  // report.{md,html} from every date dir except the one being written — would
-  // erase the rest of that archive on each regen. (This is exactly what wiped
-  // the historical TF renders before this guard.) The reader controls the
-  // public archive; the tool must not garbage-collect it. With --for-date the
-  // date being written is itself an OLD dir, making the sweep even more
-  // destructive, so the guard protects that path too.
-  let cleanupResult = { removedFiles: 0, removedDirs: 0 };
-  if (!args.output && !publicMode) {
-    cleanupResult = await cleanupStaleReportArtifacts(latest.date, latest.domain);
-  }
+  // `report` writes only the folder of the run it renders and deletes nothing in
+  // the folders of earlier runs: a report already delivered on an earlier date is
+  // the user's. (A sweep of report.{md,html} from every other date folder used to
+  // run here and erased delivered reports.)
 
   const loadedQuotes = Object.keys(rawResponses).length;
   console.log(`\n${c.bold}aeo-platform — report${c.reset}`);
@@ -5030,13 +4977,6 @@ async function cmdReport(args = {}) {
   console.log(`  ${loadedQuotes} raw response${loadedQuotes !== 1 ? 's' : ''} available for verbatim quotes`);
   const scoreLabel = args.forDate ? `${latest.date} score` : 'Latest score';
   console.log(`  ${scoreLabel}: ${c.bold}${latest.score}%${c.reset}`);
-  if (cleanupResult.removedFiles > 0 || cleanupResult.removedDirs > 0) {
-    const f = cleanupResult.removedFiles;
-    const d = cleanupResult.removedDirs;
-    const fStr = `${f} stale report file${f !== 1 ? 's' : ''}`;
-    const dStr = d > 0 ? ` and ${d} empty director${d !== 1 ? 'ies' : 'y'}` : '';
-    console.log(`  ${c.dim}Cleanup: removed ${fStr}${dStr}.${c.reset}`);
-  }
   console.log(`\n${c.green}Report written: ${outPath}${c.reset}`);
   if (htmlOutPath) console.log(`${c.green}HTML report:   ${htmlOutPath}${c.reset}`);
 
