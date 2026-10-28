@@ -2,6 +2,27 @@
 
 All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
+## [Unreleased]
+
+### Changed
+
+- **`npm version` no longer edits `README.md`.** The README ended with a Schema.org JSON block whose `softwareVersion` the `version` lifecycle script rewrote on every release. The block is gone, and so are the `version` script in `package.json` and `scripts/sync-readme-version.mjs`; `npm version patch|minor|major` now changes `package.json` only. A test runs the command on a copy of the package and checks that it exits 0 and leaves the README alone (`test/e2e/readme-schema-truth.test.js`).
+- **The README now fits the document the npm registry keeps for it.** The registry stores the README in a field cut at exactly 65 536 characters, in the middle of a word; the README was 106 832 characters and its FAQ began at character 65 456, so the FAQ (18 questions), Limitations, Roadmap, Migrating and License were all past the cut. It is 60 569 characters now, and `test/e2e/readme-npm-budget.test.js` fails above 62 000. What left the README and where it went:
+  - the Schema.org JSON block at the end (on npm and GitHub a fenced block is text, not markup) — removed;
+  - the flags table, the exit codes for cron / Task Scheduler / GitHub Actions, the `.aeo-tracker.json` fields and "Can I track multiple brands?" — `docs/commands.md`;
+  - the full quickstart, the Windows notes and `npx` one-liners, the optional-engine keys, keys under non-standard names, the cost notes and the plain-English walk-through of `init` / `run` / `report` — `docs/quickstart.md`;
+  - the AI-bot crawlability table and the `llms.txt` finding — `docs/crawlability-audit.md` (the README keeps the summary sentence);
+  - "Contributing & git hooks" — `CONTRIBUTING.md`;
+  - the four "What's new in 1.0.5 … 1.0.8" FAQ entries — they are in this file.
+
+  The README links to each moved piece with an absolute GitHub URL, because `docs/` is not part of the published package. A test checks that every such link points at a file and a heading that exist.
+- **The free paste-into-AI result is called the "30-day AEO plan" in the README** (it was "30-mission plan"); the section anchor changed with the heading. "30-mission plan" stays the name of the paid Webappski Plan.
+
+### Added
+
+- **`test/e2e/readme-npm-budget.test.js`** — README size, one `## FAQ` before `## License`, no Schema.org block, no relative link into `docs/`, no dead link or anchor, no "What's new in 1.0.x", and the one-name-per-plan check; each pin has a mutant in the same file that must turn it red.
+- **`funnel-invariant.test.js` also checks the four files the README text moved to** for commercial calls to action.
+
 ## [1.17.0] — 2026-10-27
 
 ### Added

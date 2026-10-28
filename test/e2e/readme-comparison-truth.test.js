@@ -37,7 +37,7 @@
  *     a ✳ on our own row would also silently inflate the re-check total above;
  *   - every counted claim about the hosted table ("N rows in that table",
  *     "N third-party products in that table") must equal what the table
- *     actually holds, on every surface that repeats it — prose and JSON-LD;
+ *     actually holds, on every surface that repeats it (the note and the FAQ);
  *   - a Yes in the Portable column may only appear on a row of ours, because
  *     the day a third-party vendor ships one, the wedge sentences elsewhere
  *     in the README stop being true and must be rewritten, not left standing.
@@ -168,22 +168,17 @@ test('every counted claim about the hosted table equals what the table holds', (
   const total = rows.length;
   const thirdParty = rows.filter(r => !OURS.test(r.row)).length;
 
-  // Both claims are repeated on three surfaces a reader or a parser can hit
-  // independently: the note under the table, the FAQ answer in prose, and the
-  // Schema.org FAQ answer. Each is checked SEPARATELY rather than by counting
-  // occurrences in the whole file — a total ("at least two") would still pass
-  // after a claim is deleted from one surface, and one surface healed while
-  // another stays stale is the exact drift this file exists to stop.
-  const JSONLD_RE = /```json\n[\s\S]*?\n```/g;
-  // Strip the fenced json out of the hosted section BEFORE using it, not after:
-  // if a json fence ever lands inside that section, subtracting the unstripped
-  // text from the already-stripped file would silently match nothing and blur
-  // two surfaces into one. Today the two forms are identical.
-  const hostedProse = section(HOSTED).replace(JSONLD_RE, '');
+  // Both claims are repeated on two surfaces a reader or a parser can hit
+  // independently: the note under the table and the FAQ answer in prose. (A
+  // third, the Schema.org FAQ answer, went with the Schema.org block in 1.17.1.)
+  // Each is checked SEPARATELY rather than by counting occurrences in the whole
+  // file — a total ("at least two") would still pass after a claim is deleted
+  // from one surface, and one surface healed while another stays stale is the
+  // exact drift this file exists to stop.
+  const hostedProse = section(HOSTED);
   const surfaces = {
     'the note under the hosted table': hostedProse,
-    'the FAQ answer in prose': README.replace(JSONLD_RE, '').replace(hostedProse, ''),
-    'the Schema.org FAQ answer': (README.match(JSONLD_RE) || []).join('\n'),
+    'the FAQ answer in prose': README.replace(hostedProse, ''),
   };
 
   const check = (re, expected, label) => {
@@ -243,6 +238,6 @@ test('the wedge claim says "portable" everywhere it is made', () => {
 
   assert.ok(
     README.includes('the portable wedge no hosted vendor ships'),
-    'the 30-mission section heading must keep the narrowed claim',
+    'the 30-day plan section heading must keep the narrowed claim',
   );
 });

@@ -80,9 +80,9 @@ command is `AEO_CLIENT_DENYLIST=<path to the clients folder> npm publish`.
 ## Never
 
 - **Never `npm publish`, `npm version`, `git tag`, or `git push`.** Releases are
-  the maintainer's, always. Bump `package.json` only when explicitly asked, and
-  then run `node scripts/sync-readme-version.mjs` in the same commit (the
-  README's Schema.org `softwareVersion` is pinned to `package.json` by a test).
+  the maintainer's, always. Bump `package.json` only when explicitly asked; the
+  version lives only there (the README holds no copy, and `npm version` edits
+  nothing else — `test/e2e/readme-schema-truth.test.js` pins that).
 - **Never make a paid API call to try something out.** Use `run --replay`
   (rebuilds a summary from cached raw responses, zero cost), `report --offline`
   (renders from disk, makes no request and writes nothing — the four `--no-*`
@@ -169,27 +169,40 @@ command is `AEO_CLIENT_DENYLIST=<path to the clients folder> npm publish`.
 | `lib/init/` | `init`: site fetch, query research, validation, key probing. |
 | `test/`, `test/e2e/` | Unit suites and the offline end-to-end suite (`_helpers.js` is the seam). |
 | `test/fixtures/` | Synthetic replay snapshots for the E2E suite, plus pins of real recorded answers and two trimmed real runs. `test/fixtures/README.md` says which is which; do not edit a real-run pin to make a test pass. |
-| `scripts/` | Release and maintenance helpers (`sync-readme-version.mjs`, `pricing-check.mjs`, …). |
+| `scripts/` | Release and maintenance helpers (`pricing-check.mjs`, `smoke-tarball.sh`, …). |
 
 ## Where README is pinned
 
-README is not free-form prose. Four E2E files read it and assert on its wording,
-and a release script rewrites part of it, so an edit that looks purely editorial
-can fail a test or — worse — a publish. Before touching it:
+README is not free-form prose. Several E2E files read it and assert on its
+wording or size, so an edit that looks purely editorial can fail a test. Before
+touching it:
 
-- `test/e2e/readme-schema-truth.test.js` — the Schema.org `@graph`, and that
-  `scripts/sync-readme-version.mjs` fails loudly on an unfamiliar block shape.
-  **Reformatting that JSON breaks the release, not just a test.**
+- `test/e2e/readme-npm-budget.test.js` — the README must stay at or under 62 000
+  characters (the npm registry cuts the `readme` field at 65 536, mid-word), have
+  exactly one `## FAQ` before `## License`, carry no Schema.org block, no
+  relative link into `docs/` or `CONTRIBUTING.md`, and no link to a repository
+  file that does not exist. Reference material that does not fit goes to `docs/`
+  and is linked by an absolute `https://github.com/webappski/aeo-platform/blob/main/…`
+  URL — `docs/` is not in `package.json::files`, so a relative link is dead on npm.
+- `test/e2e/readme-schema-truth.test.js` — no Schema.org block in the README, and
+  `npm version patch` on a copy of the package exits 0 and leaves the README
+  alone. **A release-path guard: do not give `package.json` a `version` script
+  that expects README content.**
 - `test/e2e/methodology-doc-truth.test.js` — `## How we count visibility`, phrase
-  by phrase, each against the constant in `lib/` it describes.
-- `test/e2e/readme-comparison-truth.test.js` — both comparison sections, and FAQ
-  prose against the same answer in the FAQPage schema. Its prose region is the
-  whole file minus the schema minus the hosted section, so it also sees FAQ,
-  Limitations and Roadmap.
-- `test/e2e/funnel-invariant.test.js` — zero commercial-CTA matches anywhere (R8).
+  by phrase, each against the constant in `lib/` it describes; the `--samples`
+  row is read from `docs/commands.md`.
+- `test/e2e/readme-comparison-truth.test.js` — both comparison sections, and the
+  counted claims in the FAQ prose against the table. Its prose region is the
+  whole file minus the hosted section, so it also sees FAQ, Limitations and
+  Roadmap.
+- `test/e2e/readme-default-model-truth.test.js` — the OpenAI default model id,
+  read from the README and from `docs/commands.md`.
+- `test/e2e/funnel-invariant.test.js` — zero commercial-CTA matches in the README,
+  `docs/commands.md`, `docs/quickstart.md`, `docs/crawlability-audit.md` and
+  `CONTRIBUTING.md` (R8).
 
 Each of those files opens with a header saying exactly what it pins; read it
-before editing the section it covers, and run the four directly rather than
+before editing the section it covers, and run them directly rather than
 waiting for the full chain — each takes seconds.
 
 Red lines, because they fail in ways that look unrelated to the edit:
@@ -197,10 +210,11 @@ three `##` lines are frozen **character for character** (the tests slice the fil
 by `indexOf('\n## <exact line>\n')`) — `## How we count visibility`,
 `## Comparison vs hosted AEO platforms`, `## Comparison vs open-source AEO
 trackers`. Do not merge the two comparison sections, demote them to `###`, or
-insert a new `##` inside a pinned one. Edit FAQ prose and the FAQPage schema only
-as a pair. Keep the link `](#how-we-count-visibility)`. And do not add `docs/` to
-`package.json::files[]` (`test/pack-files.test.js` pins the tarball to that list)
-— anything moved out of README leaves the npm page, which is a cited surface.
+insert a new `##` inside a pinned one. Keep the link `](#how-we-count-visibility)`.
+And do not add `docs/` to `package.json::files[]` (`test/pack-files.test.js` pins
+the tarball to that list) — anything moved out of README leaves the npm page,
+which is a cited surface, so each moved section keeps a one-line summary and an
+absolute link in the README.
 
 ## Using the CLI
 

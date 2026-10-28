@@ -34,6 +34,8 @@ import {
 } from '../../lib/report/visibility-index.js';
 
 const README = readFileSync(join(REPO_ROOT, 'README.md'), 'utf-8');
+// The full flags table moved out of the README in 1.17.1 (npm registry size cut).
+const COMMANDS_DOC = readFileSync(join(REPO_ROOT, 'docs', 'commands.md'), 'utf-8');
 const VISIBILITY_INDEX_SRC = readFileSync(
   join(REPO_ROOT, 'lib', 'report', 'visibility-index.js'), 'utf-8');
 
@@ -79,7 +81,7 @@ test('the documented --samples ceiling equals MAX_SAMPLES', () => {
   // Scoped to the section + the flags row (checked below) rather than the whole
   // README, so an unrelated future "capped at N" sentence elsewhere in the file
   // cannot be coupled to lib/sampling.js by accident.
-  const flagsRow = README.match(/^\|\s*`--samples=<N>`\s*\|.*$/m)?.[0] ?? '';
+  const flagsRow = COMMANDS_DOC.match(/^\|\s*`--samples=<N>`\s*\|.*$/m)?.[0] ?? '';
   const caps = [...`${SECTION}\n${flagsRow}`.matchAll(/capped at (\d+)/gi)].map(m => Number(m[1]));
   assert.ok(caps.length >= 1, 'README must state the --samples ceiling');
   for (const cap of caps) {
@@ -91,8 +93,8 @@ test('the documented --samples ceiling equals MAX_SAMPLES', () => {
   assert.equal(resolveSamples(String(MAX_SAMPLES + 7)), MAX_SAMPLES, 'over-cap clamps to the cap');
   // And the flag is documented where a reader looks for flags, not only in prose.
   assert.ok(
-    /\|\s*`--samples=<N>`\s*\|\s*`run`\s*\|/.test(README),
-    'the full flags reference table must carry a --samples row',
+    /\|\s*`--samples=<N>`\s*\|\s*`run`\s*\|/.test(COMMANDS_DOC),
+    'the full flags reference table (docs/commands.md) must carry a --samples row',
   );
 });
 

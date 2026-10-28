@@ -1,190 +1,155 @@
 /**
- * E2E — the README's Schema.org `@graph` must describe the package that
- * actually ships.
+ * E2E — the README carries no Schema.org entity block, and the maintainer's
+ * release command does not depend on one.
  *
- * Why this file exists. The README block is the machine-readable entity we
- * publish to npmjs.com, GitHub, and every mirror that renders a README. It is
- * the surface AI crawlers read to answer "what is aeo-platform, what version,
- * who publishes it". Nothing regenerates it — every field is hand-maintained
- * prose that goes stale silently, and a stale entity is worse than no entity:
- * it is a confident wrong answer.
+ * Why this file changed (1.17.1). Until 1.17.0 the README ended with a
+ * ```json fence holding a Schema.org `@graph` ("the machine-readable entity we
+ * publish to npmjs.com"). On npm and GitHub a fenced block is TEXT, not markup
+ * — JSON-LD only works as a `<script>` tag, and npm strips those — so the block
+ * told a crawler nothing, while it was the single largest thing in the file
+ * (13 499 of 106 832 characters) and sat past the 65 536-character cut the
+ * registry applies to the README field. It was removed.
  *
- * Observed drift that motivated these pins (2026-08-27):
- *   - `softwareVersion` read `1.1.4` while npm served `1.8.0` — six minor
- *     releases behind, and no test noticed across all of them.
- *   - the `featureList` advertised "12 locales" the same day the region map
- *     grew to 15.
- *   - the Organization node declared `@id: https://webappski.com/#org` while
- *     the live canonical page declares `#webappski-org`, so the two nodes
- *     never merged — while an adjacent comment asserted the chain was "fully
- *     reciprocal".
+ * The block had a second life as a release trap. A pin on its `softwareVersion`
+ * plus `.githooks/pre-commit` (full suite, no bypass) meant `npm version` bumped
+ * package.json and then committed with a README one version behind; a lifecycle
+ * script (`scripts/sync-readme-version.mjs`, wired as the npm `version` script)
+ * healed that — and it exited 1 ("Refusing to edit") when the README did not
+ * hold exactly one `"softwareVersion"`. Removing the block without removing the
+ * script would have made the maintainer's `npm version` fail on release day.
+ * So the script and its wiring went with the block, and this file now pins:
  *
- * Each pin below derives the expected value from a LIVE in-repo source
- * (package.json, lib/report/geo-context.js) rather than restating a constant,
- * so the next release cannot re-open the same hole. `prepublishOnly` already
- * runs `npm test`, which makes these pins a publish gate by construction.
+ *   1. the README carries no Schema.org block (so nothing needs syncing);
+ *   2. the release path itself — `npm version patch --no-git-tag-version` on a
+ *      COPY of the package exits 0 and leaves README.md byte for byte alone;
+ *   3. that the release-path check is not vacuous: put the old `version`
+ *      lifecycle script back (a fixture with the 1.17.0 script's contract) and
+ *      the same helper goes red, naming `softwareVersion`.
  *
- * MUTATION-SANITY: each assertion fails when the README value is edited away
- * from its source of truth (e.g. set `softwareVersion` back to `1.1.4`, or
- * `across 12 locales`, and the corresponding test goes RED naming both sides).
+ * SAFETY. The `npm version` runs below happen only in a fresh `mkdtemp` copy
+ * outside this repository, and every run first asserts that its cwd is that
+ * copy. Nothing here ever bumps the real package.json.
+ *
+ * MUTATION-SANITY: restore the `"version"` script in package.json, or put a
+ * fenced Schema.org block back into README.md, and a test below goes red.
  */
 import test from 'node:test';
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { REPO_ROOT } from './_helpers.js';
-import { REGIONS } from '../../lib/report/geo-context.js';
 
-const README = readFileSync(join(REPO_ROOT, 'README.md'), 'utf-8');
+const README_PATH = join(REPO_ROOT, 'README.md');
+const README = readFileSync(README_PATH, 'utf-8');
 const PKG = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'));
 
-/** Pull the Schema.org `@graph` out of the README's fenced json block. There is
- *  exactly one such block; selecting it by CONTENT (`@context` + `@graph`)
- *  rather than by position keeps this stable if fenced json is added elsewhere. */
-function graphFromText(text) {
-  const fences = [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map(m => m[1]);
-  const parsed = [];
-  for (const body of fences) {
-    try { parsed.push(JSON.parse(body)); } catch { /* not every json fence is the entity block */ }
-  }
-  const doc = parsed.find(d => d && d['@context'] === 'https://schema.org' && Array.isArray(d['@graph']));
-  assert.ok(doc, 'README must carry exactly one parseable Schema.org @graph block');
-  return doc['@graph'];
-}
-
-function schemaGraph() {
-  return graphFromText(README);
-}
-
-function nodeOfType(graph, type) {
-  const hit = graph.find(n => n && n['@type'] === type);
-  assert.ok(hit, `README @graph must contain a ${type} node`);
-  return hit;
-}
-
-test('README Schema.org block is valid JSON and carries the expected node types', () => {
-  const graph = schemaGraph();
-  for (const t of ['SoftwareApplication', 'Organization', 'FAQPage']) nodeOfType(graph, t);
+test('the README carries no Schema.org entity block', () => {
+  assert.ok(!/"@graph"/.test(README), 'README must not hold a Schema.org @graph (a fenced block is text on npm)');
+  assert.ok(!/"softwareVersion"/.test(README), 'README must not hold a softwareVersion to keep in step with package.json');
+  assert.ok(!/```json\n[^`]*"@context"/.test(README), 'README must not hold a fenced JSON-LD block');
 });
 
-test('softwareVersion matches the version that actually ships', () => {
-  const app = nodeOfType(schemaGraph(), 'SoftwareApplication');
+test('package.json has no `version` lifecycle script and the sync script is gone', () => {
   assert.equal(
-    app.softwareVersion, PKG.version,
-    `README schema advertises softwareVersion ${app.softwareVersion} but package.json ships ` +
-    `${PKG.version} — the published entity would state a version that does not exist`,
+    PKG.scripts.version, undefined,
+    '`scripts.version` runs on every `npm version` — with the README block gone there is nothing to sync, ' +
+    'and a script that expects the block exits 1 and blocks the release',
+  );
+  assert.ok(
+    !existsSync(join(REPO_ROOT, 'scripts', 'sync-readme-version.mjs')),
+    'scripts/sync-readme-version.mjs must not come back without the block it syncs',
   );
 });
 
-test('dateModified is present, well-formed, and not older than datePublished', () => {
-  const app = nodeOfType(schemaGraph(), 'SoftwareApplication');
-  const ISO = /^\d{4}-\d{2}-\d{2}$/;
-  assert.ok(app.datePublished && ISO.test(app.datePublished),
-    'SoftwareApplication must keep a well-formed datePublished');
-  assert.ok(app.dateModified, 'SoftwareApplication must carry dateModified — freshness is the ' +
-    'signal an answer engine uses to decide whether this entity is still current');
-  assert.ok(ISO.test(app.dateModified), `dateModified must be YYYY-MM-DD, got "${app.dateModified}"`);
-  assert.ok(app.dateModified >= app.datePublished,
-    `dateModified (${app.dateModified}) must not predate datePublished (${app.datePublished})`);
-});
-
-test('featureList locale count matches the shipped REGIONS map', () => {
-  const app = nodeOfType(schemaGraph(), 'SoftwareApplication');
-  const line = (app.featureList || []).find(f => /locales/.test(f));
-  assert.ok(line, 'featureList must advertise the region-context locale count');
-  const claimed = Number(line.match(/(\d+)\s+locales/)?.[1]);
-  assert.equal(
-    claimed, Object.keys(REGIONS).length,
-    `README advertises ${claimed} locales, lib/report/geo-context.js ships ` +
-    `${Object.keys(REGIONS).length} (${Object.keys(REGIONS).join(', ')})`,
-  );
-});
-
-test('the publisher reference resolves to the Organization node in the same graph', () => {
-  const graph = schemaGraph();
-  const app = nodeOfType(graph, 'SoftwareApplication');
-  const org = nodeOfType(graph, 'Organization');
-  // A dangling publisher @id is the classic JSON-LD own-goal: the software and
-  // the org look linked to a human reader but stay two unrelated nodes to a
-  // parser. Pin them equal so a future @id edit has to move both.
-  assert.ok(app.publisher && app.publisher['@id'],
-    'SoftwareApplication must reference its publisher by @id');
-  assert.equal(
-    app.publisher['@id'], org['@id'],
-    `publisher @id "${app.publisher['@id']}" does not match the Organization node ` +
-    `@id "${org['@id']}" — the reference dangles and the two nodes never merge`,
-  );
-});
-
-/**
- * ── The pin must not become a release trap ────────────────────────────────
- *
- * The `softwareVersion` pin above plus `.githooks/pre-commit` (full suite, no
- * bypass) means a plain `npm version minor` would fail: npm bumps package.json
- * and then makes its own git commit, at which moment README is one version
- * behind and the hook rejects the release. Confirmed by simulation before the
- * fix — bumping package.json to 1.9.0 with README at 1.8.0 turns the pin RED,
- * which is exactly what the founder would hit mid-release.
- *
- * `scripts/sync-readme-version.mjs`, wired as the npm `version` lifecycle
- * script, closes that: npm runs it AFTER the bump and BEFORE the commit, and
- * commits what it stages. The pin keeps its teeth (a hand-edited README that
- * disagrees still goes red) while the release path heals itself.
- *
- * These tests drive the real script in a temp directory — no repo file is
- * touched — because a guard that has never been executed is a guess.
- */
-import { mkdtempSync, rmSync, cpSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
-
-const SYNC_SCRIPT = join(REPO_ROOT, 'scripts', 'sync-readme-version.mjs');
-
-/** Stage a minimal package root (package.json + README.md) at `version`. */
-function stageRoot(version) {
-  const dir = mkdtempSync(join(tmpdir(), 'aeo-e2e-readme-sync-'));
-  cpSync(join(REPO_ROOT, 'README.md'), join(dir, 'README.md'));
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({ ...PKG, version }, null, 2));
+/** A fresh package copy outside the repo: package.json, README.md, scripts/. */
+function stagePackage({ versionScript, extraScripts = {} } = {}) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'aeo-e2e-release-path-')));
+  const pkg = { ...PKG, scripts: { ...PKG.scripts } };
+  if (versionScript) pkg.scripts.version = versionScript;
+  writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
+  cpSync(README_PATH, join(dir, 'README.md'));
+  cpSync(join(REPO_ROOT, 'scripts'), join(dir, 'scripts'), { recursive: true });
+  for (const [name, body] of Object.entries(extraScripts)) writeFileSync(join(dir, 'scripts', name), body);
   return dir;
 }
 
-test('the npm version lifecycle script heals README so a release cannot be blocked by its own pin', () => {
-  const dir = stageRoot('9.9.9');
+/** Refuse to run anywhere that could be this repository. */
+function assertScratch(dir) {
+  const root = realpathSync(REPO_ROOT);
+  assert.ok(
+    dir !== root && !dir.startsWith(root + sep) && !root.startsWith(dir + sep),
+    `release-path runs must happen in a temp copy, not in the repository (cwd ${dir})`,
+  );
+  assert.ok(dir.startsWith(realpathSync(tmpdir())), `cwd ${dir} is not under the temp directory`);
+}
+
+/**
+ * `npm version patch --no-git-tag-version` in `dir`, lifecycle scripts forced
+ * ON (an `ignore-scripts=true` in someone's npmrc would otherwise make the
+ * check pass without ever running the `version` script). Inherited `npm_*`
+ * variables are dropped so a nested npm does not think it is the outer one.
+ */
+function bumpPatch(dir) {
+  assertScratch(dir);
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_/i.test(k)));
+  const execpath = process.env.npm_execpath;
+  const viaNode = execpath && /\.c?js$/.test(execpath);
+  return spawnSync(
+    viaNode ? process.execPath : 'npm',
+    [...(viaNode ? [execpath] : []), 'version', 'patch', '--no-git-tag-version', '--ignore-scripts=false'],
+    { cwd: dir, env: { ...env, npm_config_ignore_scripts: 'false', npm_config_update_notifier: 'false' }, encoding: 'utf-8' },
+  );
+}
+
+function nextPatch(version) {
+  const [a, b, c] = version.split('.').map(Number);
+  return `${a}.${b}.${c + 1}`;
+}
+
+/** The contract of the 1.17.0 `scripts/sync-readme-version.mjs`, reduced to the part that blocked a release. */
+const OLD_SYNC_CONTRACT = `
+import { readFileSync } from 'node:fs';
+const text = readFileSync('README.md', 'utf-8');
+const hits = text.match(/"softwareVersion":\\s*"[^"]*"/g) || [];
+if (hits.length !== 1) {
+  console.error('sync-readme-version: expected exactly 1 "softwareVersion" in README.md, found ' + hits.length + '. Refusing to edit');
+  process.exit(1);
+}
+`;
+
+test('npm version patch on a copy of the package exits 0 and leaves README.md alone', () => {
+  const dir = stagePackage();
   try {
-    const r = spawnSync(process.execPath, [SYNC_SCRIPT], { cwd: dir, encoding: 'utf-8' });
-    assert.equal(r.status, 0, `sync script must exit 0.\nstdout: ${r.stdout}\nstderr: ${r.stderr}`);
-
-    const readme = readFileSync(join(dir, 'README.md'), 'utf-8');
-    assert.match(readme, /"softwareVersion":\s*"9\.9\.9"/,
-      'the version being released must reach the README schema block');
-    const today = new Date().toISOString().slice(0, 10);
-    assert.ok(
-      readme.includes(`"dateModified": "${today}"`),
-      `dateModified must be refreshed to the release date (${today})`,
+    const before = readFileSync(join(dir, 'README.md'));
+    const r = bumpPatch(dir);
+    assert.equal(r.status, 0, `the maintainer's \`npm version\` must succeed.\nstdout: ${r.stdout}\nstderr: ${r.stderr}`);
+    assert.equal(
+      Buffer.compare(before, readFileSync(join(dir, 'README.md'))), 0,
+      'the version bump must not rewrite README.md — the version no longer lives there',
     );
-
-    // The whole point: after the script runs, the pin that would have blocked
-    // the release now passes against the bumped version.
-    const app = nodeOfType(graphFromText(readme), 'SoftwareApplication');
-    assert.equal(app.softwareVersion, '9.9.9', 'the healed README satisfies the softwareVersion pin');
+    assert.equal(
+      JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8')).version, nextPatch(PKG.version),
+      'package.json in the copy must carry the bumped version (the command did run)',
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('the sync script refuses to guess when the README is not in the shape it knows', () => {
-  const dir = stageRoot('9.9.9');
+test('mutant: the 1.17.0 `version` lifecycle script back — the same helper goes red and names softwareVersion', () => {
+  const dir = stagePackage({
+    versionScript: 'node scripts/sync-readme-version.mjs && git add README.md',
+    extraScripts: { 'sync-readme-version.mjs': OLD_SYNC_CONTRACT },
+  });
   try {
-    // Remove the field entirely — a silent partial edit to a published entity
-    // is the failure mode worth being paranoid about, so this must FAIL, not
-    // quietly do nothing.
-    const stripped = readFileSync(join(dir, 'README.md'), 'utf-8')
-      .replace(/\s*"softwareVersion":\s*"[^"]*",/, '');
-    writeFileSync(join(dir, 'README.md'), stripped);
-
-    const r = spawnSync(process.execPath, [SYNC_SCRIPT], { cwd: dir, encoding: 'utf-8' });
-    assert.notEqual(r.status, 0, 'a README missing the field must fail loudly, not silently pass');
-    assert.match(r.stderr, /softwareVersion/, 'the error must name the field it could not find');
+    const r = bumpPatch(dir);
+    assert.notEqual(r.status, 0, 'with the old script wired in and no Schema.org block the release must fail — if it passes, the check never ran the lifecycle script');
+    assert.match(
+      `${r.stdout}\n${r.stderr}`, /softwareVersion/,
+      `it must fail for the right reason (the missing softwareVersion), not on an unrelated error:\n${r.stderr}`,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

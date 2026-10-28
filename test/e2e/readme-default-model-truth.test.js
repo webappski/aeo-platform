@@ -5,7 +5,7 @@
  * WHY THIS FILE EXISTS (seam guard, R67 п.3 / R68 п.2)
  *   `FALLBACK.openai.main` (lib/providers/discover.js) and
  *   `DEFAULT_CONFIG.providers.openai` (lib/config.js) are what a new user gets.
- *   The README names that id in seven places and `--help` in one. Each reader is
+ *   The README (and docs/commands.md) names that id in six places and `--help` in one. Each reader is
  *   a separate copy of the same value; a change of the default that forgot one
  *   of them shipped a README that sent users to a model the tool no longer used.
  *   The value is taken FROM THE CODE here (import), never typed as a literal:
@@ -31,25 +31,29 @@ import { withTmpProject, BIN, REPO_ROOT } from './_helpers.js';
 import { FALLBACK } from '../../lib/providers/discover.js';
 import { DEFAULT_CONFIG } from '../../lib/config.js';
 
-const README = readFileSync(join(REPO_ROOT, 'README.md'), 'utf-8');
+// The flags table and the `.aeo-tracker.json` example live in docs/commands.md
+// since 1.17.1 (the README had to shrink under the npm registry's 65 536-character
+// cut), so the reader is the README AND that file, counted together.
+const README = readFileSync(join(REPO_ROOT, 'README.md'), 'utf-8')
+  + '\n' + readFileSync(join(REPO_ROOT, 'docs', 'commands.md'), 'utf-8');
 const MAIN = FALLBACK.openai.main;
 
-// anchor → how many times README is expected to carry it. Each capture group is
-// the model id the README claims.
+// anchor → how many times README (+ docs/commands.md) is expected to carry it.
+// Each capture group is the model id the text claims. G1f (the Schema.org FAQ
+// answer) went with the Schema.org block in 1.17.1.
 const ANCHORS = [
-  ['G1a', '163/272 ChatGPT (`<id>` + the Responses', /ChatGPT \(`([\w.-]+)` \+ the Responses/g, 2],
-  ['G1b', '276 table row ChatGPT (OpenAI)', /\| ChatGPT \(OpenAI\) \| `([\w.-]+)`/g, 1],
-  ['G1c', '367 table row OpenAI + Responses', /\| OpenAI `([\w.-]+)` \+ Responses/g, 1],
-  ['G1d', '557 switch from the default', /switch from the default `([\w.-]+)`/g, 1],
-  ['G1e', '722 **ChatGPT**', /\*\*ChatGPT\*\* \(`([\w.-]+)`/g, 1],
-  ['G1f', '1127 ChatGPT (<id> with the Responses', /ChatGPT \(([\w.-]+) with the Responses/g, 1],
+  ['G1a', 'ChatGPT (`<id>` + the Responses', /ChatGPT \(`([\w.-]+)` \+ the Responses/g, 2],
+  ['G1b', 'table row ChatGPT (OpenAI)', /\| ChatGPT \(OpenAI\) \| `([\w.-]+)`/g, 1],
+  ['G1c', 'table row OpenAI + Responses', /\| OpenAI `([\w.-]+)` \+ Responses/g, 1],
+  ['G1d', 'switch from the default (docs/commands.md)', /switch from the default `([\w.-]+)`/g, 1],
+  ['G1e', 'FAQ **ChatGPT**', /\*\*ChatGPT\*\* \(`([\w.-]+)`/g, 1],
 ];
 
 for (const [id, name, re, expected] of ANCHORS) {
   test(`${id} · ${name}: README names FALLBACK.openai.main (${expected}x)`, () => {
     const found = [...README.matchAll(re)].map((m) => m[1]);
     assert.equal(found.length, expected,
-      `G4: anchor ${re} must match exactly ${expected} time(s) in README.md, matched ${found.length} — a rewording moved it`);
+      `G4: anchor ${re} must match exactly ${expected} time(s) in README.md + docs/commands.md, matched ${found.length} — a rewording moved it`);
     for (const id of found) {
       assert.equal(id, MAIN, `README says the default is ${id}; FALLBACK.openai.main is ${MAIN}`);
     }

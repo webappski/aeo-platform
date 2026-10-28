@@ -36,15 +36,27 @@ import {
 const COMMERCE_CTA_RE =
   /buy now|subscribe (to|for) \$|sign up for \$|upgrade to (premium|pro)|\$\d+\s*(\/|per)\s*(month|year|mo|yr)|start (free|your) trial|get full access|unlock premium/i;
 
-test('P0-17a — README contains zero matches of the canonical commerce-CTA regex', () => {
-  const readmePath = join(REPO_ROOT, 'README.md');
-  const text = readFileSync(readmePath, 'utf-8');
-  const matches = text.match(new RegExp(COMMERCE_CTA_RE.source, 'gi')) || [];
-  assert.equal(
-    matches.length, 0,
-    `README must not contain commerce CTA copy (R8 in RULES.md). Found: ${JSON.stringify(matches)}`,
-  );
-});
+// The README plus the four files that took README text with them in 1.17.1 (the
+// README had to shrink under the npm registry's cut). Exactly these: `docs/`
+// also holds internal planning files that legitimately talk about prices.
+const OSS_DISCOVERY_FILES = [
+  'README.md',
+  'docs/commands.md',
+  'docs/quickstart.md',
+  'docs/crawlability-audit.md',
+  'CONTRIBUTING.md',
+];
+
+for (const file of OSS_DISCOVERY_FILES) {
+  test(`P0-17a — ${file} contains zero matches of the canonical commerce-CTA regex`, () => {
+    const text = readFileSync(join(REPO_ROOT, file), 'utf-8');
+    const matches = text.match(new RegExp(COMMERCE_CTA_RE.source, 'gi')) || [];
+    assert.equal(
+      matches.length, 0,
+      `${file} must not contain commerce CTA copy (R8 in RULES.md). Found: ${JSON.stringify(matches)}`,
+    );
+  });
+}
 
 test('P0-17b — generated HTML report contains the <article id="mc-bridge"> anchor', async () => {
   await withTmpProject('aeo-e2e-funnel-html-', async (dir) => {
