@@ -78,6 +78,11 @@ export function readmeProblems(text, root = REPO_ROOT) {
   // A count said in words must equal what is counted: "Six concrete reasons"
   // over a list of five went unnoticed for months.
   const why = sectionOf(text, WHY);
+  if (!why) {
+    // Renaming the heading must not switch the count pin off: an empty section
+    // has no sentence to compare and would pass.
+    add('reasons-count', `section not found: the README has no "${WHY}" heading, so the count of its reasons is not checked`);
+  }
   const said = why.match(/\b(\w+) concrete reasons\b/i);
   if (said) {
     const claimed = NUMBER_WORDS[said[1].toLowerCase()];
@@ -244,6 +249,9 @@ const MUTANTS = [
   ['"What\'s new in 1.0.8" back', (t) => `${t}\n### What's new in 1.0.8?\n`, 'whats-new'],
   ['a "Why" bullet deleted ("Six concrete reasons" over five)', (t) => t.replace(/^- \*\*MIT\.\*\*.*\n/m, ''), 'reasons-count'],
   ['"Six" changed to "Seven"', (t) => t.replace('Six concrete reasons', 'Seven concrete reasons'), 'reasons-count'],
+  // The heading renamed keeps its slug (`why-aeo-platform`), so no link goes dead and
+  // the count pin used to read an empty section and pass: the rename switched it off.
+  ['the "## Why `aeo-platform`" heading renamed', (t) => t.replace('\n## Why `aeo-platform`\n', '\n## Why aeo-platform\n'), 'reasons-count'],
   ['a local ~/Projects path in a comment', (t) => `${t}\n<!-- source: ~/Projects/typelessity-landing/aeo-responses/x.json -->\n`, 'local-path'],
   ['"Portable 30-mission plan" for the free result', (t) => `${t}\n- **Portable 30-mission plan** pasted into your AI.\n`, 'naming'],
   ['a second "## FAQ"', (t) => `${t}\n## FAQ\n`, 'faq'],
