@@ -75,6 +75,22 @@ export function readmeProblems(text, root = REPO_ROOT) {
     add('whats-new', '"What\'s new in 1.0.x" entries belong in CHANGELOG.md, not the README');
   }
 
+  // A count said in words must equal what is counted: "Six concrete reasons"
+  // over a list of five went unnoticed for months.
+  const why = sectionOf(text, WHY);
+  const said = why.match(/\b(\w+) concrete reasons\b/i);
+  if (said) {
+    const claimed = NUMBER_WORDS[said[1].toLowerCase()];
+    const listed = (why.match(/^- \*\*/gm) || []).length;
+    if (claimed !== listed) {
+      add('reasons-count', `"${said[0]}" is followed by ${listed} bullets (the sentence says ${claimed ?? 'a number this check does not know'})`);
+    }
+  }
+
+  // A path on someone's machine in a published README is a leak and a dead end.
+  const local = text.match(/(?:~\/Projects\/|\/Users\/)[^\s)>`]*/g);
+  if (local) add('local-path', `local filesystem path(s) in the README: ${[...new Set(local)].join(', ')}`);
+
   // One name per artifact: the free result of this package (the JSON brand-context
   // pasted into your own AI) is the "30-day AEO plan". "30-mission plan" belongs
   // to the paid Webappski Plan, so it may appear only on a line that says so.
@@ -88,6 +104,17 @@ export function readmeProblems(text, root = REPO_ROOT) {
   if (dead.length) add('dead-link', `links that lead nowhere: ${dead.join('; ')}`);
 
   return problems;
+}
+
+const WHY = '## Why `aeo-platform`';
+const NUMBER_WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+
+/** One `##` section, heading line to the next `##` (or the end). Empty when absent. */
+function sectionOf(text, heading) {
+  const start = text.indexOf(`\n${heading}\n`);
+  if (start === -1) return '';
+  const after = text.indexOf('\n## ', start + 1);
+  return text.slice(start, after === -1 ? text.length : after);
 }
 
 /** GitHub's heading anchor: lowercase, backticks and punctuation dropped, every space a hyphen. */
@@ -149,6 +176,9 @@ const MUTANTS = [
   ['relative link back to CONTRIBUTING', (t) => `${t}\n[contributing](CONTRIBUTING.md)\n`, 'relative-link'],
   ['Schema.org block back', (t) => `${t}\n\`\`\`json\n{"@context":"https://schema.org","@graph":[]}\n\`\`\`\n`, 'graph'],
   ['"What\'s new in 1.0.8" back', (t) => `${t}\n### What's new in 1.0.8?\n`, 'whats-new'],
+  ['a "Why" bullet deleted ("Six concrete reasons" over five)', (t) => t.replace(/^- \*\*MIT\.\*\*.*\n/m, ''), 'reasons-count'],
+  ['"Six" changed to "Seven"', (t) => t.replace('Six concrete reasons', 'Seven concrete reasons'), 'reasons-count'],
+  ['a local ~/Projects path in a comment', (t) => `${t}\n<!-- source: ~/Projects/typelessity-landing/aeo-responses/x.json -->\n`, 'local-path'],
   ['"Portable 30-mission plan" for the free result', (t) => `${t}\n- **Portable 30-mission plan** pasted into your AI.\n`, 'naming'],
   ['a second "## FAQ"', (t) => `${t}\n## FAQ\n`, 'faq'],
   ['"## FAQ" after "## License"', (t) => t.replace(/^## FAQ$/m, '## Faq') + '\n## FAQ\n', 'faq'],

@@ -136,6 +136,7 @@ Six concrete reasons `aeo-platform` exists, in order of how often they decide th
 - **CI-grade.** Exit codes `0/1/2/3` (stable / regressed / invisible / providers errored). `--json` stdout. Cron-friendly.
 - **Zero runtime dependencies.** `"dependencies": {}` in `package.json`. Vanilla Node 20+. The report is a single self-contained HTML file (~390 KB — about 170 KB of that is the embedded variable fonts that let it render identically offline, with zero CDN calls).
 - **MIT.** Fork it, embed it, ship it inside a paid product — your choice.
+- **Portable 30-day plan.** Paste the JSON brand-context into your own ChatGPT, Claude, Gemini or Perplexity chat and get 30 missions keyed to your gaps — no extra API spend. [How the plan works](#the-30-day-aeo-plan-the-portable-wedge-no-hosted-vendor-ships).
 
 ## Who runs this — the agency behind `aeo-platform`
 
@@ -187,8 +188,6 @@ Paste that JSON into **your own ChatGPT / Claude / Gemini / Perplexity** (any fr
 4. Receive a 30-day plan: 30 actions × ≈1–3 hours each, grouped into 4 weekly chunks, every action references a specific competitor / URL / engine / gap from the data.
 
 **Real run for typelessform.com — the file the whole pipeline exists to produce:**
-
-<!-- source: aeo-platform run 2026-05-18, ~/Projects/typelessity-landing/aeo-responses/2026-05-18/_summary.json (Presence 42%, mentions 5/12) -->
 
 ### Diagnosis
 

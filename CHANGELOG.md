@@ -17,6 +17,7 @@ All notable changes to `aeo-platform` (formerly `@webappski/aeo-tracker`).
 
   The README links to each moved piece with an absolute GitHub URL, because `docs/` is not part of the published package. A test checks that every such link points at a file and a heading that exist.
 - **The free paste-into-AI result is called the "30-day AEO plan" in the README** (it was "30-mission plan"); the section anchor changed with the heading. "30-mission plan" stays the name of the paid Webappski Plan.
+- **The README's "Why `aeo-platform`" list has the sixth reason its "Six concrete reasons" sentence promised** (the portable 30-day plan), and a leftover HTML comment with a path on the maintainer's machine is gone. `test/e2e/readme-npm-budget.test.js` now fails when the number said in words differs from the number of bullets, and on any `~/Projects/` or `/Users/` path in the README.
 
 ### Added
 
